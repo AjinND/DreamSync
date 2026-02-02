@@ -398,8 +398,8 @@ interface JourneyCardProps {
 | LoadingState | ✅ Done | `src/components/shared/LoadingState.tsx` |
 | **Organisms** | | |
 | DreamCard | ✅ Done | `src/components/dream/DreamCard.tsx` |
+| DreamForm | ✅ Done | `src/components/dream/DreamForm.tsx` |
 | DreamDetail | 🔴 TODO | - |
-| DreamForm | 🔴 TODO | - |
 | CommentItem | 🔴 TODO | - |
 | JourneyCard | 🔴 TODO | - |
 

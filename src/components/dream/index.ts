@@ -3,3 +3,5 @@
  */
 
 export { DreamCard } from './DreamCard';
+export { DreamForm } from './DreamForm';
+
