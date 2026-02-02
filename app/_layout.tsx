@@ -53,11 +53,11 @@ export default function RootLayout() {
         <Stack.Screen name="(auth)" options={{ headerShown: false }} />
         <Stack.Screen
           name="item/add"
-          options={{ title: "New Dream", presentation: "modal" }}
+          options={{ headerShown: false, presentation: "modal" }}
         />
         <Stack.Screen
           name="item/[id]"
-          options={{ title: "Dreams Details", presentation: "modal" }}
+          options={{ headerShown: false, presentation: "modal" }}
         />
         <Stack.Screen
           name="category/[id]"

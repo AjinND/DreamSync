@@ -15,8 +15,9 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { ChevronLeft, X } from 'lucide-react-native';
 import { useEffect, useState } from 'react';
-import { Alert, StyleSheet } from 'react-native';
+import { Alert, KeyboardAvoidingView, Platform, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useShallow } from 'zustand/shallow';
 
 export default function AddDreamScreen() {
     const router = useRouter();
@@ -25,7 +26,15 @@ export default function AddDreamScreen() {
     const isEditing = !!id;
 
     const { colors, isDark } = useTheme();
-    const { addItem, updateItem, items } = useBucketStore();
+
+    // Use separate selectors to prevent re-renders when items change
+    const actions = useBucketStore(
+        useShallow((state) => ({ addItem: state.addItem, updateItem: state.updateItem }))
+    );
+    // Only get the specific item we're editing (if any) - stable reference
+    const existingItem = useBucketStore(
+        (state) => (typeof id === 'string' ? state.itemMap[id] : undefined)
+    );
 
     const [loading, setLoading] = useState(false);
     const [initialValues, setInitialValues] = useState<{
@@ -38,22 +47,20 @@ export default function AddDreamScreen() {
     } | undefined>(undefined);
 
     useEffect(() => {
-        if (isEditing && typeof id === 'string') {
-            const existingItem = items.find(i => i.id === id);
-            if (existingItem) {
-                setInitialValues({
-                    title: existingItem.title,
-                    description: existingItem.description || '',
-                    category: existingItem.category,
-                    phase: existingItem.phase,
-                    imageUri: existingItem.mainImage || null,
-                    targetDate: existingItem.targetDate
-                        ? new Date(existingItem.targetDate).toISOString().split('T')[0]
-                        : '',
-                });
-            }
+        if (isEditing && existingItem && !initialValues) {
+            setInitialValues({
+                title: existingItem.title,
+                description: existingItem.description || '',
+                category: existingItem.category,
+                phase: existingItem.phase,
+                imageUri: existingItem.mainImage || null,
+                targetDate: existingItem.targetDate
+                    ? new Date(existingItem.targetDate).toISOString().split('T')[0]
+                    : '',
+            });
         }
-    }, [id, items]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [existingItem?.id, isEditing]);
 
     const handleSubmit = async (values: {
         title: string;
@@ -100,9 +107,9 @@ export default function AddDreamScreen() {
             };
 
             if (isEditing && typeof id === 'string') {
-                await updateItem(id, dreamData);
+                await actions.updateItem(id, dreamData);
             } else {
-                await addItem(dreamData);
+                await actions.addItem(dreamData);
             }
 
             router.back();
@@ -141,12 +148,18 @@ export default function AddDreamScreen() {
                 }
             />
 
-            <DreamForm
-                initialValues={initialValues}
-                onSubmit={handleSubmit}
-                isEditing={isEditing}
-                isLoading={loading}
-            />
+            <KeyboardAvoidingView
+                behavior={Platform.OS === 'ios' ? 'padding' : 'padding'}
+                style={{ flex: 1 }}
+                keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+            >
+                <DreamForm
+                    initialValues={initialValues}
+                    onSubmit={handleSubmit}
+                    isEditing={isEditing}
+                    isLoading={loading}
+                />
+            </KeyboardAvoidingView>
         </SafeAreaView>
     );
 }

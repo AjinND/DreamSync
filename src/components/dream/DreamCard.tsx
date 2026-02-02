@@ -43,6 +43,7 @@ interface DreamCardProps {
     variant?: 'default' | 'compact' | 'featured';
     showUser?: boolean;
     isLiked?: boolean;
+    showSocial?: boolean;
 }
 
 export function DreamCard({
@@ -53,6 +54,7 @@ export function DreamCard({
     variant = 'default',
     showUser = true,
     isLiked = false,
+    showSocial = false,
 }: DreamCardProps) {
     const { colors, shadows } = useTheme();
     const likeScale = useSharedValue(1);
@@ -141,35 +143,37 @@ export function DreamCard({
                     )}
 
                     {/* Actions */}
-                    <View style={styles.actions}>
-                        <TouchableOpacity
-                            style={styles.actionButton}
-                            onPress={handleLike}
-                            activeOpacity={0.7}
-                        >
-                            <Animated.View style={likeAnimatedStyle}>
-                                <Heart
-                                    size={18}
-                                    color={isLiked ? colors.accent : colors.textMuted}
-                                    fill={isLiked ? colors.accent : 'transparent'}
-                                />
-                            </Animated.View>
-                            <Text style={[styles.actionCount, { color: colors.textMuted }]}>
-                                {dream.likesCount}
-                            </Text>
-                        </TouchableOpacity>
+                    {showSocial && (
+                        <View style={styles.actions}>
+                            <TouchableOpacity
+                                style={styles.actionButton}
+                                onPress={handleLike}
+                                activeOpacity={0.7}
+                            >
+                                <Animated.View style={likeAnimatedStyle}>
+                                    <Heart
+                                        size={18}
+                                        color={isLiked ? colors.accent : colors.textMuted}
+                                        fill={isLiked ? colors.accent : 'transparent'}
+                                    />
+                                </Animated.View>
+                                <Text style={[styles.actionCount, { color: colors.textMuted }]}>
+                                    {dream.likesCount}
+                                </Text>
+                            </TouchableOpacity>
 
-                        <TouchableOpacity
-                            style={styles.actionButton}
-                            onPress={onComment}
-                            activeOpacity={0.7}
-                        >
-                            <MessageCircle size={18} color={colors.textMuted} />
-                            <Text style={[styles.actionCount, { color: colors.textMuted }]}>
-                                {dream.commentsCount}
-                            </Text>
-                        </TouchableOpacity>
-                    </View>
+                            <TouchableOpacity
+                                style={styles.actionButton}
+                                onPress={onComment}
+                                activeOpacity={0.7}
+                            >
+                                <MessageCircle size={18} color={colors.textMuted} />
+                                <Text style={[styles.actionCount, { color: colors.textMuted }]}>
+                                    {dream.commentsCount}
+                                </Text>
+                            </TouchableOpacity>
+                        </View>
+                    )}
                 </View>
             </View>
         </Card>

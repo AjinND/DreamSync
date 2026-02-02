@@ -3,7 +3,8 @@
  * Immersive view of a dream with status controls, editing, and deletion
  */
 
-import { EmptyState, Header, StatusBadge } from '@/src/components/shared';
+import { InspirationBoard, MemoryCapsule, Reflections } from '@/src/components/dream';
+import { EmptyState, Header } from '@/src/components/shared';
 import { Button, IconButton } from '@/src/components/ui';
 import { useBucketStore } from '@/src/store/useBucketStore';
 import { useTheme } from '@/src/theme';
@@ -15,11 +16,8 @@ import {
     ChevronLeft,
     Edit3,
     Flame,
-    Heart,
-    MessageCircle,
     Moon,
-    Share2,
-    Trash2,
+    Sparkles,
     Trophy,
 } from 'lucide-react-native';
 import { useEffect, useState } from 'react';
@@ -53,6 +51,8 @@ const PHASES: { id: Phase; label: string; icon: any }[] = [
     { id: 'done', label: 'Done', icon: Trophy },
 ];
 
+const TABS = ['Story', 'Progress', 'Expenses'];
+
 export default function DreamDetailScreen() {
     const { id } = useLocalSearchParams();
     const router = useRouter();
@@ -60,6 +60,7 @@ export default function DreamDetailScreen() {
     const { items, updateItem, deleteItem } = useBucketStore();
 
     const [item, setItem] = useState(items.find((i) => i.id === id));
+    const [activeTab, setActiveTab] = useState('Story');
     const [isDeleting, setIsDeleting] = useState(false);
 
     useEffect(() => {
@@ -136,135 +137,175 @@ export default function DreamDetailScreen() {
         : null;
 
     return (
-        <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
-            <StatusBar style={isDark ? 'light' : 'dark'} />
-
-            {/* Header */}
-            <View style={[styles.header, { backgroundColor: colors.background }]}>
-                <IconButton icon={ChevronLeft} onPress={() => router.back()} variant="ghost" />
-                <View style={styles.headerActions}>
-                    <IconButton icon={Edit3} onPress={handleEdit} variant="ghost" />
-                    <IconButton icon={Trash2} onPress={handleDelete} variant="ghost" color={colors.error} />
-                </View>
-            </View>
+        <View style={[styles.container, { backgroundColor: colors.background }]}>
+            <StatusBar style="light" />
 
             <ScrollView
                 style={styles.scrollView}
                 contentContainerStyle={styles.scrollContent}
                 showsVerticalScrollIndicator={false}
             >
-                {/* Cover Image */}
-                {item.mainImage ? (
-                    <Image source={{ uri: item.mainImage }} style={styles.coverImage} resizeMode="cover" />
-                ) : (
-                    <View style={[styles.coverPlaceholder, { backgroundColor: getPhaseColor(item.phase) + '20' }]}>
-                        <Text style={styles.placeholderEmoji}>{categoryInfo.emoji}</Text>
-                    </View>
-                )}
-
-                {/* Content Card */}
-                <View style={[styles.contentCard, { backgroundColor: colors.surface }]}>
-                    {/* Status & Category Row */}
-                    <View style={styles.metaRow}>
-                        <StatusBadge status={item.phase} size="md" />
-                        <View style={[styles.categoryBadge, { backgroundColor: colors.border }]}>
-                            <Text style={styles.categoryEmoji}>{categoryInfo.emoji}</Text>
-                            <Text style={[styles.categoryLabel, { color: colors.textSecondary }]}>
-                                {categoryInfo.label}
-                            </Text>
-                        </View>
-                    </View>
-
-                    {/* Title */}
-                    <Text style={[styles.title, { color: colors.textPrimary }]}>
-                        {item.title}
-                    </Text>
-
-                    {/* Description */}
-                    {item.description && (
-                        <Text style={[styles.description, { color: colors.textSecondary }]}>
-                            {item.description}
-                        </Text>
-                    )}
-
-                    {/* Target Date */}
-                    {formattedDate && (
-                        <View style={styles.dateRow}>
-                            <Calendar size={16} color={colors.textMuted} />
-                            <Text style={[styles.dateText, { color: colors.textMuted }]}>
-                                Target: {formattedDate}
-                            </Text>
+                {/* Hero Section */}
+                <View style={styles.heroContainer}>
+                    {/* Background Image */}
+                    {item.mainImage ? (
+                        <Image source={{ uri: item.mainImage }} style={styles.heroImage} resizeMode="cover" />
+                    ) : (
+                        <View style={[styles.heroPlaceholder, { backgroundColor: getPhaseColor(item.phase) }]}>
+                            <Text style={styles.placeholderEmoji}>{categoryInfo.emoji}</Text>
                         </View>
                     )}
 
-                    {/* Phase Selector */}
-                    <View style={styles.phaseSection}>
-                        <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>
-                            Update Status
-                        </Text>
-                        <View style={styles.phaseRow}>
-                            {PHASES.map((p) => {
-                                const Icon = p.icon;
-                                const phaseColor = getPhaseColor(p.id);
-                                const isSelected = item.phase === p.id;
+                    {/* Overlay Gradient/Tint could go here */}
+                    <View style={styles.heroOverlay} />
 
-                                return (
-                                    <TouchableOpacity
-                                        key={p.id}
-                                        style={[
-                                            styles.phaseChip,
-                                            {
-                                                backgroundColor: isSelected ? phaseColor + '25' : colors.background,
-                                                borderColor: isSelected ? phaseColor : colors.border,
-                                            },
-                                        ]}
-                                        onPress={() => handlePhaseChange(p.id)}
-                                        activeOpacity={0.7}
-                                    >
-                                        <Icon size={20} color={isSelected ? phaseColor : colors.textMuted} />
-                                        <Text
-                                            style={[
-                                                styles.phaseLabel,
-                                                { color: isSelected ? phaseColor : colors.textSecondary },
-                                            ]}
-                                        >
-                                            {p.label}
-                                        </Text>
-                                    </TouchableOpacity>
-                                );
-                            })}
+                    {/* Header Actions (Absolute) */}
+                    <SafeAreaView style={styles.headerAbsolute} edges={['top']}>
+                        <View style={styles.blurButton}>
+                            <IconButton
+                                icon={ChevronLeft}
+                                onPress={() => router.back()}
+                                variant="ghost"
+                                color="#FFF"
+                            />
                         </View>
-                    </View>
+                        <View style={styles.blurButton}>
+                            <IconButton
+                                icon={Edit3}
+                                onPress={handleEdit}
+                                variant="ghost"
+                                color="#FFF"
+                            />
+                        </View>
+                    </SafeAreaView>
 
-                    {/* Actions */}
-                    <View style={styles.actionsSection}>
-                        <TouchableOpacity style={styles.actionButton} activeOpacity={0.7}>
-                            <Heart size={22} color={colors.textMuted} />
-                            <Text style={[styles.actionLabel, { color: colors.textMuted }]}>Like</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity style={styles.actionButton} activeOpacity={0.7}>
-                            <MessageCircle size={22} color={colors.textMuted} />
-                            <Text style={[styles.actionLabel, { color: colors.textMuted }]}>Comment</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity style={styles.actionButton} activeOpacity={0.7}>
-                            <Share2 size={22} color={colors.textMuted} />
-                            <Text style={[styles.actionLabel, { color: colors.textMuted }]}>Share</Text>
-                        </TouchableOpacity>
+                    {/* Hero Content */}
+                    <View style={styles.heroContent}>
+                        <View style={styles.categoryPill}>
+                            <Text style={styles.categoryPillText}>{categoryInfo.emoji} {categoryInfo.label}</Text>
+                        </View>
+                        <Text style={styles.heroTitle}>{item.title}</Text>
                     </View>
                 </View>
 
-                {/* Delete Action */}
-                <View style={styles.dangerZone}>
-                    <Button
-                        title="Delete Dream"
-                        onPress={handleDelete}
-                        variant="danger"
-                        fullWidth
-                        loading={isDeleting}
-                    />
+                {/* Status Bar */}
+                <View style={[styles.statusBar, { backgroundColor: colors.surface }]}>
+                    <View style={styles.statusIcons}>
+                        {PHASES.map(p => (
+                            <TouchableOpacity
+                                key={p.id}
+                                onPress={() => handlePhaseChange(p.id)}
+                                activeOpacity={0.7}
+                            >
+                                <View
+                                    style={[
+                                        styles.statusIconWrapper,
+                                        item.phase === p.id && { backgroundColor: getPhaseColor(p.id) + '20' }
+                                    ]}
+                                >
+                                    <p.icon
+                                        size={20}
+                                        color={item.phase === p.id ? getPhaseColor(p.id) : colors.textMuted}
+                                    />
+                                </View>
+                            </TouchableOpacity>
+                        ))}
+                    </View>
+                    <View style={[styles.statusLine, { backgroundColor: colors.border }]} />
+                    <View style={[styles.statusBadgeContainer, { backgroundColor: getPhaseColor(item.phase) }]}>
+                        <Trophy size={14} color="#FFF" />
+                    </View>
                 </View>
+
+                {/* Info Bar */}
+                <View style={styles.infoBar}>
+                    <View style={[styles.infoChip, { backgroundColor: colors.surface }]}>
+                        <Calendar size={14} color={colors.textSecondary} />
+                        <Text style={[styles.infoText, { color: colors.textSecondary }]}>
+                            {item.phase === 'done' ? 'Completed: ' : 'Target: '}
+                            {formattedDate || 'Someday'}
+                        </Text>
+                    </View>
+
+                    {/* Location placeholder if we had it */}
+                    {/* <View style={[styles.infoChip, { backgroundColor: colors.surface }]}>
+                        <MapPin size={14} color={colors.textSecondary} />
+                        <Text style={[styles.infoText, { color: colors.textSecondary }]}>Bali, Indonesia</Text>
+                     </View> */}
+                </View>
+
+                {/* Tabs */}
+                <View style={[styles.tabContainer, { backgroundColor: colors.surface }]}>
+                    {TABS.map(tab => (
+                        <TouchableOpacity
+                            key={tab}
+                            style={[styles.tab, activeTab === tab && styles.activeTab]}
+                            onPress={() => setActiveTab(tab)}
+                        >
+                            <Text style={[
+                                styles.tabText,
+                                { color: activeTab === tab ? colors.textPrimary : colors.textMuted },
+                                activeTab === tab && styles.activeTabText
+                            ]}>
+                                {tab}
+                            </Text>
+                        </TouchableOpacity>
+                    ))}
+                </View>
+
+                {/* Tab Content */}
+                <View style={styles.contentContainer}>
+                    {activeTab === 'Story' && (
+                        <>
+                            {/* Description / "Why This Matters" */}
+                            <View style={[styles.sectionCard, { backgroundColor: colors.surface + '80' }]}>
+                                <View style={styles.sectionHeader}>
+                                    <Sparkles size={18} color={colors.primary} />
+                                    <Text style={[styles.sectionTitle, { color: colors.primary }]}>Why This Matters</Text>
+                                    <Edit3 size={14} color={colors.textMuted} style={{ marginLeft: 'auto' }} />
+                                </View>
+                                <Text style={[styles.descriptionText, { color: colors.textSecondary }]}>
+                                    "{item.description || 'No description yet. Why does this dream matter to you?'}"
+                                </Text>
+                            </View>
+
+                            {/* Inspiration Board */}
+                            <InspirationBoard inspirations={item.inspirations} />
+
+                            {/* Memory Capsule */}
+                            <MemoryCapsule memories={item.memories} />
+
+                            {/* Reflections */}
+                            <Reflections reflections={item.reflections} />
+
+                            {/* Add Reflection Button (Placeholder action) */}
+                            <TouchableOpacity style={[styles.addReflectionButton]} onPress={() => { }}>
+                                <Text style={[styles.addReflectionText, { color: colors.textPrimary }]}>Add a Reflection</Text>
+                            </TouchableOpacity>
+
+                            <View style={styles.divider} />
+
+                            <Button
+                                title="Delete Dream"
+                                onPress={handleDelete}
+                                variant="danger"
+                                fullWidth
+                                loading={isDeleting}
+                            />
+                        </>
+                    )}
+
+                    {activeTab !== 'Story' && (
+                        <EmptyState
+                            icon={Moon}
+                            title="Coming Soon"
+                            description={`${activeTab} features are coming in the next update!`}
+                        />
+                    )}
+                </View>
+
             </ScrollView>
-        </SafeAreaView>
+        </View>
     );
 }
 
@@ -272,131 +313,195 @@ const styles = StyleSheet.create({
     container: {
         flex: 1,
     },
-    header: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        paddingHorizontal: 8,
-        paddingVertical: 8,
-    },
-    headerActions: {
-        flexDirection: 'row',
-        gap: 4,
-    },
     scrollView: {
         flex: 1,
     },
     scrollContent: {
         paddingBottom: 40,
     },
-    coverImage: {
-        width: SCREEN_WIDTH,
-        height: SCREEN_WIDTH * 0.6,
+    heroContainer: {
+        height: SCREEN_WIDTH * 0.8, // Taller hero
+        position: 'relative',
     },
-    coverPlaceholder: {
-        width: SCREEN_WIDTH,
-        height: SCREEN_WIDTH * 0.5,
+    heroImage: {
+        width: '100%',
+        height: '100%',
+    },
+    heroPlaceholder: {
+        width: '100%',
+        height: '100%',
         justifyContent: 'center',
         alignItems: 'center',
+    },
+    heroOverlay: {
+        ...StyleSheet.absoluteFillObject,
+        backgroundColor: 'rgba(0,0,0,0.2)', // Slight darken
+    },
+    headerAbsolute: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        paddingHorizontal: 16,
+        paddingTop: 8,
+        zIndex: 10,
+    },
+    blurButton: {
+        backgroundColor: 'rgba(0,0,0,0.3)',
+        borderRadius: 20,
+    },
+    heroContent: {
+        position: 'absolute',
+        bottom: 24,
+        left: 20,
+        right: 20,
+    },
+    categoryPill: {
+        backgroundColor: '#FFF',
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+        borderRadius: 20,
+        alignSelf: 'flex-start',
+        marginBottom: 12,
+    },
+    categoryPillText: {
+        fontSize: 12,
+        fontWeight: '600',
+        color: '#000',
+    },
+    heroTitle: {
+        fontSize: 32,
+        fontWeight: '800',
+        color: '#FFF',
+        textShadowColor: 'rgba(0,0,0,0.3)',
+        textShadowOffset: { width: 0, height: 2 },
+        textShadowRadius: 4,
     },
     placeholderEmoji: {
         fontSize: 64,
     },
-    contentCard: {
-        marginTop: -24,
-        marginHorizontal: 16,
-        borderRadius: 24,
-        padding: 24,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 8 },
-        shadowOpacity: 0.08,
-        shadowRadius: 24,
-        elevation: 8,
-    },
-    metaRow: {
+    // Status Bar
+    statusBar: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: 12,
-        marginBottom: 16,
+        paddingHorizontal: 20,
+        paddingVertical: 16,
     },
-    categoryBadge: {
+    statusIcons: {
+        flexDirection: 'row',
+        gap: 12,
+    },
+    statusIconWrapper: {
+        width: 36,
+        height: 36,
+        borderRadius: 18,
+        justifyContent: 'center',
+        alignItems: 'center',
+        backgroundColor: 'rgba(0,0,0,0.05)',
+    },
+    statusLine: {
+        flex: 1,
+        height: 2,
+        marginHorizontal: 12,
+        borderRadius: 1,
+    },
+    statusBadgeContainer: {
+        width: 32,
+        height: 32,
+        borderRadius: 16,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    // Info Bar
+    infoBar: {
+        paddingHorizontal: 20,
+        paddingBottom: 20,
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        gap: 8,
+    },
+    infoChip: {
         flexDirection: 'row',
         alignItems: 'center',
         paddingHorizontal: 12,
-        paddingVertical: 6,
+        paddingVertical: 8,
         borderRadius: 100,
         gap: 6,
     },
-    categoryEmoji: {
-        fontSize: 14,
-    },
-    categoryLabel: {
-        fontSize: 12,
+    infoText: {
+        fontSize: 13,
         fontWeight: '500',
     },
-    title: {
-        fontSize: 28,
-        fontWeight: '700',
-        lineHeight: 36,
-        marginBottom: 12,
+    // Tabs
+    tabContainer: {
+        flexDirection: 'row',
+        marginHorizontal: 20,
+        borderRadius: 12,
+        padding: 4,
+        marginBottom: 24,
     },
-    description: {
-        fontSize: 16,
-        lineHeight: 24,
-        marginBottom: 16,
+    tab: {
+        flex: 1,
+        alignItems: 'center',
+        paddingVertical: 10,
+        borderRadius: 8,
     },
-    dateRow: {
+    activeTab: {
+        backgroundColor: '#FFF',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.1,
+        shadowRadius: 2,
+        elevation: 2,
+    },
+    tabText: {
+        fontSize: 14,
+        fontWeight: '500',
+    },
+    activeTabText: {
+        fontWeight: '600',
+    },
+    // Content
+    contentContainer: {
+        paddingHorizontal: 20,
+    },
+    sectionCard: {
+        padding: 20,
+        borderRadius: 16,
+        marginBottom: 24,
+    },
+    sectionHeader: {
         flexDirection: 'row',
         alignItems: 'center',
         gap: 8,
-        marginBottom: 24,
-    },
-    dateText: {
-        fontSize: 14,
-    },
-    phaseSection: {
-        marginBottom: 24,
+        marginBottom: 12,
     },
     sectionTitle: {
-        fontSize: 14,
-        fontWeight: '500',
-        marginBottom: 12,
+        fontSize: 16,
+        fontWeight: '600',
     },
-    phaseRow: {
-        flexDirection: 'row',
-        gap: 10,
+    descriptionText: {
+        fontSize: 16,
+        lineHeight: 24,
+        fontStyle: 'italic',
     },
-    phaseChip: {
-        flex: 1,
-        flexDirection: 'row',
+    addReflectionButton: {
+        borderWidth: 1,
+        borderColor: '#E2E8F0',
+        borderRadius: 12,
+        padding: 16,
         alignItems: 'center',
-        justifyContent: 'center',
-        paddingVertical: 14,
-        borderRadius: 14,
-        borderWidth: 1.5,
-        gap: 8,
+        marginTop: 8,
     },
-    phaseLabel: {
+    addReflectionText: {
         fontSize: 14,
         fontWeight: '600',
     },
-    actionsSection: {
-        flexDirection: 'row',
-        justifyContent: 'space-around',
-        paddingTop: 16,
-        borderTopWidth: 1,
-        borderTopColor: 'rgba(0,0,0,0.05)',
-    },
-    actionButton: {
-        alignItems: 'center',
-        gap: 4,
-    },
-    actionLabel: {
-        fontSize: 12,
-        fontWeight: '500',
-    },
-    dangerZone: {
-        marginTop: 24,
-        paddingHorizontal: 16,
+    divider: {
+        height: 1,
+        backgroundColor: '#E2E8F0',
+        marginVertical: 32,
     },
 });

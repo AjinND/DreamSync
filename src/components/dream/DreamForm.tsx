@@ -6,12 +6,14 @@
 import { Button, Input } from '@/src/components/ui';
 import { useTheme } from '@/src/theme';
 import { Category, Phase } from '@/src/types/item';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import * as ImagePicker from 'expo-image-picker';
 import { Calendar, Flame, Image as ImageIcon, Moon, Trophy, X } from 'lucide-react-native';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
     Alert,
     Image,
+    Platform,
     ScrollView,
     StyleSheet,
     Text,
@@ -65,6 +67,19 @@ export function DreamForm({
     const [phase, setPhase] = useState<Phase>(initialValues?.phase || 'dream');
     const [imageUri, setImageUri] = useState<string | null>(initialValues?.imageUri || null);
     const [targetDate, setTargetDate] = useState(initialValues?.targetDate || '');
+    const [showDatePicker, setShowDatePicker] = useState(false);
+
+    // Sync state with initialValues when they load (for edit mode)
+    useEffect(() => {
+        if (initialValues) {
+            setTitle(initialValues.title || '');
+            setDescription(initialValues.description || '');
+            setCategory(initialValues.category || 'personal');
+            setPhase(initialValues.phase || 'dream');
+            setImageUri(initialValues.imageUri || null);
+            setTargetDate(initialValues.targetDate || '');
+        }
+    }, [initialValues]);
     const [errors, setErrors] = useState<{ title?: string }>({});
 
     const getPhaseColor = (phaseId: Phase) => {
@@ -111,11 +126,19 @@ export function DreamForm({
         }
     };
 
+    const handleDateChange = (event: any, selectedDate?: Date) => {
+        setShowDatePicker(false);
+        if (selectedDate) {
+            setTargetDate(selectedDate.toISOString().split('T')[0]);
+        }
+    };
+
     return (
         <ScrollView
             style={styles.container}
             contentContainerStyle={styles.content}
             showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
         >
             {/* Cover Image */}
             <TouchableOpacity onPress={pickImage} activeOpacity={0.8}>
@@ -157,6 +180,7 @@ export function DreamForm({
                 placeholder="Describe your dream in detail..."
                 multiline
                 numberOfLines={4}
+                style={styles.descriptionInput}
             />
 
             {/* Category Selection */}
@@ -228,14 +252,27 @@ export function DreamForm({
             </View>
 
             {/* Target Date */}
-            <Input
-                label="Target Date (Optional)"
-                value={targetDate}
-                onChangeText={setTargetDate}
-                placeholder="YYYY-MM-DD"
-                leftIcon={Calendar}
-                keyboardType="numeric"
-            />
+            <TouchableOpacity onPress={() => setShowDatePicker(true)} activeOpacity={0.8}>
+                <View pointerEvents="none">
+                    <Input
+                        label="Target Date (Optional)"
+                        value={targetDate}
+                        placeholder="YYYY-MM-DD"
+                        leftIcon={Calendar}
+                        editable={false}
+                    />
+                </View>
+            </TouchableOpacity>
+
+            {showDatePicker && (
+                <DateTimePicker
+                    value={targetDate ? new Date(targetDate) : new Date()}
+                    mode="date"
+                    display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                    onChange={handleDateChange}
+                    minimumDate={new Date()}
+                />
+            )}
 
             {/* Submit Button */}
             <View style={styles.submitSection}>
@@ -291,6 +328,10 @@ const styles = StyleSheet.create({
     imagePlaceholderText: {
         fontSize: 14,
         marginTop: 8,
+    },
+    descriptionInput: {
+        height: 100,
+        textAlignVertical: 'top',
     },
     section: {
         marginBottom: 20,

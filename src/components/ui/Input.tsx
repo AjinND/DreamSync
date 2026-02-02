@@ -4,10 +4,10 @@
 
 import { useTheme } from '@/src/theme';
 import { Eye, EyeOff, LucideIcon } from 'lucide-react-native';
-import { useState } from 'react';
+import { forwardRef, useState } from 'react';
 import { StyleSheet, Text, TextInput, TextInputProps, TouchableOpacity, View } from 'react-native';
 
-interface InputProps extends Omit<TextInputProps, 'style'> {
+interface InputProps extends TextInputProps {
     label?: string;
     error?: string;
     leftIcon?: LucideIcon;
@@ -15,22 +15,21 @@ interface InputProps extends Omit<TextInputProps, 'style'> {
     onRightIconPress?: () => void;
 }
 
-export function Input({
+export const Input = forwardRef<TextInput, InputProps>(({
     label,
     error,
     leftIcon: LeftIcon,
     rightIcon: RightIcon,
     onRightIconPress,
     secureTextEntry,
+    style,
     ...props
-}: InputProps) {
-    const { colors, isDark } = useTheme();
-    const [isFocused, setIsFocused] = useState(false);
+}, ref) => {
+    const { colors } = useTheme();
     const [isSecure, setIsSecure] = useState(secureTextEntry);
 
     const getBorderColor = () => {
         if (error) return colors.error;
-        if (isFocused) return colors.primary;
         return colors.border;
     };
 
@@ -51,35 +50,28 @@ export function Input({
                         borderColor: getBorderColor(),
                         backgroundColor: colors.surface,
                     },
-                    isFocused && {
-                        shadowColor: colors.primary,
-                        shadowOffset: { width: 0, height: 0 },
-                        shadowOpacity: 0.2,
-                        shadowRadius: 8,
-                        elevation: 2,
-                    },
                 ]}
             >
                 {LeftIcon && (
                     <LeftIcon
                         size={20}
-                        color={isFocused ? colors.primary : colors.textMuted}
+                        color={colors.textMuted}
                         style={styles.leftIcon}
                     />
                 )}
 
                 <TextInput
+                    {...props}
+                    ref={ref}
                     style={[
                         styles.input,
                         { color: colors.textPrimary },
                         LeftIcon && { paddingLeft: 0 },
                         (RightIcon || secureTextEntry) && { paddingRight: 0 },
+                        style,
                     ]}
                     placeholderTextColor={colors.textMuted}
-                    onFocus={() => setIsFocused(true)}
-                    onBlur={() => setIsFocused(false)}
                     secureTextEntry={isSecure}
-                    {...props}
                 />
 
                 {secureTextEntry && (
@@ -109,7 +101,9 @@ export function Input({
             )}
         </View>
     );
-}
+});
+
+Input.displayName = 'Input';
 
 const styles = StyleSheet.create({
     container: {
@@ -126,7 +120,7 @@ const styles = StyleSheet.create({
         borderWidth: 1,
         borderRadius: 12,
         paddingHorizontal: 16,
-        height: 48,
+        minHeight: 48,
     },
     input: {
         flex: 1,
