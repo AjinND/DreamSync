@@ -7,7 +7,7 @@ import Animated, {
     withSequence,
     withTiming
 } from 'react-native-reanimated';
-import { colors } from '../../theme';
+import { legacyColors as colors } from '../../theme';
 
 interface Props {
     width?: number | string;

@@ -17,6 +17,14 @@ export * from './colors';
 export * from './spacing';
 export * from './typography';
 
+// Re-export legacy theme for backwards compatibility
+// TODO: Remove after migrating all screens
+export {
+    animations as legacyAnimations, colors as legacyColors,
+    gradients as legacyGradients,
+    theme as legacyTheme
+} from './legacy';
+
 // Unified theme object
 export const theme = {
     colors,

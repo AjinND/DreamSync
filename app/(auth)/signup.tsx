@@ -4,7 +4,7 @@ import { createUserWithEmailAndPassword } from 'firebase/auth';
 import { useState } from 'react';
 import { Alert, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { auth } from '../../firebaseConfig';
-import { colors } from '../../src/theme';
+import { legacyColors as colors } from '../../src/theme';
 
 export default function Signup() {
     const [email, setEmail] = useState('');

@@ -16,7 +16,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useBucketStore } from "../../src/store/useBucketStore";
-import { colors, gradients } from "../../src/theme";
+import { legacyColors as colors, legacyGradients as gradients } from "../../src/theme";
 
 export default function HomeScreen() {
   const router = useRouter();

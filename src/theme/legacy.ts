@@ -1,27 +1,40 @@
-import { StyleSheet } from 'react-native';
+/**
+ * DreamSync Theme - Legacy Compatibility Layer
+ * 
+ * This file provides backwards compatibility for v1 screens
+ * Maps old theme API to new design system
+ * 
+ * TODO: Migrate screens to new theme, then delete this file
+ */
 
+import { StyleSheet } from 'react-native';
+import { colors as newColors } from './colors';
+
+// Legacy color structure (maps to new system)
 export const colors = {
+    // Status colors (legacy)
     dream: {
-        light: '#A5B4FC',
-        default: '#6366F1',
+        light: newColors.light.statusDream + '40',
+        default: newColors.light.statusDream,
         dark: '#4338CA',
         cosmic: '#2D1B69',
         glow: '#818CF8',
     },
     doing: {
         light: '#FDBA74',
-        default: '#F97316',
+        default: newColors.light.statusDoing,
         dark: '#EA580C',
         sunrise: '#FF6B35',
         energy: '#FFB347',
     },
     done: {
         light: '#86EFAC',
-        default: '#22C55E',
+        default: newColors.light.statusDone,
         dark: '#15803D',
         celebration: '#10B981',
         gold: '#FBBF24',
     },
+    // Slate scale (legacy)
     slate: {
         50: '#F8FAFC',
         100: '#F1F5F9',
@@ -51,7 +64,7 @@ export const colors = {
     },
 };
 
-// Gradient definitions
+// Legacy gradient definitions
 export const gradients = {
     dream: {
         colors: ['#1E1B4B', '#312E81', '#4338CA'],
@@ -71,6 +84,7 @@ export const gradients = {
     },
 };
 
+// Legacy theme styles
 export const theme = StyleSheet.create({
     container: {
         flex: 1,
@@ -104,7 +118,7 @@ export const theme = StyleSheet.create({
     },
 });
 
-// Animation configurations
+// Legacy animation configurations
 export const animations = {
     spring: {
         damping: 15,

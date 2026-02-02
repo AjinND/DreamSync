@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { ActivityIndicator, View } from "react-native";
 import { auth } from "../firebaseConfig";
 import { OfflineBanner } from "../src/components/ui/OfflineBanner";
-import { colors } from "../src/theme";
+import { legacyColors as colors } from "../src/theme";
 
 export default function RootLayout() {
   const [user, setUser] = useState<User | null>(null);

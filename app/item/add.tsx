@@ -19,7 +19,7 @@ import {
 import { auth } from '../../firebaseConfig';
 import { StorageService } from '../../src/services/storage';
 import { useBucketStore } from '../../src/store/useBucketStore';
-import { colors, gradients } from '../../src/theme';
+import { legacyColors as colors, legacyGradients as gradients } from '../../src/theme';
 import { Category, Phase } from '../../src/types/item';
 
 const CATEGORIES: { id: Category; label: string; icon: string; color: string }[] = [

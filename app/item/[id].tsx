@@ -15,7 +15,7 @@ import {
     View
 } from "react-native";
 import { useBucketStore } from "../../src/store/useBucketStore";
-import { colors, gradients } from "../../src/theme";
+import { legacyColors as colors, legacyGradients as gradients } from "../../src/theme";
 import { Phase } from "../../src/types/item";
 
 const { width } = Dimensions.get("window");

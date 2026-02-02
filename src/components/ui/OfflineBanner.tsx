@@ -3,7 +3,7 @@ import NetInfo from "@react-native-community/netinfo";
 import { useEffect, useState } from "react";
 import { Animated, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { colors } from "../../theme";
+import { legacyColors as colors } from "../../theme";
 
 export function OfflineBanner() {
     const insets = useSafeAreaInsets();
