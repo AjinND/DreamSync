@@ -378,27 +378,26 @@ interface JourneyCardProps {
 | Component | Status | File |
 |-----------|--------|------|
 | **Atoms** | | |
-| Button | 🔴 TODO | - |
-| Input | 🔴 TODO | - |
-| Card | 🔴 TODO | - |
-| Avatar | 🔴 TODO | - |
-| Badge | 🔴 TODO | - |
-| Icon | 🔴 TODO | - |
-| IconButton | 🔴 TODO | - |
+| Button | ✅ Done | `src/components/ui/Button.tsx` |
+| Input | ✅ Done | `src/components/ui/Input.tsx` |
+| Card | ✅ Done | `src/components/ui/Card.tsx` |
+| Avatar | ✅ Done | `src/components/ui/Avatar.tsx` |
+| Badge | ✅ Done | `src/components/ui/Badge.tsx` |
+| IconButton | ✅ Done | `src/components/ui/IconButton.tsx` |
+| Divider | ✅ Done | `src/components/ui/Divider.tsx` |
 | Skeleton | ✅ Done | `src/components/ui/Skeleton.tsx` |
-| Divider | 🔴 TODO | - |
-| **Molecules** | | |
-| Header | 🔴 TODO | - |
-| SearchBar | 🔴 TODO | - |
-| FilterChips | 🔴 TODO | - |
-| StatusBadge | 🔴 TODO | - |
-| UserRow | 🔴 TODO | - |
-| EmptyState | 🔴 TODO | - |
-| LoadingState | 🔴 TODO | - |
-| OfflineBanner | ✅ Done | `src/components/ui/OfflineBanner.tsx` |
 | AnimatedPressable | ✅ Done | `src/components/ui/AnimatedPressable.tsx` |
+| OfflineBanner | ✅ Done | `src/components/ui/OfflineBanner.tsx` |
+| **Molecules** | | |
+| Header | ✅ Done | `src/components/shared/Header.tsx` |
+| SearchBar | ✅ Done | `src/components/shared/SearchBar.tsx` |
+| FilterChips | ✅ Done | `src/components/shared/FilterChips.tsx` |
+| StatusBadge | ✅ Done | `src/components/shared/StatusBadge.tsx` |
+| UserRow | ✅ Done | `src/components/shared/UserRow.tsx` |
+| EmptyState | ✅ Done | `src/components/shared/EmptyState.tsx` |
+| LoadingState | ✅ Done | `src/components/shared/LoadingState.tsx` |
 | **Organisms** | | |
-| DreamCard | 🔴 TODO | - |
+| DreamCard | ✅ Done | `src/components/dream/DreamCard.tsx` |
 | DreamDetail | 🔴 TODO | - |
 | DreamForm | 🔴 TODO | - |
 | CommentItem | 🔴 TODO | - |
