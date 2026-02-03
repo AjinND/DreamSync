@@ -4,10 +4,15 @@
  */
 
 import { auth } from '@/firebaseConfig';
+import { UserAvatar } from '@/src/components/social/UserAvatar';
+import { UsersService } from '@/src/services/users';
+import { useBucketStore } from '@/src/store/useBucketStore';
 import { useTheme } from '@/src/theme';
+import { UserProfile } from '@/src/types/social';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { signOut } from 'firebase/auth';
+import { useCallback, useState } from 'react';
 import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -15,6 +20,21 @@ export default function AccountScreen() {
     const { colors, isDark } = useTheme();
     const router = useRouter();
     const user = auth.currentUser;
+    const { items, fetchItems } = useBucketStore();
+    const [profile, setProfile] = useState<UserProfile | null>(null);
+
+    useFocusEffect(
+        useCallback(() => {
+            fetchItems();
+            if (user?.uid) {
+                UsersService.getUserProfile(user.uid).then(setProfile);
+            }
+        }, [user?.uid])
+    );
+
+    const dreamsCount = items.filter(i => i.phase === 'dream').length;
+    const doingCount = items.filter(i => i.phase === 'doing').length;
+    const doneCount = items.filter(i => i.phase === 'done').length;
 
     const handleSignOut = async () => {
         Alert.alert(
@@ -39,12 +59,12 @@ export default function AccountScreen() {
     };
 
     const menuItems = [
-        { icon: 'person-outline', label: 'Edit Profile', onPress: () => { } },
-        { icon: 'notifications-outline', label: 'Notifications', onPress: () => { } },
-        { icon: 'shield-checkmark-outline', label: 'Privacy', onPress: () => { } },
-        { icon: 'moon-outline', label: 'Appearance', onPress: () => { } },
-        { icon: 'help-circle-outline', label: 'Help & Support', onPress: () => { } },
-        { icon: 'information-circle-outline', label: 'About', onPress: () => { } },
+        { icon: 'person-outline', label: 'Edit Profile', route: '/settings/profile' },
+        { icon: 'notifications-outline', label: 'Notifications', route: '/settings/notifications' },
+        { icon: 'shield-checkmark-outline', label: 'Privacy', route: '/settings/privacy' },
+        { icon: 'moon-outline', label: 'Appearance', route: '/settings/appearance' },
+        { icon: 'help-circle-outline', label: 'Help & Support', route: '/settings/support' },
+        { icon: 'information-circle-outline', label: 'About', route: '/settings/about' },
     ];
 
     return (
@@ -57,38 +77,42 @@ export default function AccountScreen() {
 
                 {/* Profile Card */}
                 <View style={[styles.profileCard, { backgroundColor: colors.surface }]}>
-                    <View style={[styles.avatar, { backgroundColor: colors.primary + '30' }]}>
-                        <Text style={[styles.avatarText, { color: colors.primary }]}>
-                            {user?.email?.charAt(0).toUpperCase() || 'U'}
-                        </Text>
-                    </View>
+                    <UserAvatar
+                        userId={user?.uid || ''}
+                        name={profile?.displayName || user?.displayName || 'Dreamer'}
+                        avatar={profile?.avatar || user?.photoURL || undefined}
+                        size={60}
+                    />
                     <View style={styles.profileInfo}>
                         <Text style={[styles.displayName, { color: colors.textPrimary }]}>
-                            {user?.displayName || 'Dreamer'}
+                            {profile?.displayName || user?.displayName || 'Dreamer'}
                         </Text>
                         <Text style={[styles.email, { color: colors.textSecondary }]}>
-                            {user?.email}
+                            {profile?.bio || user?.email}
                         </Text>
                     </View>
-                    <TouchableOpacity style={styles.editButton}>
-                        <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
+                    <TouchableOpacity
+                        style={styles.editButton}
+                        onPress={() => router.push('/settings/profile' as any)}
+                    >
+                        <Ionicons name="pencil" size={20} color={colors.primary} />
                     </TouchableOpacity>
                 </View>
 
                 {/* Stats */}
                 <View style={[styles.statsContainer, { backgroundColor: colors.surface }]}>
                     <View style={styles.statItem}>
-                        <Text style={[styles.statValue, { color: colors.statusDream }]}>0</Text>
+                        <Text style={[styles.statValue, { color: colors.statusDream }]}>{dreamsCount}</Text>
                         <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Dreams</Text>
                     </View>
                     <View style={[styles.statDivider, { backgroundColor: colors.border }]} />
                     <View style={styles.statItem}>
-                        <Text style={[styles.statValue, { color: colors.statusDoing }]}>0</Text>
+                        <Text style={[styles.statValue, { color: colors.statusDoing }]}>{doingCount}</Text>
                         <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Doing</Text>
                     </View>
                     <View style={[styles.statDivider, { backgroundColor: colors.border }]} />
                     <View style={styles.statItem}>
-                        <Text style={[styles.statValue, { color: colors.statusDone }]}>0</Text>
+                        <Text style={[styles.statValue, { color: colors.statusDone }]}>{doneCount}</Text>
                         <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Done</Text>
                     </View>
                 </View>
@@ -102,7 +126,7 @@ export default function AccountScreen() {
                                 styles.menuItem,
                                 index < menuItems.length - 1 && { borderBottomWidth: 1, borderBottomColor: colors.border },
                             ]}
-                            onPress={item.onPress}
+                            onPress={() => router.push(item.route as any)}
                             activeOpacity={0.7}
                         >
                             <Ionicons name={item.icon as any} size={22} color={colors.textSecondary} />

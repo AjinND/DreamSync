@@ -2,6 +2,20 @@
  * Social Types for DreamSync Community Features
  */
 
+export interface UserSettings {
+    notifications: {
+        comments: boolean;
+        likes: boolean;
+        mentions: boolean;
+        journeyInvites: boolean;
+    };
+    privacy: {
+        isPublicProfile: boolean;
+        showCompletedDreams: boolean;
+    };
+    theme: 'system' | 'light' | 'dark';
+}
+
 export interface UserProfile {
     id: string;
     displayName: string;
@@ -11,6 +25,7 @@ export interface UserProfile {
     publicDreamsCount: number;
     completedDreamsCount: number;
     createdAt: number;
+    settings?: UserSettings;
 }
 
 export interface Comment {

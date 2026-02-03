@@ -16,7 +16,7 @@ interface UserAvatarProps {
     userId?: string;
     name: string;
     avatar?: string;
-    size?: 'small' | 'medium' | 'large';
+    size?: 'small' | 'medium' | 'large' | number;
     onPress?: () => void;
     showBorder?: boolean;
 }
@@ -43,8 +43,9 @@ export function UserAvatar({
 }: UserAvatarProps) {
     const { colors } = useTheme();
     const router = useRouter();
-    const dimension = SIZES[size];
-    const fontSize = FONT_SIZES[size];
+
+    const dimension = typeof size === 'number' ? size : SIZES[size];
+    const fontSize = typeof size === 'number' ? size * 0.4 : FONT_SIZES[size];
 
     const initials = name
         .split(' ')
