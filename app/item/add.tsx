@@ -44,6 +44,8 @@ export default function AddDreamScreen() {
         phase: Phase;
         imageUri: string | null;
         targetDate: string;
+        isPublic: boolean;
+        tags: string[];
     } | undefined>(undefined);
 
     useEffect(() => {
@@ -57,6 +59,8 @@ export default function AddDreamScreen() {
                 targetDate: existingItem.targetDate
                     ? new Date(existingItem.targetDate).toISOString().split('T')[0]
                     : '',
+                isPublic: existingItem.isPublic || false,
+                tags: existingItem.tags || [],
             });
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -69,6 +73,8 @@ export default function AddDreamScreen() {
         phase: Phase;
         imageUri: string | null;
         targetDate: string;
+        isPublic: boolean;
+        tags: string[];
     }) => {
         setLoading(true);
 
@@ -104,6 +110,8 @@ export default function AddDreamScreen() {
                 phase: values.phase,
                 mainImage: uploadedImageUrl || undefined,
                 targetDate: values.targetDate ? new Date(values.targetDate).getTime() : undefined,
+                isPublic: values.isPublic,
+                tags: values.tags,
             };
 
             if (isEditing && typeof id === 'string') {

@@ -1,34 +1,37 @@
 /**
  * DreamSync - Dream Detail Screen
- * Immersive view with phase-aware components and tab navigation
+ * Refactored with extracted components for cleaner architecture
  */
 
+import { auth } from '@/firebaseConfig';
 import {
     AddExpenseModal,
     AddInspirationModal,
     AddMemoryModal,
     AddProgressModal,
     AddReflectionModal,
+    DreamDetailHero,
+    ExpensesTab,
     InspirationBoard,
     MemoryCapsule,
+    ProgressTab,
     Reflections,
 } from '@/src/components/dream';
 import { EmptyState, Header } from '@/src/components/shared';
+import { CommentSection } from '@/src/components/social';
 import { Button, Card, IconButton } from '@/src/components/ui';
+import { CommunityService } from '@/src/services/community';
 import { useBucketStore } from '@/src/store/useBucketStore';
 import { useTheme } from '@/src/theme';
-import { Expense, Phase, ProgressEntry } from '@/src/types/item';
+import { BucketItem, Expense, Phase } from '@/src/types/item';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import {
     Calendar,
     ChevronLeft,
-    DollarSign,
-    Edit3,
     Flame,
     MapPin,
     Moon,
-    Plus,
     Sparkles,
     Trophy,
     Users,
@@ -36,8 +39,6 @@ import {
 import { useEffect, useState } from 'react';
 import {
     Alert,
-    Dimensions,
-    Image,
     ScrollView,
     StyleSheet,
     Text,
@@ -45,18 +46,6 @@ import {
     View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
-
-const CATEGORY_LABELS: Record<string, { emoji: string; label: string }> = {
-    travel: { emoji: '✈️', label: 'Travel' },
-    skill: { emoji: '🎯', label: 'Skill' },
-    adventure: { emoji: '🏔️', label: 'Adventure' },
-    creative: { emoji: '🎨', label: 'Creative' },
-    career: { emoji: '💼', label: 'Career' },
-    health: { emoji: '💪', label: 'Health' },
-    personal: { emoji: '✨', label: 'Personal' },
-};
 
 const PHASES: { id: Phase; label: string; icon: any }[] = [
     { id: 'dream', label: 'Dream', icon: Moon },
@@ -81,9 +70,13 @@ export default function DreamDetailScreen() {
         addExpense,
     } = useBucketStore();
 
-    const [item, setItem] = useState(items.find((i) => i.id === id));
+    const [item, setItem] = useState<BucketItem | undefined>(items.find((i) => i.id === id));
+    const [isLoading, setIsLoading] = useState(false);
     const [activeTab, setActiveTab] = useState('Story');
     const [isDeleting, setIsDeleting] = useState(false);
+
+    // Check ownership
+    const isOwner = item?.userId === auth.currentUser?.uid;
 
     // Modal states
     const [showInspirationModal, setShowInspirationModal] = useState(false);
@@ -93,10 +86,29 @@ export default function DreamDetailScreen() {
     const [showExpenseModal, setShowExpenseModal] = useState(false);
 
     useEffect(() => {
-        const currentItem = items.find((i) => i.id === id);
-        if (currentItem) {
-            setItem(currentItem);
-        }
+        const loadDream = async () => {
+            if (typeof id !== 'string') return;
+
+            const localItem = items.find((i) => i.id === id);
+            if (localItem) {
+                setItem(localItem);
+                return;
+            }
+
+            setIsLoading(true);
+            try {
+                const remoteItem = await CommunityService.getDreamById(id);
+                if (remoteItem) {
+                    setItem(remoteItem);
+                }
+            } catch (error) {
+                console.error('Failed to fetch dream:', error);
+            } finally {
+                setIsLoading(false);
+            }
+        };
+
+        loadDream();
     }, [items, id]);
 
     const getPhaseColor = (phase: Phase) => {
@@ -108,6 +120,7 @@ export default function DreamDetailScreen() {
     };
 
     const handleEdit = () => {
+        if (!isOwner) return;
         router.push(`/item/add?id=${id}`);
     };
 
@@ -131,6 +144,7 @@ export default function DreamDetailScreen() {
     };
 
     const handlePhaseChange = async (newPhase: Phase) => {
+        if (!isOwner) return;
         if (item && newPhase !== item.phase) {
             await updateItem(item.id, { phase: newPhase });
         }
@@ -162,6 +176,7 @@ export default function DreamDetailScreen() {
         await addExpense(item.id, { title, amount, category, date: Date.now() });
     };
 
+    // Not Found State
     if (!item) {
         return (
             <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
@@ -182,16 +197,15 @@ export default function DreamDetailScreen() {
         );
     }
 
-    const categoryInfo = CATEGORY_LABELS[item.category] || { emoji: '✨', label: 'Other' };
     const formattedDate = item.targetDate
         ? new Date(item.targetDate).toLocaleDateString('en-US', {
             year: 'numeric',
-            month: 'long',
+            month: 'short',
             day: 'numeric',
         })
         : null;
 
-    const totalExpenses = item.expenses?.reduce((sum, e) => sum + e.amount, 0) || 0;
+    const visibleTabs = isOwner ? TABS : ['Story'];
 
     return (
         <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -201,268 +215,190 @@ export default function DreamDetailScreen() {
                 style={styles.scrollView}
                 contentContainerStyle={styles.scrollContent}
                 showsVerticalScrollIndicator={false}
-                keyboardShouldPersistTaps="handled"
             >
                 {/* Hero Section */}
-                <View style={styles.heroContainer}>
-                    {item.mainImage ? (
-                        <Image source={{ uri: item.mainImage }} style={styles.heroImage} resizeMode="cover" />
-                    ) : (
-                        <View style={[styles.heroPlaceholder, { backgroundColor: getPhaseColor(item.phase) }]}>
-                            <Text style={styles.placeholderEmoji}>{categoryInfo.emoji}</Text>
+                <DreamDetailHero
+                    item={item}
+                    isOwner={isOwner}
+                    onEdit={handleEdit}
+                />
+
+                {/* Main Content */}
+                <View style={[styles.contentWrapper, { backgroundColor: colors.background }]}>
+                    {/* Phase Selector - Only for owners */}
+                    {isOwner && (
+                        <View style={[styles.phaseSelector, { backgroundColor: colors.surface }]}>
+                            {PHASES.map(p => (
+                                <TouchableOpacity
+                                    key={p.id}
+                                    onPress={() => handlePhaseChange(p.id)}
+                                    style={[
+                                        styles.phaseButton,
+                                        item.phase === p.id && { backgroundColor: getPhaseColor(p.id) + '20' }
+                                    ]}
+                                >
+                                    <p.icon
+                                        size={18}
+                                        color={item.phase === p.id ? getPhaseColor(p.id) : colors.textMuted}
+                                    />
+                                    <Text style={[
+                                        styles.phaseLabel,
+                                        { color: item.phase === p.id ? getPhaseColor(p.id) : colors.textMuted }
+                                    ]}>
+                                        {p.label}
+                                    </Text>
+                                </TouchableOpacity>
+                            ))}
                         </View>
                     )}
 
-                    <View style={styles.heroOverlay} />
-
-                    {/* Header Actions */}
-                    <SafeAreaView style={styles.headerAbsolute} edges={['top']}>
-                        <TouchableOpacity style={styles.headerButton} onPress={() => router.back()}>
-                            <ChevronLeft size={22} color="#FFF" />
-                        </TouchableOpacity>
-                        <TouchableOpacity style={styles.headerButton} onPress={handleEdit}>
-                            <Edit3 size={20} color="#FFF" />
-                        </TouchableOpacity>
-                    </SafeAreaView>
-
-                    {/* Hero Content */}
-                    <View style={styles.heroContent}>
-                        <View style={styles.categoryPill}>
-                            <Text style={styles.categoryPillText}>{categoryInfo.emoji} {categoryInfo.label}</Text>
-                        </View>
-                        <Text style={styles.heroTitle}>{item.title}</Text>
-                    </View>
-                </View>
-
-                {/* Status Bar */}
-                <View style={[styles.statusBar, { backgroundColor: colors.surface }]}>
-                    <View style={styles.statusIcons}>
-                        {PHASES.map(p => (
-                            <TouchableOpacity key={p.id} onPress={() => handlePhaseChange(p.id)} activeOpacity={0.7}>
-                                <View style={[
-                                    styles.statusIconWrapper,
-                                    item.phase === p.id && { backgroundColor: getPhaseColor(p.id) + '20' }
-                                ]}>
-                                    <p.icon size={20} color={item.phase === p.id ? getPhaseColor(p.id) : colors.textMuted} />
-                                </View>
-                            </TouchableOpacity>
-                        ))}
-                    </View>
-                    <View style={[styles.statusLine, { backgroundColor: colors.border }]} />
-                    <View style={[styles.statusBadge, { backgroundColor: getPhaseColor(item.phase) }]}>
-                        <Text style={styles.statusBadgeText}>{item.phase === 'done' ? '✓' : item.phase === 'doing' ? '→' : '○'}</Text>
-                    </View>
-                </View>
-
-                {/* Info Bar */}
-                <View style={styles.infoBar}>
-                    <View style={[styles.infoChip, { backgroundColor: colors.surface }]}>
-                        <Calendar size={14} color={colors.textSecondary} />
-                        <Text style={[styles.infoText, { color: colors.textSecondary }]} numberOfLines={1}>
-                            {item.phase === 'done' ? 'Completed' : 'Target'}: {formattedDate || 'Someday'}
-                        </Text>
-                    </View>
-                    <View style={[styles.infoChip, { backgroundColor: colors.surface }]}>
-                        <MapPin size={14} color={colors.textSecondary} />
-                        <Text style={[styles.infoText, { color: colors.textSecondary }]} numberOfLines={1}>
-                            {item.location || 'Somewhere in the universe'}
-                        </Text>
-                    </View>
-                    {item.with && item.with.length > 0 && (
+                    {/* Info Chips */}
+                    <View style={styles.infoRow}>
                         <View style={[styles.infoChip, { backgroundColor: colors.surface }]}>
-                            <Users size={14} color={colors.textSecondary} />
-                            <Text style={[styles.infoText, { color: colors.textSecondary }]}>
-                                With {item.with.join(', ')}
+                            <Calendar size={14} color={colors.textSecondary} />
+                            <Text style={[styles.infoText, { color: colors.textSecondary }]} numberOfLines={1}>
+                                {formattedDate || 'Someday'}
                             </Text>
                         </View>
-                    )}
-                    {item.inspiredCount && item.inspiredCount > 0 && (
-                        <View style={[styles.infoChip, { backgroundColor: colors.accent + '20' }]}>
-                            <Sparkles size={14} color={colors.accent} />
-                            <Text style={[styles.infoText, { color: colors.accent }]}>
-                                {item.inspiredCount} inspired
-                            </Text>
-                        </View>
-                    )}
-                </View>
-
-                {/* Tabs */}
-                <View style={[styles.tabContainer, { backgroundColor: colors.surface }]}>
-                    {TABS.map(tab => (
-                        <TouchableOpacity
-                            key={tab}
-                            style={[styles.tab, activeTab === tab && [styles.activeTab, { backgroundColor: colors.background }]]}
-                            onPress={() => setActiveTab(tab)}
-                        >
-                            <Text style={[
-                                styles.tabText,
-                                { color: activeTab === tab ? colors.textPrimary : colors.textMuted }
-                            ]}>
-                                {tab}
-                            </Text>
-                        </TouchableOpacity>
-                    ))}
-                </View>
-
-                {/* Tab Content */}
-                <View style={styles.contentContainer}>
-                    {activeTab === 'Story' && (
-                        <>
-                            {/* Why This Matters */}
-                            <Card style={[styles.sectionCard, { backgroundColor: colors.surface }]}>
-                                <View style={styles.sectionHeader}>
-                                    <Sparkles size={18} color={colors.primary} />
-                                    <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>Why This Matters</Text>
-                                </View>
-                                <Text style={[styles.descriptionText, { color: colors.textSecondary }]}>
-                                    {item.description || 'Add a description to explain what this dream means to you...'}
+                        {item.location && (
+                            <View style={[styles.infoChip, { backgroundColor: colors.surface }]}>
+                                <MapPin size={14} color={colors.textSecondary} />
+                                <Text style={[styles.infoText, { color: colors.textSecondary }]} numberOfLines={1}>
+                                    {item.location}
                                 </Text>
-                            </Card>
+                            </View>
+                        )}
+                        {item.with && item.with.length > 0 && (
+                            <View style={[styles.infoChip, { backgroundColor: colors.surface }]}>
+                                <Users size={14} color={colors.textSecondary} />
+                                <Text style={[styles.infoText, { color: colors.textSecondary }]}>
+                                    {item.with.length} people
+                                </Text>
+                            </View>
+                        )}
+                        {item.inspiredCount && item.inspiredCount > 0 && (
+                            <View style={[styles.infoChip, { backgroundColor: colors.accent + '15' }]}>
+                                <Sparkles size={14} color={colors.accent} />
+                                <Text style={[styles.infoText, { color: colors.accent }]}>
+                                    {item.inspiredCount} inspired
+                                </Text>
+                            </View>
+                        )}
+                    </View>
 
-                            {/* Inspiration Board - Always visible */}
-                            <InspirationBoard
-                                inspirations={item.inspirations}
-                                onAdd={() => setShowInspirationModal(true)}
-                            />
-
-                            {/* Memory Capsule - Only for doing/done */}
-                            {(item.phase === 'doing' || item.phase === 'done') && (
-                                <MemoryCapsule
-                                    memories={item.memories}
-                                    onAdd={() => setShowMemoryModal(true)}
-                                />
-                            )}
-
-                            {/* Reflections - Only for done */}
-                            {item.phase === 'done' && (
-                                <Reflections
-                                    reflections={item.reflections}
-                                    onAdd={() => setShowReflectionModal(true)}
-                                />
-                            )}
-
-                            <View style={styles.divider} />
-                            <Button
-                                title="Delete Dream"
-                                onPress={handleDelete}
-                                variant="danger"
-                                fullWidth
-                                loading={isDeleting}
-                            />
-                        </>
+                    {/* Tabs */}
+                    {visibleTabs.length > 1 && (
+                        <View style={[styles.tabBar, { backgroundColor: colors.surface }]}>
+                            {visibleTabs.map(tab => (
+                                <TouchableOpacity
+                                    key={tab}
+                                    style={[
+                                        styles.tabButton,
+                                        activeTab === tab && [styles.activeTab, { backgroundColor: colors.background }]
+                                    ]}
+                                    onPress={() => setActiveTab(tab)}
+                                >
+                                    <Text style={[
+                                        styles.tabText,
+                                        { color: activeTab === tab ? colors.textPrimary : colors.textMuted }
+                                    ]}>
+                                        {tab}
+                                    </Text>
+                                </TouchableOpacity>
+                            ))}
+                        </View>
                     )}
 
-                    {activeTab === 'Progress' && (
-                        <>
-                            {item.phase === 'dream' ? (
-                                <EmptyState
-                                    icon={Flame}
-                                    title="Start your journey first"
-                                    description="Move this dream to 'Doing' to start tracking progress"
-                                />
-                            ) : (
-                                <>
-                                    <TouchableOpacity
-                                        style={[styles.addEntryButton, { borderColor: colors.primary }]}
-                                        onPress={() => setShowProgressModal(true)}
-                                    >
-                                        <Plus size={20} color={colors.primary} />
-                                        <Text style={[styles.addEntryText, { color: colors.primary }]}>Add Progress Update</Text>
-                                    </TouchableOpacity>
+                    {/* Tab Content */}
+                    <View style={styles.tabContent}>
+                        {activeTab === 'Story' && (
+                            <>
+                                {/* Description */}
+                                {item.description && (
+                                    <Card style={[styles.descriptionCard, { backgroundColor: colors.surface }]}>
+                                        <Text style={[styles.descriptionText, { color: colors.textPrimary }]}>
+                                            {item.description}
+                                        </Text>
+                                    </Card>
+                                )}
 
-                                    {item.progress && item.progress.length > 0 ? (
-                                        item.progress.map((entry: ProgressEntry) => (
-                                            <Card key={entry.id} style={[styles.progressCard, { backgroundColor: colors.surface }]}>
-                                                {entry.imageUrl && (
-                                                    <Image source={{ uri: entry.imageUrl }} style={styles.progressImage} />
-                                                )}
-                                                <View style={styles.progressContent}>
-                                                    <Text style={[styles.progressTitle, { color: colors.textPrimary }]}>{entry.title}</Text>
-                                                    {entry.description && (
-                                                        <Text style={[styles.progressDesc, { color: colors.textSecondary }]}>{entry.description}</Text>
-                                                    )}
-                                                    <Text style={[styles.progressDate, { color: colors.textMuted }]}>
-                                                        {new Date(entry.date).toLocaleDateString()}
-                                                    </Text>
-                                                </View>
-                                            </Card>
-                                        ))
-                                    ) : (
-                                        <EmptyState
-                                            icon={Flame}
-                                            title="No progress yet"
-                                            description="Document your journey by adding progress updates"
-                                        />
-                                    )}
-                                </>
-                            )}
-                        </>
-                    )}
-
-                    {activeTab === 'Expenses' && (
-                        <>
-                            {item.phase === 'dream' ? (
-                                <EmptyState
-                                    icon={DollarSign}
-                                    title="Start your journey first"
-                                    description="Move this dream to 'Doing' to track expenses"
+                                {/* Inspiration Board */}
+                                <InspirationBoard
+                                    inspirations={item.inspirations}
+                                    onAdd={isOwner ? () => setShowInspirationModal(true) : undefined}
                                 />
-                            ) : (
-                                <>
-                                    {/* Budget Summary */}
-                                    <Card style={[styles.budgetCard, { backgroundColor: colors.surface }]}>
-                                        <View style={styles.budgetRow}>
-                                            <Text style={[styles.budgetLabel, { color: colors.textSecondary }]}>Total Spent</Text>
-                                            <Text style={[styles.budgetAmount, { color: colors.textPrimary }]}>
-                                                ${totalExpenses.toFixed(2)}
+
+                                {/* Memory Capsule */}
+                                {(item.phase === 'doing' || item.phase === 'done') && (
+                                    <MemoryCapsule
+                                        memories={item.memories}
+                                        onAdd={isOwner ? () => setShowMemoryModal(true) : undefined}
+                                    />
+                                )}
+
+                                {/* Reflections */}
+                                {item.phase === 'done' && (
+                                    <Reflections
+                                        reflections={item.reflections}
+                                        onAdd={isOwner ? () => setShowReflectionModal(true) : undefined}
+                                    />
+                                )}
+
+                                {/* Comments Section - Only for public dreams */}
+                                {item.isPublic && (
+                                    <>
+                                        <View style={styles.divider} />
+                                        <View style={[styles.sectionHeader, { marginBottom: 12 }]}>
+                                            <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>
+                                                Comments {item.commentsCount ? `(${item.commentsCount})` : ''}
                                             </Text>
                                         </View>
-                                        {item.budget && (
-                                            <View style={styles.budgetRow}>
-                                                <Text style={[styles.budgetLabel, { color: colors.textSecondary }]}>Budget</Text>
-                                                <Text style={[styles.budgetAmount, { color: colors.primary }]}>
-                                                    ${item.budget.toFixed(2)}
-                                                </Text>
-                                            </View>
-                                        )}
-                                    </Card>
-
-                                    <TouchableOpacity
-                                        style={[styles.addEntryButton, { borderColor: colors.primary }]}
-                                        onPress={() => setShowExpenseModal(true)}
-                                    >
-                                        <Plus size={20} color={colors.primary} />
-                                        <Text style={[styles.addEntryText, { color: colors.primary }]}>Add Expense</Text>
-                                    </TouchableOpacity>
-
-                                    {item.expenses && item.expenses.length > 0 ? (
-                                        item.expenses.map((expense: Expense) => (
-                                            <Card key={expense.id} style={[styles.expenseCard, { backgroundColor: colors.surface }]}>
-                                                <View style={styles.expenseLeft}>
-                                                    <DollarSign size={20} color={colors.textMuted} />
-                                                    <View>
-                                                        <Text style={[styles.expenseTitle, { color: colors.textPrimary }]}>{expense.title}</Text>
-                                                        <Text style={[styles.expenseCategory, { color: colors.textMuted }]}>{expense.category}</Text>
-                                                    </View>
-                                                </View>
-                                                <Text style={[styles.expenseAmount, { color: colors.textPrimary }]}>
-                                                    ${expense.amount.toFixed(2)}
-                                                </Text>
-                                            </Card>
-                                        ))
-                                    ) : (
-                                        <EmptyState
-                                            icon={DollarSign}
-                                            title="No expenses tracked"
-                                            description="Keep track of what you spend on this dream"
+                                        <CommentSection
+                                            dreamId={item.id}
+                                            commentsCount={item.commentsCount}
+                                            onCountChange={(count) => {
+                                                if (item.commentsCount !== count) {
+                                                    setItem(prev => prev ? { ...prev, commentsCount: count } : undefined);
+                                                }
+                                            }}
                                         />
-                                    )}
-                                </>
-                            )}
-                        </>
-                    )}
+                                    </>
+                                )}
+
+                                {/* Delete Button - Owner only */}
+                                {isOwner && (
+                                    <>
+                                        <View style={styles.divider} />
+                                        <Button
+                                            title="Delete Dream"
+                                            onPress={handleDelete}
+                                            variant="danger"
+                                            fullWidth
+                                            loading={isDeleting}
+                                        />
+                                    </>
+                                )}
+                            </>
+                        )}
+
+                        {activeTab === 'Progress' && (
+                            <ProgressTab
+                                item={item}
+                                isOwner={isOwner}
+                                onAddProgress={() => setShowProgressModal(true)}
+                            />
+                        )}
+
+                        {activeTab === 'Expenses' && (
+                            <ExpensesTab
+                                item={item}
+                                isOwner={isOwner}
+                                onAddExpense={() => setShowExpenseModal(true)}
+                            />
+                        )}
+                    </View>
                 </View>
-            </ScrollView >
+            </ScrollView>
 
             {/* Modals */}
             <AddInspirationModal
@@ -490,7 +426,7 @@ export default function DreamDetailScreen() {
                 onClose={() => setShowExpenseModal(false)}
                 onSave={handleAddExpense}
             />
-        </View >
+        </View>
     );
 }
 
@@ -502,265 +438,99 @@ const styles = StyleSheet.create({
         flex: 1,
     },
     scrollContent: {
-        paddingBottom: 100,
+        paddingBottom: 60,
     },
-    heroContainer: {
-        height: SCREEN_WIDTH * 0.75,
-        position: 'relative',
-    },
-    heroImage: {
-        width: '100%',
-        height: '100%',
-    },
-    heroPlaceholder: {
-        width: '100%',
-        height: '100%',
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
-    heroOverlay: {
-        ...StyleSheet.absoluteFillObject,
-        backgroundColor: 'rgba(0,0,0,0.25)',
-    },
-    headerAbsolute: {
-        position: 'absolute',
-        top: 0,
-        left: 0,
-        right: 0,
-        flexDirection: 'row',
-        justifyContent: 'space-between',
+    contentWrapper: {
+        marginTop: -20,
+        borderTopLeftRadius: 24,
+        borderTopRightRadius: 24,
         paddingHorizontal: 16,
-        paddingTop: 8,
-        zIndex: 10,
+        paddingTop: 20,
+        minHeight: 400,
     },
-    blurButton: {
-        backgroundColor: 'rgba(0,0,0,0.3)',
-        borderRadius: 20,
-    },
-    headerButton: {
-        width: 40,
-        height: 40,
-        borderRadius: 20,
-        backgroundColor: 'rgba(0,0,0,0.3)',
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
-    heroContent: {
-        position: 'absolute',
-        bottom: 24,
-        left: 20,
-        right: 20,
-    },
-    categoryPill: {
-        backgroundColor: '#FFF',
-        paddingHorizontal: 12,
-        paddingVertical: 6,
-        borderRadius: 20,
-        alignSelf: 'flex-start',
-        marginBottom: 12,
-    },
-    categoryPillText: {
-        fontSize: 12,
-        fontWeight: '600',
-        color: '#000',
-    },
-    heroTitle: {
-        fontSize: 28,
-        fontWeight: '800',
-        color: '#FFF',
-        textShadowColor: 'rgba(0,0,0,0.3)',
-        textShadowOffset: { width: 0, height: 2 },
-        textShadowRadius: 4,
-    },
-    placeholderEmoji: {
-        fontSize: 64,
-    },
-    statusBar: {
+    phaseSelector: {
         flexDirection: 'row',
-        alignItems: 'center',
-        paddingHorizontal: 20,
-        paddingVertical: 16,
-    },
-    statusIcons: {
-        flexDirection: 'row',
-        gap: 12,
-    },
-    statusIconWrapper: {
-        width: 36,
-        height: 36,
-        borderRadius: 18,
-        justifyContent: 'center',
-        alignItems: 'center',
-        backgroundColor: 'rgba(0,0,0,0.05)',
-    },
-    statusLine: {
-        flex: 1,
-        height: 2,
-        marginHorizontal: 12,
-        borderRadius: 1,
-    },
-    statusBadge: {
-        width: 28,
-        height: 28,
         borderRadius: 14,
-        justifyContent: 'center',
+        padding: 4,
+        marginBottom: 16,
+    },
+    phaseButton: {
+        flex: 1,
+        flexDirection: 'row',
         alignItems: 'center',
+        justifyContent: 'center',
+        paddingVertical: 10,
+        borderRadius: 10,
+        gap: 6,
     },
-    statusBadgeText: {
-        color: '#FFF',
-        fontSize: 14,
-        fontWeight: '700',
+    phaseLabel: {
+        fontSize: 13,
+        fontWeight: '600',
     },
-    infoBar: {
-        paddingHorizontal: 20,
-        paddingBottom: 16,
+    infoRow: {
         flexDirection: 'row',
         flexWrap: 'wrap',
         gap: 8,
+        marginBottom: 16,
     },
     infoChip: {
         flexDirection: 'row',
         alignItems: 'center',
-        paddingHorizontal: 12,
-        paddingVertical: 8,
-        borderRadius: 100,
-        gap: 6,
+        paddingHorizontal: 10,
+        paddingVertical: 6,
+        borderRadius: 10,
+        gap: 5,
     },
     infoText: {
-        fontSize: 12,
+        fontSize: 13,
         fontWeight: '500',
     },
-    tabContainer: {
+    tabBar: {
         flexDirection: 'row',
-        marginHorizontal: 20,
-        borderRadius: 12,
+        borderRadius: 14,
         padding: 4,
-        marginBottom: 20,
+        marginBottom: 16,
     },
-    tab: {
+    tabButton: {
         flex: 1,
-        alignItems: 'center',
         paddingVertical: 10,
-        borderRadius: 8,
+        alignItems: 'center',
+        borderRadius: 10,
     },
     activeTab: {
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.1,
-        shadowRadius: 2,
+        shadowOpacity: 0.08,
+        shadowRadius: 3,
         elevation: 2,
     },
     tabText: {
         fontSize: 14,
         fontWeight: '600',
     },
-    contentContainer: {
-        paddingHorizontal: 20,
+    tabContent: {
+        gap: 16,
     },
-    sectionCard: {
-        padding: 20,
+    descriptionCard: {
+        padding: 16,
         borderRadius: 16,
-        marginBottom: 24,
+    },
+    descriptionText: {
+        fontSize: 15,
+        lineHeight: 22,
+    },
+    divider: {
+        height: 1,
+        backgroundColor: 'rgba(0,0,0,0.05)',
+        marginVertical: 16,
     },
     sectionHeader: {
         flexDirection: 'row',
         alignItems: 'center',
         gap: 8,
-        marginBottom: 12,
     },
     sectionTitle: {
-        fontSize: 16,
-        fontWeight: '600',
-    },
-    descriptionText: {
-        fontSize: 15,
-        lineHeight: 24,
-    },
-    divider: {
-        height: 1,
-        backgroundColor: '#E2E8F0',
-        marginVertical: 32,
-    },
-    addEntryButton: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'center',
-        gap: 8,
-        paddingVertical: 14,
-        borderRadius: 12,
-        borderWidth: 2,
-        borderStyle: 'dashed',
-        marginBottom: 20,
-    },
-    addEntryText: {
-        fontSize: 15,
-        fontWeight: '600',
-    },
-    progressCard: {
-        marginBottom: 12,
-        borderRadius: 12,
-        overflow: 'hidden',
-    },
-    progressImage: {
-        width: '100%',
-        height: 150,
-    },
-    progressContent: {
-        padding: 16,
-    },
-    progressTitle: {
-        fontSize: 16,
-        fontWeight: '600',
-        marginBottom: 4,
-    },
-    progressDesc: {
-        fontSize: 14,
-        lineHeight: 20,
-        marginBottom: 8,
-    },
-    progressDate: {
-        fontSize: 12,
-    },
-    budgetCard: {
-        padding: 16,
-        borderRadius: 12,
-        marginBottom: 16,
-    },
-    budgetRow: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        paddingVertical: 8,
-    },
-    budgetLabel: {
-        fontSize: 14,
-    },
-    budgetAmount: {
-        fontSize: 20,
+        fontSize: 18,
         fontWeight: '700',
-    },
-    expenseCard: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        padding: 16,
-        borderRadius: 12,
-        marginBottom: 8,
-    },
-    expenseLeft: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 12,
-    },
-    expenseTitle: {
-        fontSize: 14,
-        fontWeight: '500',
-    },
-    expenseCategory: {
-        fontSize: 12,
-    },
-    expenseAmount: {
-        fontSize: 16,
-        fontWeight: '600',
     },
 });

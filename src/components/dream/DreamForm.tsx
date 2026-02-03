@@ -8,7 +8,7 @@ import { useTheme } from '@/src/theme';
 import { Category, Phase } from '@/src/types/item';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import * as ImagePicker from 'expo-image-picker';
-import { Calendar, Flame, Image as ImageIcon, Moon, Trophy, X } from 'lucide-react-native';
+import { Calendar, Flame, Globe, Image as ImageIcon, Moon, Trophy, X } from 'lucide-react-native';
 import { useEffect, useState } from 'react';
 import {
     Alert,
@@ -28,6 +28,8 @@ interface DreamFormValues {
     phase: Phase;
     imageUri: string | null;
     targetDate: string;
+    isPublic: boolean;
+    tags: string[];
 }
 
 interface DreamFormProps {
@@ -67,6 +69,8 @@ export function DreamForm({
     const [phase, setPhase] = useState<Phase>(initialValues?.phase || 'dream');
     const [imageUri, setImageUri] = useState<string | null>(initialValues?.imageUri || null);
     const [targetDate, setTargetDate] = useState(initialValues?.targetDate || '');
+    const [isPublic, setIsPublic] = useState(initialValues?.isPublic || false);
+    const [tags, setTags] = useState<string[]>(initialValues?.tags || []);
     const [showDatePicker, setShowDatePicker] = useState(false);
 
     // Sync state with initialValues when they load (for edit mode)
@@ -78,6 +82,8 @@ export function DreamForm({
             setPhase(initialValues.phase || 'dream');
             setImageUri(initialValues.imageUri || null);
             setTargetDate(initialValues.targetDate || '');
+            setIsPublic(initialValues.isPublic || false);
+            setTags(initialValues.tags || []);
         }
     }, [initialValues]);
     const [errors, setErrors] = useState<{ title?: string }>({});
@@ -120,6 +126,8 @@ export function DreamForm({
                 phase,
                 imageUri,
                 targetDate,
+                isPublic,
+                tags,
             });
         } catch (error) {
             Alert.alert('Error', 'Failed to save dream. Please try again.');
@@ -274,6 +282,46 @@ export function DreamForm({
                 />
             )}
 
+            {/* Share with Community */}
+            <View style={styles.section}>
+                <TouchableOpacity
+                    style={[
+                        styles.communityToggle,
+                        {
+                            backgroundColor: isPublic ? colors.primary + '15' : colors.surface,
+                            borderColor: isPublic ? colors.primary : colors.border,
+                        },
+                    ]}
+                    onPress={() => setIsPublic(!isPublic)}
+                    activeOpacity={0.8}
+                >
+                    <View style={styles.communityToggleLeft}>
+                        <Globe size={22} color={isPublic ? colors.primary : colors.textMuted} />
+                        <View>
+                            <Text style={[styles.communityToggleTitle, { color: colors.textPrimary }]}>
+                                Share with Community
+                            </Text>
+                            <Text style={[styles.communityToggleDesc, { color: colors.textSecondary }]}>
+                                Let others discover and like your dream
+                            </Text>
+                        </View>
+                    </View>
+                    <View
+                        style={[
+                            styles.toggleSwitch,
+                            { backgroundColor: isPublic ? colors.primary : colors.border },
+                        ]}
+                    >
+                        <View
+                            style={[
+                                styles.toggleKnob,
+                                { transform: [{ translateX: isPublic ? 18 : 2 }] },
+                            ]}
+                        />
+                    </View>
+                </TouchableOpacity>
+            </View>
+
             {/* Submit Button */}
             <View style={styles.submitSection}>
                 <Button
@@ -382,5 +430,39 @@ const styles = StyleSheet.create({
     },
     submitSection: {
         marginTop: 16,
+    },
+    communityToggle: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        padding: 16,
+        borderRadius: 12,
+        borderWidth: 1.5,
+    },
+    communityToggleLeft: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 12,
+        flex: 1,
+    },
+    communityToggleTitle: {
+        fontSize: 15,
+        fontWeight: '600',
+    },
+    communityToggleDesc: {
+        fontSize: 12,
+        marginTop: 2,
+    },
+    toggleSwitch: {
+        width: 44,
+        height: 24,
+        borderRadius: 12,
+        justifyContent: 'center',
+    },
+    toggleKnob: {
+        width: 20,
+        height: 20,
+        borderRadius: 10,
+        backgroundColor: '#FFFFFF',
     },
 });
