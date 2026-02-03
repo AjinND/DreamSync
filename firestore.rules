@@ -1,0 +1,82 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Items (Dreams) Collection
+    match /items/{itemId} {
+      // 1. READ: Allow reading Public items OR Own items
+      allow read: if request.auth != null && (
+        resource.data.isPublic == true || 
+        resource.data.userId == request.auth.uid
+      );
+      
+      // 2. CREATE: Only allow creating own items
+      allow create: if request.auth != null && 
+                    request.resource.data.userId == request.auth.uid;
+      
+      // 3. DELETE: Only owner can delete
+      allow delete: if request.auth != null && 
+                    resource.data.userId == request.auth.uid;
+      
+      // 4. UPDATE: 
+      // - Owner can update everything
+      // - Others can ONLY update likes/comments counts on PUBLIC dreams
+      allow update: if request.auth != null && (
+        resource.data.userId == request.auth.uid ||
+        (resource.data.isPublic == true &&
+         request.resource.data.diff(resource.data).affectedKeys()
+           .hasAny(['likes', 'likesCount', 'commentsCount']))
+      );
+    }
+    
+    // Users Collection
+    match /users/{userId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && request.auth.uid == userId;
+    }
+    
+    // Comments Subcollection
+    match /items/{itemId}/comments/{commentId} {
+      allow read: if true;
+      allow create: if request.auth != null;
+      allow delete: if request.auth != null && 
+                    resource.data.userId == request.auth.uid;
+    }
+
+    // Journeys Collection (New)
+    match /journeys/{journeyId} {
+      // Allow any authenticated user to read journeys (needed for "Get Inspired" checks and Invitation discovery)
+      allow read: if request.auth != null;
+      
+      // Allow authenticated users to create journeys
+      allow create: if request.auth != null;
+      
+      // Allow participants to update (e.g. joining, chat, status)
+      allow update: if request.auth != null && (
+        request.auth.uid in resource.data.participants ||
+        // Allow joining (adding self to participants) - simplified for now, typically needs more strict validation
+        request.resource.data.participants.hasAll(resource.data.participants) 
+      );
+      
+      // Only owner can delete
+      allow delete: if request.auth != null && resource.data.ownerId == request.auth.uid;
+    }
+
+    // Chats Collection (New)
+    match /chats/{chatId} {
+      // Allow creating new chats
+      allow create: if request.auth != null;
+      
+      // Allow reading if:
+      // 1. Valid participant
+      // 2. Document doesn't exist (so clients can check existence before creating)
+      allow read: if request.auth != null && (
+        resource == null || 
+        request.auth.uid in resource.data.participants
+      );
+
+      // Allow updates only by participants
+      allow update: if request.auth != null && request.auth.uid in resource.data.participants;
+    }
+  }
+}

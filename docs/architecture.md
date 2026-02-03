@@ -194,19 +194,25 @@ interface Chat {
 }
 ```
 
-#### `messages` (Subcollection under chats)
-```typescript
-interface Message {
-  id: string;
-  senderId: string;
-  text: string;
-  media?: {
-    type: 'image' | 'video';
-    url: string;
-  };
-  reactions: { [emoji: string]: string[] };
-  readBy: string[];
-  createdAt: number;
+#### `messages` (Realtime Database Node)
+```json
+// Path: /messages/{chatId}/{messageId}
+{
+  "senderId": "string",
+  "text": "string",
+  "media": {
+    "type": "image | video",
+    "url": "string"
+  },
+  "reactions": {
+    "emoji_code": ["userId1", "userId2"]
+  },
+  "readBy": {
+    "userId": {
+      "timestamp": 1234567890
+    }
+  },
+  "createdAt": 1234567890
 }
 ```
 
@@ -267,13 +273,29 @@ service cloud.firestore {
     match /chats/{chatId} {
       allow read, write: if request.auth.uid in resource.data.participants;
       
-      match /messages/{messageId} {
         allow read: if request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.participants;
-        allow create: if request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.participants;
+        allow write: if false; // Messages are in Realtime DB
       }
     }
   }
 }
+
+// Realtime Database Rules
+/*
+{
+  "rules": {
+    "messages": {
+      "$chatId": {
+        ".read": "root.child('firestore/chats/' + $chatId).val().participants[auth.uid] == true", // Simplified logic
+        ".write": "root.child('firestore/chats/' + $chatId).val().participants[auth.uid] == true"
+      }
+    },
+    "presence": {
+       // ...
+    }
+  }
+}
+*/
 ```
 
 ---

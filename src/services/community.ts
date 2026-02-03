@@ -35,13 +35,16 @@ export const CommunityService = {
             const q = query(
                 collection(db, COLLECTION_NAME),
                 where('isPublic', '==', true),
-                limit(maxItems)
+                limit(maxItems + 10) // Fetch extra to account for client-side filtering
             );
 
             const snapshot = await getDocs(q);
             console.log(`[CommunityService] Found ${snapshot.size} public dreams`);
 
-            const dreams = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as BucketItem));
+            let dreams = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as BucketItem));
+
+            // Client-side filter: Exclude Journeys (group/open) to separate them from Community Feed
+            dreams = dreams.filter(d => d.collaborationType === 'solo' || !d.collaborationType);
 
             // Sort client-side by createdAt (descending) since we removed orderBy
             dreams.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));

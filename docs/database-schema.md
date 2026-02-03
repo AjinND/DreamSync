@@ -16,8 +16,8 @@ Firestore Collections
 │   └── comments/            # Subcollection: comments
 ├── journeys/                # Shared dreams (collaboration)
 ├── joinRequests/            # Pending join requests
-├── chats/                   # Chat rooms
-│   └── messages/            # Subcollection: messages
+├── chats/                   # Chat rooms (Metadata only)
+│   └── (No subcollection - messages in RTDB)
 ├── notifications/           # In-app notifications
 └── reports/                 # Content moderation
 ```
@@ -188,18 +188,18 @@ memberDetails: {
 
 ---
 
-## Subcollection: `chats/{chatId}/messages`
+## Realtime Database: `/messages/{chatId}/{messageId}`
+> **Note:** Messages are stored in Realtime DB for low latency and cost.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `id` | string | ✅ | Auto-generated |
 | `senderId` | string | ✅ | Who sent |
 | `text` | string | ✅ | Message content |
 | `mediaUrl` | string | ❌ | Image/video URL |
 | `mediaType` | string | ❌ | `image` / `video` |
-| `reactions` | map | ❌ | `{ emoji: [userIds] }` |
-| `readBy` | array | ✅ | User IDs who read |
-| `createdAt` | timestamp | ✅ | Send time |
+| `reactions` | object | ❌ | `{ emoji: { userId: true } }` |
+| `readBy` | object | ✅ | `{ userId: timestamp }` |
+| `createdAt` | number | ✅ | Timestamp (ms) |
 
 ---
 

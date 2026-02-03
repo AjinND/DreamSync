@@ -6,7 +6,7 @@
 import { useTheme } from '@/src/theme';
 import { BucketItem, Phase } from '@/src/types/item';
 import { useRouter } from 'expo-router';
-import { ChevronLeft, Edit3 } from 'lucide-react-native';
+import { ChevronLeft, Edit3, Sparkles } from 'lucide-react-native';
 import {
     Dimensions,
     Image,
@@ -33,9 +33,10 @@ interface DreamDetailHeroProps {
     item: BucketItem;
     isOwner: boolean;
     onEdit: () => void;
+    onGetInspired?: () => void;
 }
 
-export function DreamDetailHero({ item, isOwner, onEdit }: DreamDetailHeroProps) {
+export function DreamDetailHero({ item, isOwner, onEdit, onGetInspired }: DreamDetailHeroProps) {
     const { colors } = useTheme();
     const router = useRouter();
     const categoryInfo = CATEGORY_LABELS[item.category] || { emoji: '✨', label: 'Other' };
@@ -66,11 +67,18 @@ export function DreamDetailHero({ item, isOwner, onEdit }: DreamDetailHeroProps)
                     <ChevronLeft size={20} color="#FFF" />
                 </TouchableOpacity>
 
-                {isOwner && (
+                {isOwner ? (
                     <TouchableOpacity style={styles.headerButton} onPress={onEdit}>
                         <Edit3 size={20} color="#FFF" />
                     </TouchableOpacity>
-                )}
+                ) : onGetInspired ? (
+                    <TouchableOpacity
+                        style={[styles.headerButton, { backgroundColor: colors.accent }]}
+                        onPress={onGetInspired}
+                    >
+                        <Sparkles size={20} color="#FFF" />
+                    </TouchableOpacity>
+                ) : null}
             </SafeAreaView>
 
             {/* Hero Content */}

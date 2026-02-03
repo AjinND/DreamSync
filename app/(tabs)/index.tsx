@@ -49,16 +49,6 @@ export default function HomeScreen() {
     router.push(`/item/${dreamId}`);
   };
 
-  // Map legacy 'phase' to new 'status' format
-  const mapPhaseToStatus = (phase: string): 'dream' | 'doing' | 'done' => {
-    switch (phase) {
-      case 'dream': return 'dream';
-      case 'doing': return 'doing';
-      case 'done': return 'done';
-      default: return 'dream';
-    }
-  };
-
   // Filter items
   const filteredItems = items.filter((item) => {
     if (selectedFilter === 'all') return true;
@@ -73,15 +63,7 @@ export default function HomeScreen() {
 
   const renderDreamCard = ({ item }: { item: any }) => (
     <DreamCard
-      dream={{
-        id: item.id,
-        title: item.title,
-        description: item.description,
-        status: mapPhaseToStatus(item.phase),
-        coverImage: item.coverImage,
-        likesCount: item.likesCount || 0,
-        commentsCount: item.commentsCount || 0,
-      }}
+      item={item}
       onPress={() => handleDreamPress(item.id)}
       showUser={false}
       variant="default"

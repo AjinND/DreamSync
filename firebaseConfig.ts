@@ -18,7 +18,8 @@ const firebaseConfig = {
     storageBucket: process.env.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET,
     messagingSenderId: process.env.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
     appId: process.env.EXPO_PUBLIC_FIREBASE_APP_ID,
-    measurementId: process.env.EXPO_PUBLIC_MEASUREMENT_ID
+    measurementId: process.env.EXPO_PUBLIC_MEASUREMENT_ID,
+    databaseURL: "https://living-list-9ccc7-default-rtdb.asia-southeast1.firebasedatabase.app" // Explicitly setting provided URL
 };
 
 // Validation
@@ -62,6 +63,11 @@ export const db = (() => {
     }
 })();
 
+
 export const storage = getStorage(app);
+
+// Initialize Realtime Database
+import { getDatabase } from 'firebase/database';
+export const rtdb = getDatabase(app);
 
 export default app;

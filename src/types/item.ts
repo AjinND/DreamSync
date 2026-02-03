@@ -54,6 +54,15 @@ export interface BucketItem {
     location?: string;
     with?: string[];
     inspiredCount?: number;
+    journeyId?: string; // ID of the associated journey document
+    // Phase 4/5: Social & Collaboration
+    isPublic?: boolean;
+    likes?: string[];       // User IDs who liked
+    likesCount?: number;    // Denormalized count for performance
+    commentsCount?: number; // Denormalized comment count
+    tags?: string[];        // Interest tags for discovery
+    basedOnTemplateId?: string;
+    collaborationType?: 'solo' | 'open' | 'group';
     // Content
     inspirations?: Inspiration[];
     reflections?: Reflection[];
@@ -62,12 +71,6 @@ export interface BucketItem {
     // Budget
     budget?: number;
     expenses?: Expense[];
-    // Community (Phase 4A)
-    isPublic?: boolean;
-    likes?: string[];       // User IDs who liked
-    likesCount?: number;    // Denormalized count for performance
-    commentsCount?: number; // Denormalized comment count
-    tags?: string[];        // Interest tags for discovery
 }
 
 export interface UserStats {

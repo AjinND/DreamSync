@@ -18,25 +18,12 @@ const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const CARD_MARGIN = 16;
 const CARD_WIDTH = SCREEN_WIDTH - (CARD_MARGIN * 2);
 
-type Status = 'dream' | 'doing' | 'done';
-
-interface Dream {
-    id: string;
-    title: string;
-    description?: string;
-    status: Status;
-    coverImage?: string;
-    likesCount: number;
-    commentsCount: number;
-    user?: {
-        displayName: string;
-        username: string;
-        avatarUrl?: string;
-    };
-}
+import { BucketItem } from '@/src/types/item';
+import { UserProfile } from '@/src/types/social';
 
 interface DreamCardProps {
-    dream: Dream;
+    item: BucketItem;
+    user?: UserProfile;
     onPress: () => void;
     onLike?: () => void;
     onComment?: () => void;
@@ -47,7 +34,8 @@ interface DreamCardProps {
 }
 
 export function DreamCard({
-    dream,
+    item,
+    user,
     onPress,
     onLike,
     onComment,
@@ -56,7 +44,7 @@ export function DreamCard({
     isLiked = false,
     showSocial = false,
 }: DreamCardProps) {
-    const { colors, shadows } = useTheme();
+    const { colors } = useTheme();
     const likeScale = useSharedValue(1);
 
     const handleLike = () => {
@@ -81,9 +69,9 @@ export function DreamCard({
             style={[styles.card, isFeatured && styles.featuredCard]}
         >
             {/* Cover Image */}
-            {dream.coverImage ? (
+            {item.mainImage ? (
                 <Image
-                    source={{ uri: dream.coverImage }}
+                    source={{ uri: item.mainImage }}
                     style={[
                         styles.coverImage,
                         isCompact && styles.coverImageCompact,
@@ -105,7 +93,7 @@ export function DreamCard({
 
             {/* Status Badge - Positioned on image */}
             <View style={styles.statusContainer}>
-                <StatusBadge status={dream.status} size="sm" />
+                <StatusBadge status={item.phase} size="sm" />
             </View>
 
             {/* Content */}
@@ -114,30 +102,30 @@ export function DreamCard({
                     style={[styles.title, { color: colors.textPrimary }]}
                     numberOfLines={2}
                 >
-                    {dream.title}
+                    {item.title}
                 </Text>
 
-                {!isCompact && dream.description && (
+                {!isCompact && item.description && (
                     <Text
                         style={[styles.description, { color: colors.textSecondary }]}
                         numberOfLines={2}
                     >
-                        {dream.description}
+                        {item.description}
                     </Text>
                 )}
 
                 {/* Footer */}
                 <View style={styles.footer}>
                     {/* User Info */}
-                    {showUser && dream.user && (
+                    {showUser && user && (
                         <View style={styles.userSection}>
                             <Avatar
-                                uri={dream.user.avatarUrl}
-                                name={dream.user.displayName}
+                                uri={user.avatar}
+                                name={user.displayName}
                                 size="xs"
                             />
                             <Text style={[styles.username, { color: colors.textMuted }]}>
-                                @{dream.user.username}
+                                @{user.displayName.replace(' ', '').toLowerCase()}
                             </Text>
                         </View>
                     )}
@@ -158,7 +146,7 @@ export function DreamCard({
                                     />
                                 </Animated.View>
                                 <Text style={[styles.actionCount, { color: colors.textMuted }]}>
-                                    {dream.likesCount}
+                                    {item.likesCount || 0}
                                 </Text>
                             </TouchableOpacity>
 
@@ -169,7 +157,7 @@ export function DreamCard({
                             >
                                 <MessageCircle size={18} color={colors.textMuted} />
                                 <Text style={[styles.actionCount, { color: colors.textMuted }]}>
-                                    {dream.commentsCount}
+                                    {item.commentsCount || 0}
                                 </Text>
                             </TouchableOpacity>
                         </View>

@@ -52,3 +52,25 @@ export const DREAM_TAGS = [
 ] as const;
 
 export type DreamTag = typeof DREAM_TAGS[number];
+
+export interface Journey {
+    id: string;
+    dreamId: string;
+    ownerId: string;
+    participants: string[]; // User IDs
+    status: 'active' | 'completed';
+    chatId: string;
+    createdAt: number;
+    settings?: {
+        isOpen: boolean;
+        maxParticipants: number;
+    };
+    requests?: string[]; // User IDs asking to join
+    preview?: {
+        title: string;
+        description: string;
+        image?: string | null;
+        authorName: string;
+        authorAvatar?: string | null;
+    };
+}
