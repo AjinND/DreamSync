@@ -1,36 +1,118 @@
 /**
- * DreamSync - Community Tab (Placeholder)
- * Public feed, discovery, social features
+ * DreamSync - Community Tab
+ * Public feed with dream discovery and social interactions
  */
 
+import { CommunityCard, TagChips } from '@/src/components/community';
+import { EmptyState } from '@/src/components/shared';
+import { useCommunityStore } from '@/src/store/useCommunityStore';
 import { useTheme } from '@/src/theme';
-import { Ionicons } from '@expo/vector-icons';
-import { StyleSheet, Text, View } from 'react-native';
+import { useFocusEffect } from 'expo-router';
+import { StatusBar } from 'expo-status-bar';
+import { Globe } from 'lucide-react-native';
+import { useCallback } from 'react';
+import {
+    ActivityIndicator,
+    FlatList,
+    RefreshControl,
+    StyleSheet,
+    Text,
+    View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 export default function CommunityScreen() {
-    const { colors } = useTheme();
+    const { colors, isDark } = useTheme();
+    const {
+        publicDreams,
+        isLoading,
+        selectedCategory,
+        fetchPublicDreams,
+        filterByCategory,
+        toggleLike,
+        refreshFeed,
+    } = useCommunityStore();
+
+    useFocusEffect(
+        useCallback(() => {
+            refreshFeed();
+        }, [refreshFeed])
+    );
+
+    const handleRefresh = useCallback(() => {
+        refreshFeed();
+    }, [refreshFeed]);
+
+    const renderItem = useCallback(
+        ({ item }: { item: any }) => (
+            <CommunityCard dream={item} onLike={toggleLike} />
+        ),
+        [toggleLike]
+    );
+
+    const ListHeader = () => (
+        <View style={styles.headerContent}>
+            <View style={styles.titleRow}>
+                <Globe size={28} color={colors.primary} />
+                <Text style={[styles.title, { color: colors.textPrimary }]}>Community</Text>
+            </View>
+            <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
+                Where dreamers share their dreams
+            </Text>
+
+            <TagChips
+                selectedCategory={selectedCategory}
+                onSelectCategory={filterByCategory}
+            />
+        </View>
+    );
+
+    const ListEmpty = () => {
+        if (isLoading) {
+            return (
+                <View style={styles.loadingContainer}>
+                    <ActivityIndicator size="large" color={colors.primary} />
+                    <Text style={[styles.loadingText, { color: colors.textSecondary }]}>
+                        Loading dreams...
+                    </Text>
+                </View>
+            );
+        }
+
+        return (
+            <EmptyState
+                icon={Globe}
+                title="No public dreams yet"
+                description="Be the first to share your dream with the community!"
+                action={{
+                    label: 'Refresh',
+                    onPress: handleRefresh,
+                }}
+            />
+        );
+    };
 
     return (
-        <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-            <View style={styles.header}>
-                <Text style={[styles.title, { color: colors.textPrimary }]}>Community</Text>
-                <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
-                    Discover dreams from others
-                </Text>
-            </View>
+        <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
+            <StatusBar style={isDark ? 'light' : 'dark'} />
 
-            <View style={styles.placeholder}>
-                <View style={[styles.iconContainer, { backgroundColor: colors.primary + '20' }]}>
-                    <Ionicons name="globe-outline" size={48} color={colors.primary} />
-                </View>
-                <Text style={[styles.placeholderTitle, { color: colors.textPrimary }]}>
-                    Coming Soon
-                </Text>
-                <Text style={[styles.placeholderText, { color: colors.textSecondary }]}>
-                    Share your dreams with the world and discover others on similar journeys.
-                </Text>
-            </View>
+            <FlatList
+                data={publicDreams}
+                renderItem={renderItem}
+                keyExtractor={(item) => item.id}
+                contentContainerStyle={styles.listContent}
+                ListHeaderComponent={ListHeader}
+                ListEmptyComponent={ListEmpty}
+                showsVerticalScrollIndicator={false}
+                refreshControl={
+                    <RefreshControl
+                        refreshing={isLoading && publicDreams.length > 0}
+                        onRefresh={handleRefresh}
+                        colors={[colors.primary]}
+                        tintColor={colors.primary}
+                    />
+                }
+            />
         </SafeAreaView>
     );
 }
@@ -39,10 +121,19 @@ const styles = StyleSheet.create({
     container: {
         flex: 1,
     },
-    header: {
+    listContent: {
         paddingHorizontal: 20,
+        paddingBottom: 100,
+    },
+    headerContent: {
         paddingTop: 16,
-        paddingBottom: 24,
+        paddingBottom: 8,
+    },
+    titleRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 10,
+        marginBottom: 4,
     },
     title: {
         fontSize: 32,
@@ -50,30 +141,14 @@ const styles = StyleSheet.create({
     },
     subtitle: {
         fontSize: 16,
-        marginTop: 4,
+        marginBottom: 20,
     },
-    placeholder: {
-        flex: 1,
-        justifyContent: 'center',
+    loadingContainer: {
+        paddingVertical: 60,
         alignItems: 'center',
-        paddingHorizontal: 40,
     },
-    iconContainer: {
-        width: 96,
-        height: 96,
-        borderRadius: 48,
-        justifyContent: 'center',
-        alignItems: 'center',
-        marginBottom: 24,
-    },
-    placeholderTitle: {
-        fontSize: 24,
-        fontWeight: '600',
-        marginBottom: 12,
-    },
-    placeholderText: {
-        fontSize: 16,
-        textAlign: 'center',
-        lineHeight: 24,
+    loadingText: {
+        marginTop: 12,
+        fontSize: 14,
     },
 });

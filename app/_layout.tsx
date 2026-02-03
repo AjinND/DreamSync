@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { ActivityIndicator, View } from "react-native";
 import { auth } from "../firebaseConfig";
 import { OfflineBanner } from "../src/components/ui/OfflineBanner";
+import { UsersService } from "../src/services/users";
 import { legacyColors as colors } from "../src/theme";
 
 export default function RootLayout() {
@@ -13,9 +14,16 @@ export default function RootLayout() {
   const router = useRouter();
   const segments = useSegments();
 
+
   // Handle user state changes
   function onAuthStateChangedHandler(user: User | null) {
     setUser(user);
+    if (user) {
+      // Ensure user profile exists in Firestore
+      UsersService.ensureUserProfile().catch(err =>
+        console.error('Failed to ensure user profile:', err)
+      );
+    }
     if (initializing) setInitializing(false);
   }
 
