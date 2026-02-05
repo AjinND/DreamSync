@@ -1,6 +1,8 @@
 import { Send } from 'lucide-react-native';
 import React, { useState } from 'react';
-import { TextInput, TouchableOpacity, View } from 'react-native';
+import { Platform, TextInput, TouchableOpacity, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useTheme } from '../../theme';
 
 interface ChatInputProps {
     onSend: (text: string) => void;
@@ -8,6 +10,8 @@ interface ChatInputProps {
 
 export const ChatInput: React.FC<ChatInputProps> = ({ onSend }) => {
     const [text, setText] = useState('');
+    const insets = useSafeAreaInsets();
+    const { colors } = useTheme();
 
     const handleSend = () => {
         if (!text.trim()) return;
@@ -16,32 +20,65 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onSend }) => {
     };
 
     return (
-        <View className="px-4 pb-4 pt-2 bg-cream-50">
-            <View className="flex-row items-end shadow-sm bg-white rounded-[24px] px-2 py-2 border border-black/5"
-                style={{
-                    shadowColor: '#000',
-                    shadowOffset: { width: 0, height: 2 },
-                    shadowOpacity: 0.05,
-                    shadowRadius: 8,
-                    elevation: 2
-                }}
-            >
-                <TextInput
-                    className="flex-1 text-base text-slate-800 px-4 py-2 min-h-[44px] max-h-[100px]"
-                    placeholder="Message..."
-                    placeholderTextColor="#94A3B8"
-                    value={text}
-                    onChangeText={setText}
-                    multiline
-                />
+        <View
+            style={{
+                backgroundColor: colors.background, // Match screen background or strictly white
+                borderTopWidth: 1,
+                borderTopColor: colors.border || '#E2E8F0',
+                paddingHorizontal: 16,
+                paddingTop: 12,
+                paddingBottom: Platform.OS === 'ios' ? Math.max(insets.bottom, 12) : 12, // Handle safe area internally
+            }}
+        >
+            <View style={{ flexDirection: 'row', alignItems: 'flex-end' }}>
+                <View
+                    style={{
+                        flex: 1,
+                        flexDirection: 'row',
+                        backgroundColor: colors.surface, // Start with White (Surface)
+                        borderWidth: 1,
+                        borderColor: colors.border || '#E2E8F0',
+                        borderRadius: 24,
+                        paddingHorizontal: 16,
+                        paddingVertical: 8,
+                        minHeight: 48,
+                        marginRight: 12,
+                        alignItems: 'center'
+                    }}
+                >
+                    <TextInput
+                        style={{
+                            flex: 1,
+                            fontSize: 16,
+                            color: colors.textPrimary || '#1E293B',
+                            maxHeight: 100,
+                            paddingTop: 0,
+                            paddingBottom: 0,
+                        }}
+                        placeholder="Message"
+                        placeholderTextColor={colors.textMuted || "#94A3B8"}
+                        value={text}
+                        onChangeText={setText}
+                        multiline
+                    />
+                </View>
 
                 <TouchableOpacity
                     onPress={handleSend}
                     disabled={!text.trim()}
-                    className={`w-10 h-10 rounded-full items-center justify-center mb-1 ${text.trim() ? 'bg-indigo-500' : 'bg-slate-100'
-                        }`}
+                    style={{
+                        width: 48,
+                        height: 48,
+                        borderRadius: 24,
+                        backgroundColor: text.trim() ? colors.primary : (colors.surface || '#FFFFFF'),
+                        borderWidth: text.trim() ? 0 : 1,
+                        borderColor: colors.border || '#E2E8F0',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                    }}
+                    activeOpacity={0.8}
                 >
-                    <Send size={18} color={text.trim() ? "white" : "#CBD5E1"} />
+                    <Send size={20} color={text.trim() ? "white" : (colors.textMuted || "#94A3B8")} />
                 </TouchableOpacity>
             </View>
         </View>
