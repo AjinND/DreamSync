@@ -1,11 +1,21 @@
-import { Stack } from 'expo-router';
+import { Stack, useRouter } from 'expo-router';
+import { ArrowLeft, MessageSquare } from 'lucide-react-native';
 import React, { useEffect } from 'react';
-import { ActivityIndicator, FlatList, Text, View } from 'react-native';
+import { FlatList } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+
 import { ChatListItem } from '../../src/components/chat/ChatListItem';
+import { EmptyState } from '../../src/components/shared/EmptyState';
+import { Header } from '../../src/components/shared/Header';
+import { LoadingState } from '../../src/components/shared/LoadingState';
+import { IconButton } from '../../src/components/ui/IconButton';
 import { useChatStore } from '../../src/stores/useChatStore';
+import { useTheme } from '../../src/theme';
 
 export default function ChatListScreen() {
+    const router = useRouter();
     const { chats, fetchChats, isLoading } = useChatStore();
+    const { colors } = useTheme();
 
     useEffect(() => {
         fetchChats();
@@ -13,8 +23,6 @@ export default function ChatListScreen() {
     }, []);
 
     const syncMissingChats = async () => {
-        // This is a self-healing function to create chat rooms for journeys that have none
-        // It runs silently in the background
         try {
             const { auth } = require('@/firebaseConfig');
             const { JourneysService } = require('@/src/services/journeys');
@@ -23,15 +31,6 @@ export default function ChatListScreen() {
             if (!auth.currentUser) return;
 
             const myJourneys = await JourneysService.getUserJourneys(auth.currentUser.uid);
-
-            // We can't easily check if chat exists without querying ALL chats (which we have in store eventually)
-            // But we can just try to create them idempotently if we suspect they are missing. 
-            // Better: "createJourneyChat" checks if doc exists. So it IS safe to call.
-
-            // To avoid spamming, maybe we only do it if we have 0 chats? 
-            // Or just do it for all active journeys (limit 10?).
-            // For now, let's just do it for all. It's a one-time migration cost effectively.
-
             for (const journey of myJourneys) {
                 await ChatService.createJourneyChat(
                     journey.id,
@@ -46,20 +45,24 @@ export default function ChatListScreen() {
     };
 
     return (
-        <View className="flex-1 bg-cream-50">
-            <Stack.Screen
-                options={{
-                    title: "Messages",
-                    headerShadowVisible: false,
-                    headerStyle: { backgroundColor: '#FEFBF6' }, // cream-50
-                    headerTintColor: '#1E293B' // slate-800
-                }}
+        <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }} edges={['top']}>
+            <Stack.Screen options={{ headerShown: false }} />
+
+            <Header
+                title="Messages"
+                subtitle={chats.length > 0 ? `${chats.length} active` : undefined}
+                leftAction={
+                    <IconButton
+                        icon={ArrowLeft}
+                        onPress={() => router.back()}
+                        variant="ghost"
+                        size={24}
+                    />
+                }
             />
 
             {isLoading && chats.length === 0 ? (
-                <View className="flex-1 justify-center items-center">
-                    <ActivityIndicator size="large" color="#A78BFA" />
-                </View>
+                <LoadingState message="Loading chats..." />
             ) : (
                 <FlatList
                     data={chats}
@@ -67,15 +70,18 @@ export default function ChatListScreen() {
                     renderItem={({ item }) => <ChatListItem chat={item} />}
                     contentContainerStyle={{ paddingBottom: 20 }}
                     ListEmptyComponent={
-                        <View className="flex-1 justify-center items-center mt-20 p-5">
-                            <Text className="text-slate-400 text-lg text-center">No messages yet.</Text>
-                            <Text className="text-slate-300 text-sm text-center mt-2">
-                                Join a journey to start chatting!
-                            </Text>
-                        </View>
+                        <EmptyState
+                            icon={MessageSquare}
+                            title="No messages yet"
+                            description="Join a journey to start chatting with your fellow dreamers!"
+                            action={{
+                                label: "Find a Journey",
+                                onPress: () => { } // Ideally navigate to Explore
+                            }}
+                        />
                     }
                 />
             )}
-        </View>
+        </SafeAreaView>
     );
 }

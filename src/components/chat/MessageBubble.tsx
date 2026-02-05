@@ -17,49 +17,87 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ message, senderNam
     const { colors } = useTheme();
 
     return (
-        <View className={`mb-3 flex-row ${isOwn ? 'justify-end' : 'justify-start items-end gap-2'}`}>
-
+        <View
+            style={{
+                flexDirection: 'row',
+                justifyContent: isOwn ? 'flex-end' : 'flex-start',
+                marginBottom: 12,
+                paddingHorizontal: 4 // tiny gutter
+            }}
+        >
             {/* Avatar for others */}
             {!isOwn && (
-                <View className="w-8 h-8 rounded-full bg-slate-200 overflow-hidden mb-1 justify-center items-center">
-                    {senderAvatar ? (
-                        <Image source={{ uri: senderAvatar }} className="w-full h-full" />
-                    ) : (
-                        <Text className="text-xs font-bold text-slate-500">
-                            {senderName ? senderName[0].toUpperCase() : '?'}
-                        </Text>
-                    )}
+                <View style={{ marginRight: 8, justifyContent: 'flex-end', marginBottom: 2 }}>
+                    <View style={{
+                        width: 32,
+                        height: 32,
+                        borderRadius: 16,
+                        backgroundColor: colors.borderLight || '#e2e8f0',
+                        overflow: 'hidden',
+                        alignItems: 'center',
+                        justifyContent: 'center'
+                    }}>
+                        {senderAvatar ? (
+                            <Image source={{ uri: senderAvatar }} style={{ width: 32, height: 32 }} />
+                        ) : (
+                            <Text style={{ fontSize: 12, fontWeight: 'bold', color: colors.textSecondary }}>
+                                {senderName ? senderName[0].toUpperCase() : '?'}
+                            </Text>
+                        )}
+                    </View>
                 </View>
             )}
 
             <View
                 style={{
                     backgroundColor: isOwn ? colors.primary : colors.surface,
+                    borderRadius: 20,
+                    // Tear-drop effect
                     borderBottomRightRadius: isOwn ? 4 : 20,
                     borderBottomLeftRadius: !isOwn ? 4 : 20,
-                    borderTopLeftRadius: 20,
-                    borderTopRightRadius: 20,
-                    // Shadow for non-owned messages
+
+                    paddingHorizontal: 16,
+                    paddingVertical: 10,
+                    maxWidth: '75%', // Maximum width constraint
+
+                    // Shadow for minimal depth
                     shadowColor: '#000',
                     shadowOffset: { width: 0, height: 1 },
-                    shadowOpacity: isOwn ? 0 : 0.05,
+                    shadowOpacity: 0.05,
                     shadowRadius: 2,
-                    elevation: isOwn ? 0 : 1,
-                    maxWidth: '75%'
+                    elevation: 1
                 }}
-                className={`px-4 py-3`}
             >
                 {/* Sender Name (Group Chat - Optional) */}
                 {!isOwn && senderName && (
-                    <Text className="text-xs text-slate-400 mb-1 ml-1">{senderName}</Text>
+                    <Text style={{
+                        fontSize: 11,
+                        color: colors.primary,
+                        marginBottom: 4,
+                        fontWeight: '600',
+                        marginLeft: 2
+                    }}>
+                        {senderName}
+                    </Text>
                 )}
 
-                <Text className={`text-base leading-5 ${isOwn ? 'text-white' : 'text-slate-800'}`}>
+                <Text style={{
+                    fontSize: 16,
+                    lineHeight: 22,
+                    color: isOwn ? 'white' : colors.textPrimary
+                }}>
                     {message.text}
                 </Text>
 
-                <View className="flex-row justify-end mt-1">
-                    <Text className={`text-[10px] ${isOwn ? 'text-white/70' : 'text-slate-400'}`}>
+                <View style={{
+                    flexDirection: 'row',
+                    justifyContent: 'flex-end',
+                    marginTop: 4
+                }}>
+                    <Text style={{
+                        fontSize: 11,
+                        color: isOwn ? 'rgba(255,255,255,0.7)' : colors.textMuted
+                    }}>
                         {format(message.createdAt, 'h:mm a')}
                     </Text>
                 </View>

@@ -1,9 +1,11 @@
+import { useTheme } from '@/src/theme';
 import { formatDistanceToNow } from 'date-fns';
 import { useRouter } from 'expo-router';
 import React from 'react';
 import { Text, TouchableOpacity, View } from 'react-native';
 import { auth } from '../../../firebaseConfig';
 import { Chat } from '../../types/chat';
+import { Avatar } from '../ui/Avatar';
 
 interface ChatListItemProps {
     chat: Chat;
@@ -11,17 +13,11 @@ interface ChatListItemProps {
 
 export const ChatListItem: React.FC<ChatListItemProps> = ({ chat }) => {
     const router = useRouter();
+    const { colors } = useTheme();
     const currentUserId = auth.currentUser?.uid;
 
-    // Determine title and image based on chat type
-    // Note: In a real app, we'd need to fetch the other user's profile if it's a DM
-    // For MVP, we might show "User" or need a cache of user profiles.
-    // Assuming for now we resolve this in the Service or Store, or just show generic.
-
-    // Improved logic: The Chat object should optimally have a "display info" attached by the store/service
-    // but for now let's keep it simple.
-
     const isDM = chat.type === 'dm';
+    // Logic to determine name/image would ideally be richer here
     const title = chat.name || (isDM ? "Direct Message" : "Journey Chat");
     const lastMsg = chat.lastMessage?.text || "No messages yet";
     const time = chat.lastMessage?.timestamp
@@ -29,29 +25,71 @@ export const ChatListItem: React.FC<ChatListItemProps> = ({ chat }) => {
         : "";
     const unreadCount = (chat.unreadCounts && currentUserId) ? chat.unreadCounts[currentUserId] : 0;
 
+    // Fallback logic for avatar
+    const avatarUri = chat.photoUrl || undefined;
+
     return (
         <TouchableOpacity
-            className="flex-row items-center p-4 border-b border-gray-100 bg-white active:bg-gray-50"
+            style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                paddingVertical: 12,
+                paddingHorizontal: 16,
+                backgroundColor: colors.surface,
+                borderBottomWidth: 1,
+                borderBottomColor: colors.border || '#f1f5f9'
+            }}
+            activeOpacity={0.7}
             onPress={() => router.push(`/chat/${chat.id}`)}
         >
-            <View className="w-12 h-12 rounded-full bg-indigo-100 items-center justify-center mr-4">
-                <Text className="text-indigo-600 font-bold text-lg">
-                    {title.charAt(0)}
-                </Text>
-            </View>
+            <Avatar
+                uri={avatarUri}
+                name={title}
+                size="md"
+            />
 
-            <View className="flex-1">
-                <View className="flex-row justify-between items-center mb-1">
-                    <Text className="font-bold text-slate-800 text-base">{title}</Text>
-                    <Text className="text-xs text-slate-400">{time}</Text>
+            <View style={{ flex: 1, marginLeft: 12 }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2 }}>
+                    <Text
+                        style={{
+                            fontSize: 16,
+                            fontWeight: '600',
+                            color: colors.textPrimary
+                        }}
+                        numberOfLines={1}
+                    >
+                        {title}
+                    </Text>
+                    <Text style={{ fontSize: 12, color: colors.textMuted }}>{time}</Text>
                 </View>
-                <View className="flex-row justify-between items-center">
-                    <Text className="text-slate-500 text-sm truncate" numberOfLines={1}>
+
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <Text
+                        style={{
+                            fontSize: 14,
+                            color: unreadCount > 0 ? colors.textPrimary : colors.textMuted,
+                            fontWeight: unreadCount > 0 ? '600' : '400',
+                            flex: 1,
+                            marginRight: 8
+                        }}
+                        numberOfLines={1}
+                    >
                         {chat.lastMessage?.senderId === currentUserId ? "You: " : ""}{lastMsg}
                     </Text>
+
                     {unreadCount > 0 && (
-                        <View className="bg-coral-500 min-w-[20px] h-5 rounded-full items-center justify-center px-1.5 ml-2">
-                            <Text className="text-white text-xs font-bold">{unreadCount}</Text>
+                        <View style={{
+                            backgroundColor: colors.primary,
+                            minWidth: 20,
+                            height: 20,
+                            borderRadius: 10,
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            paddingHorizontal: 6
+                        }}>
+                            <Text style={{ color: 'white', fontSize: 10, fontWeight: 'bold' }}>
+                                {unreadCount}
+                            </Text>
                         </View>
                     )}
                 </View>

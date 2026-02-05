@@ -2,13 +2,19 @@ import { db } from '@/firebaseConfig';
 import { ChatService } from '@/src/services/chat';
 import { JourneysService } from '@/src/services/journeys';
 import { useChatStore } from '@/src/stores/useChatStore';
-import { useTheme } from '@/src/theme';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { doc, getDoc } from 'firebase/firestore';
+import { ArrowLeft } from 'lucide-react-native';
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, FlatList, KeyboardAvoidingView, Platform, Text, View } from 'react-native';
+import { FlatList, KeyboardAvoidingView, Platform } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+
+import { useTheme } from '@/src/theme';
 import { ChatInput } from '../../src/components/chat/ChatInput';
 import { MessageBubble } from '../../src/components/chat/MessageBubble';
+import { Header } from '../../src/components/shared/Header';
+import { LoadingState } from '../../src/components/shared/LoadingState';
+import { IconButton } from '../../src/components/ui/IconButton';
 
 interface UserProfile {
     uid: string;
@@ -103,43 +109,45 @@ export default function ChatRoomScreen() {
     if (!id) return null;
 
     return (
-        <KeyboardAvoidingView
-            style={{ flex: 1, backgroundColor: colors.background }}
-            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-            keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
-        >
-            <Stack.Screen
-                options={{
-                    title: title,
-                    headerShadowVisible: false,
-                    headerStyle: { backgroundColor: colors.background },
-                    headerTintColor: colors.textPrimary,
-                    headerTitleStyle: { fontWeight: '600' }
-                }}
+        <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }} edges={['top']}>
+            <Stack.Screen options={{ headerShown: false }} />
+
+            <Header
+                title={title}
+                leftAction={
+                    <IconButton
+                        icon={ArrowLeft}
+                        onPress={() => router.back()}
+                        variant="ghost"
+                        size={24}
+                    />
+                }
             />
 
             {(isLoading || isInitializing) && messages.length === 0 ? (
-                <View className="flex-1 justify-center items-center">
-                    <ActivityIndicator size="large" color={colors.primary} />
-                    {isInitializing && <Text style={{ marginTop: 8, color: colors.textMuted }}>Syncing chat...</Text>}
-                </View>
+                <LoadingState message="Syncing chat..." />
             ) : (
-                <FlatList
-                    data={messages}
-                    keyExtractor={item => item.id}
-                    renderItem={({ item }) => (
-                        <MessageBubble
-                            message={item}
-                            senderName={profiles[item.senderId]?.displayName}
-                            senderAvatar={profiles[item.senderId]?.photoURL}
-                        />
-                    )}
-                    contentContainerStyle={{ padding: 16, paddingBottom: 20 }}
-                    inverted
-                />
+                <KeyboardAvoidingView
+                    style={{ flex: 1 }}
+                    behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+                    keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+                >
+                    <FlatList
+                        data={messages}
+                        keyExtractor={item => item.id}
+                        renderItem={({ item }) => (
+                            <MessageBubble
+                                message={item}
+                                senderName={profiles[item.senderId]?.displayName}
+                                senderAvatar={profiles[item.senderId]?.photoURL}
+                            />
+                        )}
+                        contentContainerStyle={{ padding: 16, paddingBottom: 20 }}
+                        inverted
+                    />
+                    <ChatInput onSend={handleSend} />
+                </KeyboardAvoidingView>
             )}
-
-            <ChatInput onSend={handleSend} />
-        </KeyboardAvoidingView>
+        </SafeAreaView>
     );
 }
