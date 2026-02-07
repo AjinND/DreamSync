@@ -241,7 +241,14 @@ export function DreamForm({
                                         borderColor: isSelected ? phaseColor : colors.border,
                                     },
                                 ]}
-                                onPress={() => setPhase(p.id)}
+                                onPress={() => {
+                                    setPhase(p.id);
+                                    // If switching back to dream phase, ensure it's not public
+                                    if (p.id === 'dream' && isPublic) {
+                                        setIsPublic(false);
+                                        Alert.alert('Privacy Update', 'Items in "Dream" phase are private by default.');
+                                    }
+                                }}
                                 activeOpacity={0.7}
                             >
                                 <Icon size={18} color={isSelected ? phaseColor : colors.textMuted} />
@@ -292,7 +299,13 @@ export function DreamForm({
                             borderColor: isPublic ? colors.primary : colors.border,
                         },
                     ]}
-                    onPress={() => setIsPublic(!isPublic)}
+                    onPress={() => {
+                        if (phase === 'dream' && !isPublic) {
+                            Alert.alert('Start Your Journey', 'Start your dream to share it with the community. Change status to "Doing" or "Done" first.');
+                            return;
+                        }
+                        setIsPublic(!isPublic);
+                    }}
                     activeOpacity={0.8}
                 >
                     <View style={styles.communityToggleLeft}>

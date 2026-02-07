@@ -85,7 +85,7 @@ export const ChatService = {
             type: 'journey',
             journeyId,
             name: title || 'Journey Chat',
-            photoUrl: image || null,
+            photoUrl: image || undefined,
             participants,
             createdAt: Date.now(),
             updatedAt: Date.now(),
@@ -163,8 +163,13 @@ export const ChatService = {
                 readBy: msg.readBy || {}
             }));
 
-            // Sort by time
-            messages.sort((a, b) => b.createdAt - a.createdAt);
+            // Sort by time (Newest First for Inverted List)
+            messages.sort((a, b) => {
+                const timeA = a.createdAt || 0;
+                const timeB = b.createdAt || 0;
+                return timeB - timeA;
+            });
+
             callback(messages);
         });
 

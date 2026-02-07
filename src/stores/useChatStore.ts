@@ -11,7 +11,8 @@ interface ChatState {
     // Actions
     fetchChats: () => void; // Subscribes to chat list
     enterChat: (chatId: string) => void; // Subscribes to messages
-    leaveChat: () => void; // Unsubscribes
+    leaveChat: () => void; // Unsubscribes from messages
+    clear: () => void; // Unsubscribes from everything (Sign out)
     sendMessage: (text: string, type?: 'text' | 'image', mediaUrl?: string) => Promise<void>;
 }
 
@@ -54,6 +55,18 @@ export const useChatStore = create<ChatState>((set, get) => {
                 messagesUnsubscribe = null;
             }
             set({ activeChatId: null, messages: [] });
+        },
+
+        clear: () => {
+            if (chatsUnsubscribe) {
+                chatsUnsubscribe();
+                chatsUnsubscribe = null;
+            }
+            if (messagesUnsubscribe) {
+                messagesUnsubscribe();
+                messagesUnsubscribe = null;
+            }
+            set({ chats: [], activeChatId: null, messages: [], isLoading: false });
         },
 
         sendMessage: async (text: string, type = 'text', mediaUrl) => {

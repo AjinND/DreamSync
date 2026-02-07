@@ -7,6 +7,7 @@ import { auth } from '@/firebaseConfig';
 import { UserAvatar } from '@/src/components/social/UserAvatar';
 import { UsersService } from '@/src/services/users';
 import { useBucketStore } from '@/src/store/useBucketStore';
+import { useChatStore } from '@/src/stores/useChatStore';
 import { useTheme } from '@/src/theme';
 import { UserProfile } from '@/src/types/social';
 import { Ionicons } from '@expo/vector-icons';
@@ -47,6 +48,7 @@ export default function AccountScreen() {
                     style: 'destructive',
                     onPress: async () => {
                         try {
+                            useChatStore.getState().clear(); // Unsubscribe first
                             await signOut(auth);
                             router.replace('/(auth)/login');
                         } catch (error) {
