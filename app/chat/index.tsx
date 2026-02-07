@@ -1,16 +1,18 @@
+import { FlashList } from '@shopify/flash-list';
 import { Stack, useRouter } from 'expo-router';
 import { ArrowLeft, MessageSquare } from 'lucide-react-native';
+import { View as MotiView } from 'moti';
 import React, { useEffect } from 'react';
-import { FlatList } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ChatListItem } from '../../src/components/chat/ChatListItem';
+import { ChatListSkeleton } from '../../src/components/chat/ChatListSkeleton';
 import { EmptyState } from '../../src/components/shared/EmptyState';
 import { Header } from '../../src/components/shared/Header';
-import { LoadingState } from '../../src/components/shared/LoadingState';
 import { IconButton } from '../../src/components/ui/IconButton';
 import { useChatStore } from '../../src/stores/useChatStore';
 import { useTheme } from '../../src/theme';
+import { Chat } from '../../src/types/chat';
 
 export default function ChatListScreen() {
     const router = useRouter();
@@ -62,12 +64,21 @@ export default function ChatListScreen() {
             />
 
             {isLoading && chats.length === 0 ? (
-                <LoadingState message="Loading chats..." />
+                <ChatListSkeleton />
             ) : (
-                <FlatList
+                <FlashList<Chat>
                     data={chats}
-                    keyExtractor={(item) => item.id}
-                    renderItem={({ item }) => <ChatListItem chat={item} />}
+                    keyExtractor={(item: Chat) => item.id}
+                    renderItem={({ item, index }: { item: Chat, index: number }) => (
+                        <MotiView
+                            from={{ opacity: 0, translateY: 10 }}
+                            animate={{ opacity: 1, translateY: 0 }}
+                            transition={{ delay: index * 100, type: 'timing', duration: 350 }}
+                        >
+                            <ChatListItem chat={item} />
+                        </MotiView>
+                    )}
+                    estimatedItemSize={72}
                     contentContainerStyle={{ paddingBottom: 20 }}
                     ListEmptyComponent={
                         <EmptyState

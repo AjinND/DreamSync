@@ -2,7 +2,8 @@ import { useTheme } from '@/src/theme';
 import { formatDistanceToNow } from 'date-fns';
 import { useRouter } from 'expo-router';
 import React from 'react';
-import { Text, TouchableOpacity, View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
+import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
 import { auth } from '../../../firebaseConfig';
 import { Chat } from '../../types/chat';
 import { Avatar } from '../ui/Avatar';
@@ -11,35 +12,52 @@ interface ChatListItemProps {
     chat: Chat;
 }
 
+const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
+
 export const ChatListItem: React.FC<ChatListItemProps> = ({ chat }) => {
     const router = useRouter();
     const { colors } = useTheme();
     const currentUserId = auth.currentUser?.uid;
 
+    const scale = useSharedValue(1);
+
+    const animatedStyle = useAnimatedStyle(() => ({
+        transform: [{ scale: scale.value }],
+    }));
+
+    const handlePressIn = () => {
+        scale.value = withSpring(0.98, { damping: 10, stiffness: 300 });
+    };
+
+    const handlePressOut = () => {
+        scale.value = withSpring(1, { damping: 10, stiffness: 300 });
+    };
+
     const isDM = chat.type === 'dm';
-    // Logic to determine name/image would ideally be richer here
     const title = chat.name || (isDM ? "Direct Message" : "Journey Chat");
     const lastMsg = chat.lastMessage?.text || "No messages yet";
     const time = chat.lastMessage?.timestamp
         ? formatDistanceToNow(chat.lastMessage.timestamp, { addSuffix: true })
         : "";
     const unreadCount = (chat.unreadCounts && currentUserId) ? chat.unreadCounts[currentUserId] : 0;
-
-    // Fallback logic for avatar
     const avatarUri = chat.photoUrl || undefined;
 
     return (
-        <TouchableOpacity
-            style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                paddingVertical: 12,
-                paddingHorizontal: 16,
-                backgroundColor: colors.surface,
-                borderBottomWidth: 1,
-                borderBottomColor: colors.border || '#f1f5f9'
-            }}
-            activeOpacity={0.7}
+        <AnimatedPressable
+            style={[
+                {
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    paddingVertical: 12,
+                    paddingHorizontal: 16,
+                    backgroundColor: colors.surface,
+                    borderBottomWidth: 1,
+                    borderBottomColor: colors.border || '#f1f5f9'
+                },
+                animatedStyle
+            ]}
+            onPressIn={handlePressIn}
+            onPressOut={handlePressOut}
             onPress={() => router.push(`/chat/${chat.id}`)}
         >
             <Avatar
@@ -94,6 +112,6 @@ export const ChatListItem: React.FC<ChatListItemProps> = ({ chat }) => {
                     )}
                 </View>
             </View>
-        </TouchableOpacity>
+        </AnimatedPressable>
     );
 }

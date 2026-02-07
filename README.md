@@ -1,50 +1,94 @@
-# Welcome to your Expo app 👋
+# DreamSync 🌟
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+**DreamSync** is a collaborative bucket list and journey tracking application. It empowers users to document their dreams, turn them into actionable journeys, and collaborate with friends.
 
-## Get started
+## 🚀 Key Features
 
-1. Install dependencies
+- **Bucket List Management**: Add, track, and organize your life goals (Dreams).
+- **Journeys**: Collaborative adventures where you can invite friends to join your dreams.
+- **Community Feed**: Share your public dreams and get inspired by others.
+- **Real-time Chat**: Integrated chat for communicating with friends.
+- **Smart Updates**: Instant feedback with background synchronization for a seamless experience.
 
-   ```bash
-   npm install
-   ```
+## 🛠️ Tech Stack
 
-2. Start the app
+- **Framework**: [React Native](https://reactnative.dev/) with [Expo](https://expo.dev/)
+- **Language**: [TypeScript](https://www.typescriptlang.org/)
+- **Navigation**: [Expo Router](https://docs.expo.dev/router/introduction/) (File-based routing)
+- **Styling**: [NativeWind](https://www.nativewind.dev/) (Tailwind CSS)
+- **State Management**: [Zustand](https://github.com/pmndrs/zustand)
+- **Backend / Database**: [Firebase](https://firebase.google.com/) (Firestore, Auth)
 
-   ```bash
-   npx expo start
-   ```
-
-In the output, you'll find options to open the app in a
-
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
-
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
+## 📂 Project Structure
 
 ```bash
-npm run reset-project
+├── app/                  # Expo Router screens and navigation layout
+│   ├── (tabs)/           # Main tab navigation (Home, Community, Journeys, Account)
+│   ├── item/             # Dream detail screens
+│   ├── chat/             # Chat screens
+│   └── ...               # Other routes
+├── src/
+│   ├── components/       # Reusable UI components
+│   ├── services/         # Firebase service logic (Auth, Firestore)
+│   ├── store/            # Zustand global stores (Bucket, Community)
+│   ├── stores/           # Chat state management
+│   ├── theme/            # Theme configuration
+│   └── types/            # TypeScript type definitions
+├── constants/            # App constants (Colors, Layout)
+├── hooks/                # Custom React hooks (Theming)
+└── docs/                 # Documentation and future plans
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+## 🏎️ Getting Started
 
-## Learn more
+### Prerequisites
 
-To learn more about developing your project with Expo, look at the following resources:
+- Node.js (LTS recommended)
+- Expo Go app on your mobile device (iOS/Android)
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+### Installation
 
-## Join the community
+1.  **Clone the repository:**
+    ```bash
+    git clone <repository-url>
+    cd DreamSync
+    ```
 
-Join our community of developers creating universal apps.
+2.  **Install dependencies:**
+    ```bash
+    npm install
+    # or
+    yarn install
+    ```
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+3.  **Configure Environment:**
+    Ensure you have a valid `.env` file with your Firebase configuration keys.
+
+4.  **Start the development server:**
+    ```bash
+    npx expo start
+    ```
+
+5.  **Run on device:**
+    Scan the QR code with Expo Go (Android) or Camera app (iOS).
+
+## 🧠 AI Workflows
+
+This project utilizes specific AI workflows (`.agent/`) to maintain quality and consistency.
+
+-   **/plan**: Plan complex features before coding.
+-   **/debug**: Systematic debugging process.
+-   **/enhance**: Iterative feature improvements.
+-   **/create**: Scaffolding new components or modules.
+
+Refer to `GEMINI.md` for detailed agent protocols.
+
+## 🤝 Contributing
+
+1.  Create a new branch for your feature (`git checkout -b feature/amazing-feature`).
+2.  Commit your changes (`git commit -m 'Add some amazing feature'`).
+3.  Push to the branch (`git push origin feature/amazing-feature`).
+4.  Open a Pull Request.
+
+---
+*Built with ❤️ for dreamers.*

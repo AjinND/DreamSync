@@ -13,7 +13,7 @@ export interface Chat {
     type: 'dm' | 'journey';
     journeyId?: string;
     name?: string; // For Group/Journey chats
-    photoUrl?: string; // For Group/Journey chats
+    photoUrl?: string | null; // For Group/Journey chats
     participants: string[];
     lastMessage?: {
         text: string;

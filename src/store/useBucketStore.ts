@@ -38,10 +38,39 @@ export const useBucketStore = create<BucketState>((set, get) => ({
     fetchItems: async () => {
         set({ loading: true, error: null });
         try {
-            const items = await ItemService.getUserItems();
+            // 1. Fetch Owned Items
+            const ownedItems = await ItemService.getUserItems();
+
+            // 2. Fetch Joined Journeys to find shared items
+            const { auth } = await import('../../firebaseConfig'); // Lazy import to avoid cycle if any
+            const { JourneysService } = await import('../services/journeys');
+
+            let sharedItems: BucketItem[] = [];
+            const userId = auth.currentUser?.uid;
+
+            if (userId) {
+                const myJourneys = await JourneysService.getUserJourneys(userId);
+                // Filter journeys I don't own (since my owned items are already fetched above)
+                const joinedJourneys = myJourneys.filter(j => j.ownerId !== userId);
+
+                if (joinedJourneys.length > 0) {
+                    const dreamIds = joinedJourneys.map(j => j.dreamId);
+                    // Fetch the actual dream items
+                    sharedItems = await ItemService.getItemsByIds(dreamIds);
+                }
+            }
+
+            // 3. Merge Lists (Owned + Shared)
+            // Use Map to dedupe in case logic overlaps (though filter above should prevent it)
             const itemMap: Record<string, BucketItem> = {};
-            items.forEach(i => itemMap[i.id] = i);
-            set({ items, itemMap, loading: false });
+            ownedItems.forEach(i => itemMap[i.id] = i);
+            sharedItems.forEach(i => itemMap[i.id] = i);
+
+            const allItems = Object.values(itemMap);
+            // Sort by createdAt desc
+            allItems.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+
+            set({ items: allItems, itemMap, loading: false });
         } catch (e: any) {
             set({ error: e.message, loading: false });
         }
@@ -60,17 +89,48 @@ export const useBucketStore = create<BucketState>((set, get) => ({
 
     updatePhase: async (id, phase) => {
         const prevItems = get().items;
-        set(state => ({
-            items: state.items.map(i => i.id === id ? { ...i, phase } : i)
-        }));
+        const prevItemMap = get().itemMap;
+
+        // Optimistic update - update BOTH items and itemMap
+        const now = Date.now();
+        // Optimistic update - update BOTH items and itemMap
+        const updatedItems = prevItems.map(i => {
+            if (i.id !== id) return i;
+            return phase === 'done'
+                ? { ...i, phase, completedAt: now }
+                : { ...i, phase };
+        });
+
+        const updatedItem = updatedItems.find(i => i.id === id);
+        const updatedItemMap = { ...prevItemMap };
+        if (updatedItem) {
+            updatedItemMap[id] = updatedItem;
+        }
+
+        set({ items: updatedItems, itemMap: updatedItemMap });
 
         try {
             await ItemService.updateItem(id, { phase });
             if (phase === 'done') {
                 await ItemService.updateItem(id, { completedAt: Date.now() });
             }
+
+            // Sync to community store if item is public
+            // Use the updated item from our optimistic update
+            if (updatedItem?.isPublic) {
+                const { useCommunityStore } = await import('./useCommunityStore');
+
+                // If changing to 'dream' phase, remove from community (private planning)
+                // Otherwise, upsert into community (handles both add and update)
+                if (phase === 'dream') {
+                    useCommunityStore.getState().removeDream(id);
+                } else {
+                    // updatedItem has the new phase and potentially completedAt
+                    useCommunityStore.getState().upsertDream(updatedItem);
+                }
+            }
         } catch (e: any) {
-            set({ items: prevItems, error: e.message });
+            set({ items: prevItems, itemMap: prevItemMap, error: e.message });
             throw e;
         }
     },
@@ -79,6 +139,21 @@ export const useBucketStore = create<BucketState>((set, get) => ({
         try {
             await ItemService.updateItem(id, updates);
             await get().fetchItems();
+
+            // Sync to community store if item is public
+            const item = get().itemMap[id];
+            if (item?.isPublic) {
+                const { useCommunityStore } = await import('./useCommunityStore');
+
+                // If updating phase to 'dream', remove from community (private planning)
+                // Otherwise, upsert into community (handles both add and update)
+                // We use item from ItemMap which is fresh from server after fetchItems()
+                if (item.phase === 'dream') {
+                    useCommunityStore.getState().removeDream(id);
+                } else {
+                    useCommunityStore.getState().upsertDream(item);
+                }
+            }
         } catch (e: any) {
             set({ error: e.message });
             throw e;

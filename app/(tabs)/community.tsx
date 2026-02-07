@@ -10,7 +10,7 @@ import { useTheme } from '@/src/theme';
 import { useFocusEffect } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { Globe } from 'lucide-react-native';
-import { useCallback } from 'react';
+import { useCallback, useEffect } from 'react';
 import {
     ActivityIndicator,
     FlatList,
@@ -33,14 +33,22 @@ export default function CommunityScreen() {
         refreshFeed,
     } = useCommunityStore();
 
+    // Initial fetch on mount
+    useEffect(() => {
+        refreshFeed();
+    }, []);
+
+    // Refresh when tab is focused (uses smart caching with 30s TTL)
+    // This ensures fresh comment/like counts when returning from detail screens
+    // while avoiding unnecessary fetches during rapid tab switches
     useFocusEffect(
         useCallback(() => {
-            refreshFeed();
+            refreshFeed(); // Uses cache if < 30s old
         }, [refreshFeed])
     );
 
     const handleRefresh = useCallback(() => {
-        refreshFeed();
+        refreshFeed(true); // Force fresh data on pull-to-refresh
     }, [refreshFeed]);
 
     const renderItem = useCallback(

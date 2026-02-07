@@ -110,6 +110,29 @@ export const ItemService = {
         await deleteDoc(docRef);
     },
 
+    // Batch Get
+    async getItemsByIds(ids: string[]): Promise<BucketItem[]> {
+        if (!ids || ids.length === 0) return [];
+
+        const chunks = [];
+        // Firestore 'in' query limit is 10
+        for (let i = 0; i < ids.length; i += 10) {
+            chunks.push(ids.slice(i, i + 10));
+        }
+
+        const results: BucketItem[] = [];
+        for (const chunk of chunks) {
+            const q = query(
+                collection(db, COLLECTION_NAME),
+                where('__name__', 'in', chunk) // __name__ refers to document ID
+            );
+            const snapshot = await getDocs(q);
+            snapshot.forEach(doc => results.push({ id: doc.id, ...doc.data() } as BucketItem));
+        }
+
+        return results;
+    },
+
     // Stats (Optimized usually via aggregation, but simple counting for MVP)
     async getStats() {
         // In MVP, we might calculate this from local list or separate listeners

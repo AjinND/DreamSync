@@ -4,10 +4,12 @@ service cloud.firestore {
     
     // Items (Dreams) Collection
     match /items/{itemId} {
-      // 1. READ: Allow reading Public items OR Own items
+      // 1. READ: Allow reading Public items, Own items, OR items that are part of a Journey (group/open)
       allow read: if request.auth != null && (
         resource.data.isPublic == true || 
-        resource.data.userId == request.auth.uid
+        resource.data.userId == request.auth.uid ||
+        resource.data.collaborationType == 'group' ||
+        resource.data.collaborationType == 'open'
       );
       
       // 2. CREATE: Only allow creating own items

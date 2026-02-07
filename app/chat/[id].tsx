@@ -1,19 +1,21 @@
-import { db } from '@/firebaseConfig';
-import { ChatService } from '@/src/services/chat';
-import { JourneysService } from '@/src/services/journeys';
-import { useChatStore } from '@/src/stores/useChatStore';
+import { FlashList } from '@shopify/flash-list';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { doc, getDoc } from 'firebase/firestore';
 import { ArrowLeft } from 'lucide-react-native';
 import React, { useEffect, useState } from 'react';
-import { FlatList, KeyboardAvoidingView, Platform } from 'react-native';
+import { KeyboardAvoidingView, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { db } from '@/firebaseConfig';
+import { ChatService } from '@/src/services/chat';
+import { JourneysService } from '@/src/services/journeys';
+import { useChatStore } from '@/src/stores/useChatStore';
 import { useTheme } from '@/src/theme';
+import { Message } from '@/src/types/chat';
 import { ChatInput } from '../../src/components/chat/ChatInput';
+import { ChatRoomSkeleton } from '../../src/components/chat/ChatRoomSkeleton';
 import { MessageBubble } from '../../src/components/chat/MessageBubble';
 import { Header } from '../../src/components/shared/Header';
-import { LoadingState } from '../../src/components/shared/LoadingState';
 import { IconButton } from '../../src/components/ui/IconButton';
 
 interface UserProfile {
@@ -125,25 +127,27 @@ export default function ChatRoomScreen() {
             />
 
             {(isLoading || isInitializing) && messages.length === 0 ? (
-                <LoadingState message="Syncing chat..." />
+                <ChatRoomSkeleton />
             ) : (
                 <KeyboardAvoidingView
                     style={{ flex: 1 }}
                     behavior={Platform.OS === 'ios' ? 'padding' : undefined}
                     keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
                 >
-                    <FlatList
+                    <FlashList<Message>
                         data={messages}
-                        keyExtractor={item => item.id}
-                        renderItem={({ item }) => (
+                        keyExtractor={(item: Message) => item.id}
+                        renderItem={({ item }: { item: Message }) => (
                             <MessageBubble
                                 message={item}
                                 senderName={profiles[item.senderId]?.displayName}
                                 senderAvatar={profiles[item.senderId]?.photoURL}
                             />
                         )}
+                        estimatedItemSize={100}
                         contentContainerStyle={{ padding: 16, paddingBottom: 20 }}
-                        inverted
+                        inverted={true}
+                        style={{ flex: 1 }}
                     />
                     <ChatInput onSend={handleSend} />
                 </KeyboardAvoidingView>

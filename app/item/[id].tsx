@@ -24,6 +24,7 @@ import { Button, Card, IconButton } from '@/src/components/ui';
 import { CommunityService } from '@/src/services/community';
 import { JourneysService } from '@/src/services/journeys';
 import { useBucketStore } from '@/src/store/useBucketStore';
+import { useCommunityStore } from '@/src/store/useCommunityStore';
 import { useTheme } from '@/src/theme';
 import { BucketItem, Expense, Phase } from '@/src/types/item';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -73,36 +74,49 @@ export default function DreamDetailScreen() {
         addExpense,
     } = useBucketStore();
 
+    const { updateDreamMetadata } = useCommunityStore();
+
     const [item, setItem] = useState<BucketItem | undefined>(items.find((i) => i.id === id));
     const [isLoading, setIsLoading] = useState(false);
     const [activeTab, setActiveTab] = useState('Story');
     const [isDeleting, setIsDeleting] = useState(false);
     const [chatId, setChatId] = useState<string | null>(null);
 
-    // Check ownership
-    const isOwner = item?.userId === auth.currentUser?.uid;
+    // Check ownership & participation
+    const userId = auth.currentUser?.uid;
+    const isOwner = item?.userId === userId;
     const isJourney = item?.collaborationType === 'group' || item?.collaborationType === 'open';
 
+    // State for journey participation
+    const [isParticipant, setIsParticipant] = useState(false);
+
     useEffect(() => {
-        const checkChat = async () => {
-            if (isJourney && item) {
-                // In a real implementation we would fetch the chat ID associated with this journey
-                // For now, we simulate finding the chat ID deterministically or via service
-                // Just generating the ID based on our schema: journey_{dreamId}
-                // Correct ID Schema: journey_{journeyId}
-                // (Not dreamId, because deep linking and service use journeyId)
-                if (item.journeyId) {
-                    const potentialChatId = `journey_${item.journeyId}`;
-                    setChatId(potentialChatId);
-                } else {
-                    // Fallback for legacy items without journeyId synced?
-                    // Best to just rely on journeyId being present for group items
-                    // console.warn("Journey item missing journeyId");
+        const checkParticipation = async () => {
+            if (isJourney && item && userId) {
+                // Determine participation
+                try {
+                    // We need to fetch the journey to check participants list
+                    // Optimization: We could store 'isParticipant' in local item if we synced it, 
+                    // but for now fetch to be safe and get fresh list
+                    const journey = await JourneysService.getJourneyByDreamId(item.id);
+                    if (journey) {
+                        const participants = journey.participants || [];
+                        setIsParticipant(participants.includes(userId));
+
+                        // Set Chat ID if journey exists
+                        setChatId(`journey_${journey.id}`);
+                    }
+                } catch (e) {
+                    console.error("Failed to check participation", e);
                 }
             }
-        }
-        checkChat();
-    }, [isJourney, item]);
+        };
+
+        checkParticipation();
+    }, [isJourney, item, userId]);
+
+    // Derived permission: Can Edit = Owner OR Participant
+    const canEdit = isOwner || isParticipant;
 
     // Modal states
     const [showInspirationModal, setShowInspirationModal] = useState(false);
@@ -146,7 +160,9 @@ export default function DreamDetailScreen() {
     };
 
     const handleEdit = () => {
-        if (!isOwner) return;
+        if (!canEdit) return; // Allow participants to edit details too? Or restricted?
+        // For shared goals, usually participants can edit basic info.
+        // Let's allow it for now, unless specific requirement restricts it.
         router.push(`/item/add?id=${id}`);
     };
 
@@ -184,6 +200,12 @@ export default function DreamDetailScreen() {
 
     const handleStartJourney = async () => {
         if (!item || !auth.currentUser) return;
+
+        // Prevent if already a journey
+        if (item.collaborationType === 'group') {
+            Alert.alert('Already a Journey', 'This dream is already a shared journey.');
+            return;
+        }
 
         try {
             setIsLoading(true);
@@ -228,7 +250,7 @@ export default function DreamDetailScreen() {
     };
 
     const handlePhaseChange = async (newPhase: Phase) => {
-        if (!isOwner) return;
+        if (!canEdit) return; // Allow participants to update phase (e.g. mark as done)
         if (item && newPhase !== item.phase) {
             await updateItem(item.id, { phase: newPhase });
         }
@@ -289,7 +311,7 @@ export default function DreamDetailScreen() {
         })
         : null;
 
-    const visibleTabs = isOwner ? TABS : ['Story'];
+    const visibleTabs = canEdit ? TABS : ['Story'];
 
     return (
         <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -303,7 +325,7 @@ export default function DreamDetailScreen() {
                 {/* Hero Section */}
                 <DreamDetailHero
                     item={item}
-                    isOwner={isOwner}
+                    isOwner={canEdit}
                     onEdit={handleEdit}
                     onGetInspired={handleGetInspired}
                 />
@@ -317,8 +339,8 @@ export default function DreamDetailScreen() {
 
                 {/* Main Content */}
                 <View style={[styles.contentWrapper, { backgroundColor: colors.background }]}>
-                    {/* Phase Selector - Only for owners */}
-                    {isOwner && (
+                    {/* Phase Selector - Only for owners and participants */}
+                    {canEdit && (
                         <View style={[styles.phaseSelector, { backgroundColor: colors.surface }]}>
                             {PHASES.map(p => (
                                 <TouchableOpacity
@@ -417,14 +439,14 @@ export default function DreamDetailScreen() {
                                 {/* Inspiration Board */}
                                 <InspirationBoard
                                     inspirations={item.inspirations}
-                                    onAdd={isOwner ? () => setShowInspirationModal(true) : undefined}
+                                    onAdd={canEdit ? () => setShowInspirationModal(true) : undefined}
                                 />
 
                                 {/* Memory Capsule */}
                                 {(item.phase === 'doing' || item.phase === 'done') && (
                                     <MemoryCapsule
                                         memories={item.memories}
-                                        onAdd={isOwner ? () => setShowMemoryModal(true) : undefined}
+                                        onAdd={canEdit ? () => setShowMemoryModal(true) : undefined}
                                     />
                                 )}
 
@@ -432,7 +454,7 @@ export default function DreamDetailScreen() {
                                 {item.phase === 'done' && (
                                     <Reflections
                                         reflections={item.reflections}
-                                        onAdd={isOwner ? () => setShowReflectionModal(true) : undefined}
+                                        onAdd={canEdit ? () => setShowReflectionModal(true) : undefined}
                                     />
                                 )}
 
@@ -450,7 +472,10 @@ export default function DreamDetailScreen() {
                                             commentsCount={item.commentsCount}
                                             onCountChange={(count) => {
                                                 if (item.commentsCount !== count) {
+                                                    // Update local detail screen state
                                                     setItem(prev => prev ? { ...prev, commentsCount: count } : undefined);
+                                                    // Sync to community store for instant update
+                                                    updateDreamMetadata(item.id, { commentsCount: count });
                                                 }
                                             }}
                                         />
@@ -476,7 +501,7 @@ export default function DreamDetailScreen() {
                         {activeTab === 'Progress' && (
                             <ProgressTab
                                 item={item}
-                                isOwner={isOwner}
+                                isOwner={canEdit}
                                 onAddProgress={() => setShowProgressModal(true)}
                             />
                         )}
@@ -484,7 +509,7 @@ export default function DreamDetailScreen() {
                         {activeTab === 'Expenses' && (
                             <ExpensesTab
                                 item={item}
-                                isOwner={isOwner}
+                                isOwner={canEdit}
                                 onAddExpense={() => setShowExpenseModal(true)}
                             />
                         )}

@@ -43,8 +43,9 @@ export const CommunityService = {
 
             let dreams = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as BucketItem));
 
-            // Client-side filter: Exclude Journeys (group/open) to separate them from Community Feed
-            dreams = dreams.filter(d => d.collaborationType === 'solo' || !d.collaborationType);
+            // Client-side filter: Exclude items in 'dream' phase (must be 'doing' or 'done')
+            // Also allow Journeys (collaborationType 'group'/'open') to appear in Community Feed
+            dreams = dreams.filter(d => d.phase !== 'dream');
 
             // Sort client-side by createdAt (descending) since we removed orderBy
             dreams.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
