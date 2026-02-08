@@ -19,7 +19,7 @@ const firebaseConfig = {
     messagingSenderId: process.env.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
     appId: process.env.EXPO_PUBLIC_FIREBASE_APP_ID,
     measurementId: process.env.EXPO_PUBLIC_MEASUREMENT_ID,
-    databaseURL: "https://living-list-9ccc7-default-rtdb.asia-southeast1.firebasedatabase.app" // Explicitly setting provided URL
+    databaseURL: process.env.EXPO_PUBLIC_FIREBASE_DATABASE_URL
 };
 
 // Validation

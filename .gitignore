@@ -43,7 +43,8 @@ app-example
 /ios
 /android
 
-.claude/setting.local.*
-
 # Firebase Cloud Functions build output
 functions/lib/
+
+# Editor / AI Config
+.claude/settings.local.json
