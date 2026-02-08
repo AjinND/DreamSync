@@ -5,7 +5,7 @@
 
 import { auth } from '@/firebaseConfig'; // Added import
 import { DreamCard } from '@/src/components/dream/DreamCard';
-import { EmptyState } from '@/src/components/shared';
+import { EmptyState, NotificationBell } from '@/src/components/shared';
 import { JourneysService } from '@/src/services/journeys';
 import { useBucketStore } from '@/src/store/useBucketStore';
 import { useTheme } from '@/src/theme';
@@ -146,7 +146,10 @@ export default function JourneysScreen() {
     return (
         <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
             <View style={styles.header}>
-                <Text style={[styles.title, { color: colors.textPrimary }]}>Journeys</Text>
+                <View style={styles.headerRow}>
+                    <Text style={[styles.title, { color: colors.textPrimary }]}>Journeys</Text>
+                    <NotificationBell />
+                </View>
                 <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
                     Dreams you're achieving together
                 </Text>
@@ -283,7 +286,11 @@ const styles = StyleSheet.create({
         paddingTop: 16,
         paddingBottom: 16,
     },
-
+    headerRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+    },
     title: {
         fontSize: 32,
         fontWeight: '700',

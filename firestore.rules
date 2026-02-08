@@ -80,5 +80,22 @@ service cloud.firestore {
       // Allow updates only by participants
       allow update: if request.auth != null && request.auth.uid in resource.data.participants;
     }
+
+    // Notifications Collection
+    match /notifications/{notifId} {
+      // Users can only read their own notifications
+      allow read: if request.auth != null && resource.data.userId == request.auth.uid;
+
+      // Users can only update the 'read' field on their own notifications
+      allow update: if request.auth != null &&
+                    resource.data.userId == request.auth.uid &&
+                    request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read']);
+
+      // Users can delete their own notifications
+      allow delete: if request.auth != null && resource.data.userId == request.auth.uid;
+
+      // Only Cloud Functions (Admin SDK) can create notifications
+      allow create: if false;
+    }
   }
 }

@@ -4,9 +4,12 @@
  */
 
 import { auth } from '@/firebaseConfig';
+import { NotificationBell } from '@/src/components/shared';
 import { UserAvatar } from '@/src/components/social/UserAvatar';
+import { NotificationService } from '@/src/services/notifications';
 import { UsersService } from '@/src/services/users';
 import { useBucketStore } from '@/src/store/useBucketStore';
+import { useNotificationStore } from '@/src/store/useNotificationStore';
 import { useChatStore } from '@/src/stores/useChatStore';
 import { useTheme } from '@/src/theme';
 import { UserProfile } from '@/src/types/social';
@@ -48,7 +51,13 @@ export default function AccountScreen() {
                     style: 'destructive',
                     onPress: async () => {
                         try {
-                            useChatStore.getState().clear(); // Unsubscribe first
+                            // Remove push token before signing out
+                            const token = await NotificationService.registerForPushNotifications();
+                            if (token) {
+                                await NotificationService.removePushToken(token).catch(() => {});
+                            }
+                            useNotificationStore.getState().clear();
+                            useChatStore.getState().clear();
                             await signOut(auth);
                             router.replace('/(auth)/login');
                         } catch (error) {
@@ -74,7 +83,10 @@ export default function AccountScreen() {
             <ScrollView showsVerticalScrollIndicator={false}>
                 {/* Header */}
                 <View style={styles.header}>
-                    <Text style={[styles.title, { color: colors.textPrimary }]}>Account</Text>
+                    <View style={styles.headerRow}>
+                        <Text style={[styles.title, { color: colors.textPrimary }]}>Account</Text>
+                        <NotificationBell />
+                    </View>
                 </View>
 
                 {/* Profile Card */}
@@ -162,6 +174,11 @@ const styles = StyleSheet.create({
         paddingHorizontal: 20,
         paddingTop: 16,
         paddingBottom: 24,
+    },
+    headerRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
     },
     title: {
         fontSize: 32,

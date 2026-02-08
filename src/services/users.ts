@@ -44,18 +44,22 @@ export const UsersService = {
         }
 
         // Create new profile
-        const newProfile: Record<string, any> = {
+        const newProfile: Omit<UserProfile, 'id' | 'settings'> = {
             displayName: user.displayName || user.email?.split('@')[0] || 'Dreamer',
             bio: '',
+            email: user.email ?? undefined,
+            avatar: user.photoURL ?? undefined,
             publicDreamsCount: 0,
             completedDreamsCount: 0,
             createdAt: Date.now(),
         };
 
-        if (user.email) newProfile.email = user.email;
-        if (user.photoURL) newProfile.avatar = user.photoURL;
+        // Firestore doesn't accept undefined, so strip those fields
+        const firestoreData = Object.fromEntries(
+            Object.entries(newProfile).filter(([, v]) => v !== undefined)
+        );
 
-        await setDoc(docRef, newProfile);
+        await setDoc(docRef, firestoreData);
         return { id: user.uid, ...newProfile };
     },
 
