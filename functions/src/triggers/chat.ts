@@ -4,7 +4,7 @@
  */
 
 import * as admin from "firebase-admin";
-import * as functions from "firebase-functions";
+import { onValueCreated } from "firebase-functions/v2/database";
 import { notifyUser } from "../utils/notifications";
 
 const db = admin.firestore();
@@ -15,11 +15,15 @@ const db = admin.firestore();
  * Dedup: skips if another chat_message notification for the same chatId+userId
  * was created in the last 30 seconds.
  */
-export const onNewChatMessage = functions.database
-  .ref("/messages/{chatId}/{messageId}")
-  .onCreate(async (snapshot, context) => {
-    const { chatId } = context.params;
-    const message = snapshot.val();
+export const onNewChatMessage = onValueCreated(
+  {
+    ref: "/messages/{chatId}/{messageId}",
+    instance: "dreamsync-b3a54-default-rtdb",
+    region: "asia-southeast1",
+  },
+  async (event) => {
+    const chatId = event.params.chatId;
+    const message = event.data.val();
 
     if (!message || !message.userId) return;
 
@@ -32,7 +36,6 @@ export const onNewChatMessage = functions.database
     if (!chatDoc.exists) return;
 
     const participants: string[] = chatDoc.data()?.participants ?? [];
-    const chatName: string = chatDoc.data()?.name || "a chat";
 
     const thirtySecondsAgo = Date.now() - 30_000;
 
@@ -50,7 +53,7 @@ export const onNewChatMessage = functions.database
           .limit(1)
           .get();
 
-        if (!recentQuery.empty) return; // Skip — already notified recently
+        if (!recentQuery.empty) return;
 
         const truncatedText =
           messageText.length > 100
@@ -67,4 +70,5 @@ export const onNewChatMessage = functions.database
       });
 
     await Promise.all(notifyPromises);
-  });
+  }
+);

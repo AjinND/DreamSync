@@ -4,7 +4,10 @@
  */
 
 import * as admin from "firebase-admin";
-import * as functions from "firebase-functions";
+import {
+  onDocumentCreated,
+  onDocumentUpdated,
+} from "firebase-functions/v2/firestore";
 import { notifyUser } from "../utils/notifications";
 
 const db = admin.firestore();
@@ -13,12 +16,14 @@ const db = admin.firestore();
  * Comment trigger: Firestore onCreate on items/{dreamId}/comments/{commentId}
  * Notifies the dream owner when someone else comments
  */
-export const onNewComment = functions.firestore
-  .document("items/{dreamId}/comments/{commentId}")
-  .onCreate(async (snapshot, context) => {
-    const { dreamId } = context.params;
-    const comment = snapshot.data();
-    if (!comment) return;
+export const onNewComment = onDocumentCreated(
+  "items/{dreamId}/comments/{commentId}",
+  async (event) => {
+    if (!event.data) return;
+
+    const dreamId = event.params.dreamId;
+    const commentId = event.params.commentId;
+    const comment = event.data.data();
 
     const commenterId: string = comment.userId;
     const commenterName: string = comment.userName || "Someone";
@@ -41,23 +46,26 @@ export const onNewComment = functions.firestore
     await notifyUser(ownerId, "community_comment", {
       title: `${commenterName} commented`,
       body: `"${truncatedText}" on "${dreamTitle}"`,
-      data: { dreamId, commentId: context.params.commentId },
+      data: { dreamId, commentId },
       actorId: commenterId,
       actorName: commenterName,
       actorAvatar: comment.userAvatar,
     });
-  });
+  }
+);
 
 /**
  * Like trigger: Firestore onUpdate on items/{dreamId}
  * Diffs before/after likes arrays and notifies the owner for each new liker
  */
-export const onDreamLiked = functions.firestore
-  .document("items/{dreamId}")
-  .onUpdate(async (change, context) => {
-    const { dreamId } = context.params;
-    const before = change.before.data();
-    const after = change.after.data();
+export const onDreamLiked = onDocumentUpdated(
+  "items/{dreamId}",
+  async (event) => {
+    if (!event.data) return;
+
+    const dreamId = event.params.dreamId;
+    const before = event.data.before.data();
+    const after = event.data.after.data();
 
     const beforeLikes: string[] = before.likes ?? [];
     const afterLikes: string[] = after.likes ?? [];
@@ -87,4 +95,5 @@ export const onDreamLiked = functions.firestore
       });
 
     await Promise.all(promises);
-  });
+  }
+);

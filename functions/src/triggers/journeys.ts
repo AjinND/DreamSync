@@ -4,7 +4,7 @@
  */
 
 import * as admin from "firebase-admin";
-import * as functions from "firebase-functions";
+import { onDocumentUpdated } from "firebase-functions/v2/firestore";
 import { notifyUser } from "../utils/notifications";
 
 const db = admin.firestore();
@@ -16,12 +16,14 @@ const db = admin.firestore();
  * - Request rejected: userId removed from requests[] but NOT added to participants[]
  * - New participant joined (direct): new entry in participants[] not from requests
  */
-export const onJourneyUpdate = functions.firestore
-  .document("journeys/{journeyId}")
-  .onUpdate(async (change, context) => {
-    const before = change.before.data();
-    const after = change.after.data();
-    const journeyId = context.params.journeyId;
+export const onJourneyUpdate = onDocumentUpdated(
+  "journeys/{journeyId}",
+  async (event) => {
+    if (!event.data) return;
+
+    const before = event.data.before.data();
+    const after = event.data.after.data();
+    const journeyId = event.params.journeyId;
 
     const beforeRequests: string[] = before.requests ?? [];
     const afterRequests: string[] = after.requests ?? [];
@@ -71,7 +73,6 @@ export const onJourneyUpdate = functions.firestore
     );
 
     if (directJoins.length > 0) {
-      // Notify existing participants about new joiners
       for (const newUserId of directJoins) {
         const userDoc = await db.collection("users").doc(newUserId).get();
         const newUserName = userDoc.data()?.displayName || "Someone";
@@ -95,4 +96,5 @@ export const onJourneyUpdate = functions.firestore
     }
 
     await Promise.all(promises);
-  });
+  }
+);

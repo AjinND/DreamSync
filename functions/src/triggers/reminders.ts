@@ -4,7 +4,7 @@
  */
 
 import * as admin from "firebase-admin";
-import * as functions from "firebase-functions";
+import { onSchedule } from "firebase-functions/v2/scheduler";
 import { notifyUser } from "../utils/notifications";
 
 const db = admin.firestore();
@@ -14,14 +14,14 @@ const db = admin.firestore();
  * Checks for dreams with targetDate approaching in 7 days or 1 day
  * Uses reminder flags on the item to avoid duplicate notifications
  */
-export const checkDueDateReminders = functions.pubsub
-  .schedule("0 9 * * *")
-  .timeZone("UTC")
-  .onRun(async () => {
+export const checkDueDateReminders = onSchedule(
+  {
+    schedule: "0 9 * * *",
+    timeZone: "UTC",
+  },
+  async () => {
     const now = Date.now();
     const oneDayMs = 24 * 60 * 60 * 1000;
-    const sevenDaysFromNow = now + 7 * oneDayMs;
-    const oneDayFromNow = now + 1 * oneDayMs;
 
     // Query items with a targetDate set, not yet done
     const snapshot = await db
@@ -43,11 +43,7 @@ export const checkDueDateReminders = functions.pubsub
       const daysUntil = Math.ceil((targetDate - now) / oneDayMs);
 
       // 7-day reminder
-      if (
-        daysUntil <= 7 &&
-        daysUntil > 1 &&
-        !data.reminder_7d
-      ) {
+      if (daysUntil <= 7 && daysUntil > 1 && !data.reminder_7d) {
         promises.push(
           (async () => {
             await notifyUser(userId, "due_date_reminder", {
@@ -63,11 +59,7 @@ export const checkDueDateReminders = functions.pubsub
       }
 
       // 1-day reminder
-      if (
-        daysUntil <= 1 &&
-        daysUntil >= 0 &&
-        !data.reminder_1d
-      ) {
+      if (daysUntil <= 1 && daysUntil >= 0 && !data.reminder_1d) {
         promises.push(
           (async () => {
             await notifyUser(userId, "due_date_reminder", {
@@ -84,4 +76,5 @@ export const checkDueDateReminders = functions.pubsub
     }
 
     await Promise.all(promises);
-  });
+  }
+);
