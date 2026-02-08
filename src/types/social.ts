@@ -2,18 +2,23 @@
  * Social Types for DreamSync Community Features
  */
 
+import { NotificationPreferences } from './notification';
+
 export interface UserSettings {
-    notifications: {
-        comments: boolean;
-        likes: boolean;
-        mentions: boolean;
-        journeyInvites: boolean;
-    };
+    notifications: NotificationPreferences;
     privacy: {
         isPublicProfile: boolean;
         showCompletedDreams: boolean;
     };
     theme: 'system' | 'light' | 'dark';
+}
+
+/** @deprecated Legacy notification settings shape (pre-notification system) */
+export interface LegacyNotificationSettings {
+    comments: boolean;
+    likes: boolean;
+    mentions: boolean;
+    journeyInvites: boolean;
 }
 
 export interface UserProfile {

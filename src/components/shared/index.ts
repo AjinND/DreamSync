@@ -6,6 +6,7 @@ export { EmptyState } from './EmptyState';
 export { FilterChips } from './FilterChips';
 export { Header } from './Header';
 export { LoadingState } from './LoadingState';
+export { NotificationBell } from './NotificationBell';
 export { SearchBar } from './SearchBar';
 export { StatusBadge } from './StatusBadge';
 export { UserRow } from './UserRow';

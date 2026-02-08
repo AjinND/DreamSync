@@ -1,10 +1,13 @@
 import { Stack, useRouter, useSegments } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { onAuthStateChanged, User } from "firebase/auth";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, View } from "react-native";
+import { useNotificationHandler } from "../hooks/useNotificationHandler";
 import { auth } from "../firebaseConfig";
 import { OfflineBanner } from "../src/components/ui/OfflineBanner";
+import { NotificationService } from "../src/services/notifications";
+import { useNotificationStore } from "../src/store/useNotificationStore";
 import { UsersService } from "../src/services/users";
 import { legacyColors as colors } from "../src/theme";
 
@@ -13,7 +16,10 @@ export default function RootLayout() {
   const [initializing, setInitializing] = useState(true);
   const router = useRouter();
   const segments = useSegments();
+  const pushTokenRef = useRef<string | null>(null);
 
+  // Set up push notification listeners (foreground display + deep link routing)
+  useNotificationHandler();
 
   // Handle user state changes
   function onAuthStateChangedHandler(user: User | null) {
@@ -23,6 +29,22 @@ export default function RootLayout() {
       UsersService.ensureUserProfile().catch(err =>
         console.error('Failed to ensure user profile:', err)
       );
+
+      // Register for push notifications and subscribe to unread count
+      NotificationService.registerForPushNotifications()
+        .then(token => {
+          if (token) {
+            pushTokenRef.current = token;
+            return NotificationService.storePushToken(token);
+          }
+        })
+        .catch(err => console.error('Push registration failed:', err));
+
+      useNotificationStore.getState().subscribeToUnread();
+    } else {
+      // User signed out — clean up
+      useNotificationStore.getState().unsubscribeFromUnread();
+      pushTokenRef.current = null;
     }
     if (initializing) setInitializing(false);
   }
@@ -69,6 +91,10 @@ export default function RootLayout() {
         />
         <Stack.Screen
           name="category/[id]"
+          options={{ headerShown: false }}
+        />
+        <Stack.Screen
+          name="notifications"
           options={{ headerShown: false }}
         />
         <Stack.Screen name="+not-found" />

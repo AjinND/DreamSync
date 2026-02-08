@@ -4,7 +4,7 @@
  */
 
 import { CommunityCard, TagChips } from '@/src/components/community';
-import { EmptyState } from '@/src/components/shared';
+import { EmptyState, NotificationBell } from '@/src/components/shared';
 import { useCommunityStore } from '@/src/store/useCommunityStore';
 import { useTheme } from '@/src/theme';
 import { useFocusEffect } from 'expo-router';
@@ -62,7 +62,8 @@ export default function CommunityScreen() {
         <View style={styles.headerContent}>
             <View style={styles.titleRow}>
                 <Globe size={28} color={colors.primary} />
-                <Text style={[styles.title, { color: colors.textPrimary }]}>Community</Text>
+                <Text style={[styles.titleFlex, { color: colors.textPrimary }]}>Community</Text>
+                <NotificationBell />
             </View>
             <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
                 Where dreamers share their dreams
@@ -144,6 +145,11 @@ const styles = StyleSheet.create({
         marginBottom: 4,
     },
     title: {
+        fontSize: 32,
+        fontWeight: '700',
+    },
+    titleFlex: {
+        flex: 1,
         fontSize: 32,
         fontWeight: '700',
     },

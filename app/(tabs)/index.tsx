@@ -4,7 +4,7 @@
  */
 
 import { DreamCard } from '@/src/components/dream';
-import { EmptyState, FilterChips, LoadingState } from '@/src/components/shared';
+import { EmptyState, FilterChips, LoadingState, NotificationBell } from '@/src/components/shared';
 import { useBucketStore } from '@/src/store/useBucketStore';
 import { useTheme } from '@/src/theme';
 import { useRouter } from 'expo-router';
@@ -74,12 +74,17 @@ export default function HomeScreen() {
     <View style={styles.header}>
       {/* Greeting */}
       <View style={styles.greetingSection}>
-        <Text style={[styles.greeting, { color: colors.textSecondary }]}>
-          Hello, Dreamer ✨
-        </Text>
-        <Text style={[styles.title, { color: colors.textPrimary }]}>
-          My Dreams
-        </Text>
+        <View style={styles.greetingRow}>
+          <View style={styles.greetingTextCol}>
+            <Text style={[styles.greeting, { color: colors.textSecondary }]}>
+              Hello, Dreamer ✨
+            </Text>
+            <Text style={[styles.title, { color: colors.textPrimary }]}>
+              My Dreams
+            </Text>
+          </View>
+          <NotificationBell />
+        </View>
       </View>
 
       {/* Stats */}
@@ -171,6 +176,14 @@ const styles = StyleSheet.create({
   greetingSection: {
     paddingHorizontal: 20,
     marginBottom: 20,
+  },
+  greetingRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  greetingTextCol: {
+    flex: 1,
   },
   greeting: {
     fontSize: 14,
