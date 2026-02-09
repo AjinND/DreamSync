@@ -1,4 +1,6 @@
+import { auth } from '@/firebaseConfig';
 import { Input } from '@/src/components/ui';
+import { StoragePaths, StorageService } from '@/src/services/storage';
 import { useTheme } from '@/src/theme';
 import * as ImagePicker from 'expo-image-picker';
 import { Image as ImageIcon, X } from 'lucide-react-native';
@@ -17,16 +19,18 @@ import {
 
 interface AddProgressModalProps {
     visible: boolean;
+    dreamId: string;
     onClose: () => void;
     onSave: (title: string, description?: string, imageUrl?: string) => void;
 }
 
-export function AddProgressModal({ visible, onClose, onSave }: AddProgressModalProps) {
+export function AddProgressModal({ visible, dreamId, onClose, onSave }: AddProgressModalProps) {
     const { colors } = useTheme();
     const [title, setTitle] = useState('');
     const [description, setDescription] = useState('');
     const [imageUri, setImageUri] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
+    const [uploadProgress, setUploadProgress] = useState(0);
 
     const pickImage = async () => {
         const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -49,21 +53,53 @@ export function AddProgressModal({ visible, onClose, onSave }: AddProgressModalP
 
     const handleSave = async () => {
         if (!title.trim()) return;
+
+        const userId = auth.currentUser?.uid;
+        if (!userId) {
+            Alert.alert('Error', 'Please log in to save progress');
+            return;
+        }
+
         setLoading(true);
+        setUploadProgress(0);
+
         try {
+            let downloadUrl: string | undefined;
+
+            if (imageUri) {
+                const progressId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+                const path = StoragePaths.dreamProgress(userId, dreamId, progressId);
+
+                downloadUrl = await StorageService.uploadOptimizedImage(
+                    imageUri,
+                    path,
+                    'progressImage',
+                    setUploadProgress,
+                );
+            }
+
             await onSave(
                 title.trim(),
                 description.trim() || undefined,
-                imageUri || undefined
+                downloadUrl,
             );
             setTitle('');
             setDescription('');
             setImageUri(null);
+            setUploadProgress(0);
             onClose();
+        } catch (error: any) {
+            Alert.alert('Upload Failed', error.message || 'Failed to save progress. Please try again.');
         } finally {
             setLoading(false);
         }
     };
+
+    const buttonLabel = loading && imageUri
+        ? `Uploading... ${uploadProgress}%`
+        : loading
+            ? 'Saving...'
+            : 'Save';
 
     return (
         <Modal visible={visible} animationType="slide" transparent>
@@ -86,7 +122,7 @@ export function AddProgressModal({ visible, onClose, onSave }: AddProgressModalP
                         {/* Title */}
                         <Input
                             label="What happened?"
-                            placeholder="e.g., Booked flight tickets ✈️"
+                            placeholder="e.g., Booked flight tickets"
                             value={title}
                             onChangeText={setTitle}
                         />
@@ -148,7 +184,7 @@ export function AddProgressModal({ visible, onClose, onSave }: AddProgressModalP
                                 disabled={!title.trim() || loading}
                             >
                                 <Text style={styles.saveText}>
-                                    {loading ? 'Saving...' : 'Save'}
+                                    {buttonLabel}
                                 </Text>
                             </TouchableOpacity>
                         </View>

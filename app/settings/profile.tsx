@@ -1,6 +1,6 @@
 import { auth } from '@/firebaseConfig';
 import { UserAvatar } from '@/src/components/social/UserAvatar';
-import { StorageService } from '@/src/services/storage';
+import { StoragePaths, StorageService } from '@/src/services/storage';
 import { UsersService } from '@/src/services/users';
 import { useTheme } from '@/src/theme';
 import { Ionicons } from '@expo/vector-icons';
@@ -88,10 +88,14 @@ export default function EditProfileScreen() {
         try {
             let avatarUrl = avatar;
 
-            // Upload new avatar if selected
+            // Upload new avatar if selected (deterministic path overwrites old avatar)
             if (newAvatarUri) {
-                const path = `profile_images/${user.uid}/${Date.now()}.jpg`;
-                avatarUrl = await StorageService.uploadImage(newAvatarUri, path);
+                const path = StoragePaths.profileAvatar(user.uid);
+                avatarUrl = await StorageService.uploadOptimizedImage(
+                    newAvatarUri,
+                    path,
+                    'avatar',
+                );
             }
 
             // Update Firestore Profile

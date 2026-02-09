@@ -1,4 +1,6 @@
+import { auth } from '@/firebaseConfig';
 import { Input } from '@/src/components/ui';
+import { StoragePaths, StorageService } from '@/src/services/storage';
 import { useTheme } from '@/src/theme';
 import * as ImagePicker from 'expo-image-picker';
 import { Camera, Image as ImageIcon, X } from 'lucide-react-native';
@@ -17,15 +19,17 @@ import {
 
 interface AddMemoryModalProps {
     visible: boolean;
+    dreamId: string;
     onClose: () => void;
     onSave: (imageUrl: string, caption: string) => void;
 }
 
-export function AddMemoryModal({ visible, onClose, onSave }: AddMemoryModalProps) {
+export function AddMemoryModal({ visible, dreamId, onClose, onSave }: AddMemoryModalProps) {
     const { colors } = useTheme();
     const [imageUri, setImageUri] = useState<string | null>(null);
     const [caption, setCaption] = useState('');
     const [loading, setLoading] = useState(false);
+    const [uploadProgress, setUploadProgress] = useState(0);
 
     const pickImage = async () => {
         const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -66,17 +70,42 @@ export function AddMemoryModal({ visible, onClose, onSave }: AddMemoryModalProps
 
     const handleSave = async () => {
         if (!imageUri || !caption.trim()) return;
+
+        const userId = auth.currentUser?.uid;
+        if (!userId) {
+            Alert.alert('Error', 'Please log in to save memories');
+            return;
+        }
+
         setLoading(true);
+        setUploadProgress(0);
+
         try {
-            // Note: In production, you'd upload the image first
-            await onSave(imageUri, caption.trim());
+            const memoryId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+            const path = StoragePaths.dreamMemory(userId, dreamId, memoryId);
+
+            const downloadUrl = await StorageService.uploadOptimizedImage(
+                imageUri,
+                path,
+                'memoryImage',
+                setUploadProgress,
+            );
+
+            await onSave(downloadUrl, caption.trim());
             setImageUri(null);
             setCaption('');
+            setUploadProgress(0);
             onClose();
+        } catch (error: any) {
+            Alert.alert('Upload Failed', error.message || 'Failed to upload image. Please try again.');
         } finally {
             setLoading(false);
         }
     };
+
+    const buttonLabel = loading
+        ? `Uploading... ${uploadProgress}%`
+        : 'Save Memory';
 
     return (
         <Modal visible={visible} animationType="slide" transparent>
@@ -158,7 +187,7 @@ export function AddMemoryModal({ visible, onClose, onSave }: AddMemoryModalProps
                                 disabled={!imageUri || !caption.trim() || loading}
                             >
                                 <Text style={styles.saveText}>
-                                    {loading ? 'Saving...' : 'Save Memory'}
+                                    {buttonLabel}
                                 </Text>
                             </TouchableOpacity>
                         </View>
