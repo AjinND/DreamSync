@@ -1,29 +1,43 @@
-1. Notification system - for messages, journey updates, likes/comments in the dreams shared in community tab, reminders for the dreams when due dates are about to be reached, etc. --Testing remaining
+1. Notification system - for messages, journey updates, likes/comments in the dreams shared in community tab, reminders for the dreams when due dates are about to be reached, etc. -- In app notifications working. Push notifications remaining to test.
 
-2. Storage optimization for the images. 
+2. Storage optimization for the images with security best practises. -- completed
 
 3. Data privacy and encryption of all the messages or any important factors. 
 
-4. Journeys should come as a dream for the users who are part of the journey in the home page as well. They should have permission for updating the dream as well. -- completed
+4. Implement Loading screen for the entire application. Not just a simple indicator, but an impressive design which shows a "bucket" and something which resembles the bucketist. the screen should be visible whenever the app is fetching data from the server.
 
-5. Dreams under "Journeys" should not come under community tab by default. Community tab is specifically for the dreams which are created by the user and are public. Users can opt to share their journeys as well to community tab by updating the toggle button in the dream details page. Users can share completed dreams/milestones/achievements of a dream in progress in the community tab. Not the dreams which are in "Dream" state. -- completed
+5. Journeys should come as a dream for the users who are part of the journey in the home page as well. They should have permission for updating the dream as well. -- completed
 
-6. Users can opt to share journeys which are completed or in progress to the community tab. -- completed
+6. Dreams under "Journeys" should not come under community tab by default. Community tab is specifically for the dreams which are created by the user and are public. Users can opt to share their journeys as well to community tab by updating the toggle button in the dream details page. Users can share completed dreams/milestones/achievements of a dream in progress in the community tab. Not the dreams which are in "Dream" state. -- completed
 
-7. Complete check of the UI/UX design and any modifications if required.
+7. Users can opt to share journeys which are completed or in progress to the community tab. -- completed
 
-8. Implement the Light and dark mode support. Complete the onboarding flow. Complete profile page updates and information properly. 
+8. Complete check of the UI/UX design and any modifications if required.
 
-9. Implement story feature, which will show dream pictures, notes,etc completed by user in a timeline format grouped based on dream.
+9. Implement the Light and dark mode support. Complete the onboarding flow. Complete profile page updates and information properly. 
 
-10. Add AI features to the app. AI in automating the stories, AI in generating the dream ideas, AI in generating the dream pictures, AI in generating the dream notes, etc.
+10. Implement story feature, which will show dream pictures, notes,etc completed by user in a timeline format grouped based on dream.
 
-11. The community screen fetches data every time user switches and comes back to the screen. This should be optimized. -- completed
+11. Add AI features to the app. AI in automating the stories, AI in generating the dream ideas, AI in generating the dream pictures, AI in generating the dream notes, etc.
 
-12. Polish & Launch - Phase 5 and 6 from roadmap.md
+12. The community screen fetches data every time user switches and comes back to the screen. This should be optimized. -- completed
+
+13. Polish & Launch - Phase 5 and 6 from roadmap.md
     - Premium Animations
     - Performance Optimization
     - Analytics Integration
     - A/B Testing Framework
     - App Store Assets
     - Launch Checklist
+
+14. When i click on the Profile photo, it takes me to the profile page. But im seeing two headers. One is the default header with name profile/[id] and the other is the header which is part of the profile page. This should be fixed. 
+
+15. One error i noticed - I started a dream as a journey and the dream is visible in the other user's explore tab. Then i delete the dream, but it is still visible in the other user's explore tab. This should be fixed. 
+
+16. User clicked on start a journey, journey, started. But the UI didnt got changed in the dream details page. It was still showing "Start a Journey" button, until i go back and reopen the dream. This should be fixed. 
+
+17. When request is placed to join a journey, the user should be able to see the request in the notifications tab. And when the user clicks on the request, it should take them to the dream details page. Also in the details page, the Pending requests should show the Name of the user. Currently it showing userid from the db(which is a random string). Similarly for the comments.
+
+18. When the user who joined the journey, tried to do any changes to the dream, it was showing some permission error. Insufficient permissions.
+
+19. In shared journeys, when one user updates the dream, it should reflect the changes for all the users who have joined the journey instantly. Currently it is not reflecting the changes instantly. It is taking some time and then i need to refresh the page to see the changes.

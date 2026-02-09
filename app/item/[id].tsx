@@ -525,6 +525,7 @@ export default function DreamDetailScreen() {
             />
             <AddMemoryModal
                 visible={showMemoryModal}
+                dreamId={item.id}
                 onClose={() => setShowMemoryModal(false)}
                 onSave={handleAddMemory}
             />
@@ -535,6 +536,7 @@ export default function DreamDetailScreen() {
             />
             <AddProgressModal
                 visible={showProgressModal}
+                dreamId={item.id}
                 onClose={() => setShowProgressModal(false)}
                 onSave={handleAddProgress}
             />

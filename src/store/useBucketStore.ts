@@ -162,8 +162,28 @@ export const useBucketStore = create<BucketState>((set, get) => ({
 
     deleteItem: async (id) => {
         try {
+            // Capture item before deletion for Storage cleanup
+            const item = get().itemMap[id];
+
             await ItemService.deleteItem(id);
-            set(state => ({ items: state.items.filter(i => i.id !== id) }));
+            set(state => ({
+                items: state.items.filter(i => i.id !== id),
+                itemMap: Object.fromEntries(
+                    Object.entries(state.itemMap).filter(([key]) => key !== id)
+                ),
+            }));
+
+            // Best-effort Storage cleanup (non-blocking)
+            if (item) {
+                const { auth } = await import('../../firebaseConfig');
+                const { StorageService } = await import('../services/storage');
+                const userId = auth.currentUser?.uid;
+                if (userId) {
+                    StorageService.deleteDreamAssets(userId, id, item).catch(() => {
+                        // Silently ignore — best effort
+                    });
+                }
+            }
         } catch (e: any) {
             set({ error: e.message });
             throw e;

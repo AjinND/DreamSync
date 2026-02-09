@@ -7,7 +7,7 @@ import { auth } from '@/firebaseConfig';
 import { DreamForm } from '@/src/components/dream';
 import { Header } from '@/src/components/shared';
 import { IconButton } from '@/src/components/ui';
-import { StorageService } from '@/src/services/storage';
+import { StoragePaths, StorageService } from '@/src/services/storage';
 import { useBucketStore } from '@/src/store/useBucketStore';
 import { useTheme } from '@/src/theme';
 import { Category, Phase } from '@/src/types/item';
@@ -88,13 +88,15 @@ export default function AddDreamScreen() {
 
             let uploadedImageUrl = values.imageUri;
 
-            // Upload image if it's a local file
-            if (values.imageUri && values.imageUri.startsWith('file://')) {
+            // Upload image if it's a local file (file:// or content://)
+            if (values.imageUri && !values.imageUri.startsWith('https://')) {
                 try {
-                    const imagePath = `dreams/${userId}/${isEditing && typeof id === 'string' ? id : `new-${Date.now()}`}/cover.jpg`;
-                    uploadedImageUrl = await StorageService.uploadImage(
+                    const dreamId = isEditing && typeof id === 'string' ? id : `new-${Date.now()}`;
+                    const imagePath = StoragePaths.dreamCover(userId, dreamId);
+                    uploadedImageUrl = await StorageService.uploadOptimizedImage(
                         values.imageUri,
-                        imagePath
+                        imagePath,
+                        'coverImage',
                     );
                 } catch (uploadError) {
                     console.error('Image upload failed:', uploadError);

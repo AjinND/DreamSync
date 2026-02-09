@@ -85,7 +85,7 @@ export const ChatService = {
             type: 'journey',
             journeyId,
             name: title || 'Journey Chat',
-            photoUrl: image || undefined,
+            photoUrl: image || null,
             participants,
             createdAt: Date.now(),
             updatedAt: Date.now(),
