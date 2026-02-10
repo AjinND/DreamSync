@@ -47,7 +47,7 @@ service cloud.firestore {
     
     // Comments Subcollection
     match /items/{itemId}/comments/{commentId} {
-      allow read: if true;
+      allow read: if request.auth != null;
       allow create: if request.auth != null;
       allow delete: if request.auth != null && 
                     resource.data.userId == request.auth.uid;

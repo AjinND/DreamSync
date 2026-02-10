@@ -31,6 +31,12 @@ export interface UserProfile {
     completedDreamsCount: number;
     createdAt: number;
     settings?: UserSettings;
+    // Encryption key data
+    publicKey?: string;
+    keyVersion?: number;
+    keySalt?: string;
+    keyIterations?: number;
+    keyDerivationVersion?: number;
 }
 
 export interface Comment {

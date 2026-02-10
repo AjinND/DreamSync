@@ -1,3 +1,5 @@
+import { EncryptedChatKey } from './encryption';
+
 export interface Message {
     id: string;
     senderId: string;
@@ -6,6 +8,14 @@ export interface Message {
     type: 'text' | 'image' | 'video' | 'system';
     mediaUrl?: string;
     readBy: { [userId: string]: number };
+    // E2E encryption fields
+    encrypted?: boolean;
+    ciphertext?: string;
+    nonce?: string;
+    senderPublicKey?: string;
+    encryptionVersion?: number;
+    encryptedMediaUrl?: string;
+    mediaUrlNonce?: string;
 }
 
 export interface Chat {
@@ -23,4 +33,7 @@ export interface Chat {
     unreadCounts?: { [userId: string]: number };
     createdAt: number;
     updatedAt: number;
+    // E2E encryption fields
+    encryptedKeys?: { [userId: string]: EncryptedChatKey };
+    encryptionEnabled?: boolean;
 }

@@ -1,5 +1,7 @@
 import { create } from 'zustand';
+import { decryptDreamFields, encryptDreamFields } from '../services/encryption';
 import { ItemService } from '../services/items';
+import { KeyManager } from '../services/keyManager';
 import { BucketItem, Expense, Inspiration, Memory, Phase, ProgressEntry, Reflection } from '../types/item';
 
 interface BucketState {
@@ -159,7 +161,39 @@ export const useBucketStore = create<BucketState>((set, get) => ({
             const wasPublic = oldItem?.isPublic || false;
             const wasDone = oldItem?.phase === 'done';
 
-            await ItemService.updateItem(id, updates);
+            // Handle public/private encryption transitions
+            let processedUpdates = { ...updates };
+            if ('isPublic' in updates && oldItem) {
+                const fieldKey = await KeyManager.getFieldEncryptionKey();
+                if (fieldKey) {
+                    if (wasPublic && updates.isPublic === false) {
+                        // Public -> Private: encrypt the full item's sensitive fields
+                        // ItemService.updateItem handles encryption, but we should
+                        // pass encryptionVersion to signal encrypted state
+                        processedUpdates.encryptionVersion = 1;
+                    } else if (!wasPublic && updates.isPublic === true) {
+                        // Private -> Public: decrypt all fields, store as plaintext
+                        // Re-read the raw item and write back decrypted
+                        if (oldItem.encryptionVersion) {
+                            const decrypted = decryptDreamFields(oldItem, fieldKey);
+                            processedUpdates = {
+                                ...processedUpdates,
+                                ...decrypted,
+                                encryptionVersion: 0, // 0 = not encrypted
+                                isPublic: true,
+                            };
+                            // Remove the id/userId since they aren't update fields
+                            delete (processedUpdates as any).id;
+                            delete (processedUpdates as any).userId;
+                            delete (processedUpdates as any).createdAt;
+                        }
+                    }
+                }
+            }
+
+            // Skip encryption in ItemService when the store already handled the transition
+            const handledTransition = 'isPublic' in updates && oldItem;
+            await ItemService.updateItem(id, processedUpdates, handledTransition ? { skipEncryption: true } : undefined);
             await get().fetchItems();
 
             const newItem = get().itemMap[id];

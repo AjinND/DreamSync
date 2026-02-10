@@ -37,12 +37,15 @@ Routes live in `app/`. The root layout (`app/_layout.tsx`) handles auth state vi
 ### Service Layer (`src/services/`)
 
 All Firebase operations are isolated here. Each service handles one domain:
-- `items.ts` — Dream CRUD, phase transitions
-- `journeys.ts` — Collaboration: create journey, join/leave, participant management; maintains `journeyParticipants` array on dreams for write access control; auto-creates chat
-- `community.ts` — Public feed, likes, filtering
-- `chat.ts` — Messages via Realtime Database, chat metadata via Firestore
+- `items.ts` — Dream CRUD, phase transitions, field-level encryption for private dreams
+- `journeys.ts` — Collaboration: create journey, join/leave, participant management; group key distribution/rotation
+- `community.ts` — Public feed, likes, filtering (always plaintext, only public items)
+- `chat.ts` — E2E encrypted messages via Realtime Database, chat metadata via Firestore
 - `comments.ts` — Comment CRUD
-- `users.ts` — Profile creation/updates, `ensureUserProfile()` called on auth
+- `users.ts` — Profile creation/updates, encrypted profile fields
+- `encryption.ts` — Core crypto primitives (PBKDF2, NaCl box/secretbox, field helpers)
+- `keyManager.ts` — Key lifecycle (derivation, storage, publication, caching)
+- `validation.ts` — Zod input validation schemas
 
 **Journey Access Control:**
 - **Read**: Journey dreams are publicly viewable (set `isPublic: true` and `collaborationType: 'group'`). Any authenticated user can browse/discover journey dreams before joining.
@@ -92,7 +95,33 @@ NativeWind (Tailwind CSS for React Native). Custom config in `tailwind.config.js
 - **Firestore security rules** in `firestore.rules` — update when changing DB access patterns. Journey-based access uses `journeyParticipants` array on dream documents.
 - **No hardcoded secrets** — all Firebase config via `.env` with `EXPO_PUBLIC_` prefix
 
+### Encryption & Data Privacy (`src/services/encryption.ts`, `keyManager.ts`)
+
+**Key Derivation:** Password → PBKDF2-HMAC-SHA256 (100k iterations, @noble/hashes) → 32-byte master key → domain-separated SHA-256 derivation for chat keypair (X25519) and field encryption key.
+
+**Field-Level Encryption:** Private dreams (`isPublic !== true`) encrypt sensitive fields (reflections, memories, expenses, progress, inspirations, location, budget) using NaCl `secretbox` (XSalsa20-Poly1305). Public dreams are always plaintext. Visibility transitions (public↔private) handle encrypt/decrypt automatically in `useBucketStore`.
+
+**E2E Chat:**
+- DM messages: NaCl `box` (X25519 + XSalsa20-Poly1305) between sender and recipient
+- Group messages: NaCl `secretbox` with a per-chat symmetric group key, distributed to each participant via `box` encryption
+- Group key rotation on participant departure (`journeys.ts._rotateGroupKey`)
+- Legacy plaintext messages (`encrypted === undefined`) displayed as-is
+
+**Key Storage:** `expo-secure-store` on native, `sessionStorage` on web. Master key cached in memory. Public keys cached per-session.
+
+**Auth Flow:** Signup generates keys → Login re-derives from stored salt → Cold start with missing keys → Reauth screen (`(auth)/reauth.tsx`)
+
+**Input Validation:** Zod schemas in `validation.ts` for auth, dreams, messages, profiles, expenses.
+
 ## Recent Changes
+
+### Data Privacy & Encryption (2026-02-10)
+- E2E encrypted chat (DM + group with key rotation)
+- Field-level encryption for private dreams and user profiles
+- PBKDF2 key derivation with password-based recovery
+- Input validation via Zod at service boundaries
+- Fixed security rules: RTDB message validation, comments require auth, storage path-based auth (no expiration)
+- Reauth screen for encryption key recovery after reinstall
 
 ### Journey Access Control (2026-02-09)
 Fixed insufficient permission error for journey participants viewing dreams. Journey-linked dreams are no longer public by default. Access is controlled via:

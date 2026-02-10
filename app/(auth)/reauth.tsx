@@ -1,46 +1,44 @@
-import { Link, useRouter } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { signInWithEmailAndPassword } from 'firebase/auth';
+import { signOut } from 'firebase/auth';
 import { useState } from 'react';
 import { Alert, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { auth } from '../../firebaseConfig';
 import { KeyManager } from '../../src/services/keyManager';
-import { safeValidate, loginSchema } from '../../src/services/validation';
 import { legacyColors as colors } from '../../src/theme';
 
-export default function Login() {
-    const [email, setEmail] = useState('');
+export default function Reauth() {
     const [password, setPassword] = useState('');
     const [loading, setLoading] = useState(false);
     const router = useRouter();
 
-    const [loadingText, setLoadingText] = useState('');
+    const handleReauth = async () => {
+        if (!password) return Alert.alert("Error", "Please enter your password.");
 
-    const handleLogin = async () => {
-        if (!email || !password) return Alert.alert("Error", "Please fill in all fields.");
-
-        // Validate input
-        const validation = safeValidate(loginSchema, { email, password });
-        if (!validation.success) {
-            return Alert.alert("Validation Error", validation.error);
+        const user = auth.currentUser;
+        if (!user) {
+            router.replace('/(auth)/login');
+            return;
         }
 
         setLoading(true);
         try {
-            setLoadingText('Signing in...');
-            const userCredential = await signInWithEmailAndPassword(auth, email, password);
-
-            // Initialize encryption keys
-            setLoadingText('Setting up encryption...');
-            await KeyManager.initializeKeysOnLogin(password, userCredential.user.uid);
-
+            await KeyManager.initializeKeysOnLogin(password, user.uid);
             router.replace('/(tabs)');
         } catch (e: any) {
-            Alert.alert("Login Failed", e.message);
+            Alert.alert(
+                "Re-authentication Failed",
+                "Could not set up encryption. Please check your password and try again.",
+            );
         } finally {
             setLoading(false);
-            setLoadingText('');
         }
+    };
+
+    const handleSignOut = async () => {
+        await KeyManager.clearKeys();
+        await signOut(auth);
+        router.replace('/(auth)/login');
     };
 
     return (
@@ -48,31 +46,21 @@ export default function Login() {
             <StatusBar style="dark" />
 
             <View style={styles.header}>
-                <View style={styles.logoBox}>
-                    <Text style={styles.logoText}>L</Text>
+                <View style={styles.iconBox}>
+                    <Text style={styles.iconText}>🔒</Text>
                 </View>
-                <Text style={styles.welcomeText}>Welcome Back</Text>
-                <Text style={styles.subtitleText}>Sign in to continue your journey</Text>
+                <Text style={styles.titleText}>Encryption Setup</Text>
+                <Text style={styles.subtitleText}>
+                    For security, re-enter your password to enable encryption on this device.
+                </Text>
             </View>
 
             <View style={styles.form}>
                 <View style={styles.inputGroup}>
-                    <Text style={styles.label}>Email</Text>
-                    <TextInput
-                        style={styles.input}
-                        placeholder="hello@example.com"
-                        placeholderTextColor={colors.slate[400]}
-                        autoCapitalize="none"
-                        value={email}
-                        onChangeText={setEmail}
-                    />
-                </View>
-
-                <View style={styles.inputGroup}>
                     <Text style={styles.label}>Password</Text>
                     <TextInput
                         style={styles.input}
-                        placeholder="••••••••"
+                        placeholder="Enter your password"
                         placeholderTextColor={colors.slate[400]}
                         secureTextEntry
                         value={password}
@@ -82,22 +70,19 @@ export default function Login() {
 
                 <TouchableOpacity
                     style={[styles.button, loading && styles.buttonDisabled]}
-                    onPress={handleLogin}
+                    onPress={handleReauth}
                     disabled={loading}
                 >
                     <Text style={styles.buttonText}>
-                        {loading ? (loadingText || "Signing In...") : "Sign In"}
+                        {loading ? "Setting up encryption..." : "Continue"}
                     </Text>
                 </TouchableOpacity>
             </View>
 
             <View style={styles.footer}>
-                <Text style={styles.footerText}>Don't have an account? </Text>
-                <Link href="/(auth)/signup" asChild>
-                    <TouchableOpacity>
-                        <Text style={styles.linkText}>Sign Up</Text>
-                    </TouchableOpacity>
-                </Link>
+                <TouchableOpacity onPress={handleSignOut}>
+                    <Text style={styles.linkText}>Sign out instead</Text>
+                </TouchableOpacity>
             </View>
         </View>
     );
@@ -114,34 +99,30 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         marginBottom: 40,
     },
-    logoBox: {
+    iconBox: {
         width: 64,
         height: 64,
-        backgroundColor: colors.indigo[600],
-        borderRadius: 16,
+        backgroundColor: colors.slate[100],
+        borderRadius: 32,
         alignItems: 'center',
         justifyContent: 'center',
         marginBottom: 16,
-        shadowColor: colors.indigo[600],
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.3,
-        shadowRadius: 8,
-        elevation: 4,
     },
-    logoText: {
-        color: colors.white,
-        fontSize: 24,
-        fontWeight: 'bold',
+    iconText: {
+        fontSize: 28,
     },
-    welcomeText: {
-        fontSize: 30,
+    titleText: {
+        fontSize: 26,
         fontWeight: 'bold',
         color: colors.slate[900],
     },
     subtitleText: {
-        fontSize: 16,
+        fontSize: 15,
         color: colors.slate[500],
         marginTop: 8,
+        textAlign: 'center',
+        paddingHorizontal: 20,
+        lineHeight: 22,
     },
     form: {
         gap: 16,
@@ -186,17 +167,11 @@ const styles = StyleSheet.create({
         fontWeight: 'bold',
     },
     footer: {
-        flexDirection: 'row',
-        justifyContent: 'center',
+        alignItems: 'center',
         marginTop: 32,
     },
-    footerText: {
-        color: colors.slate[500],
-        fontSize: 14,
-    },
     linkText: {
-        color: colors.indigo[600],
-        fontWeight: 'bold',
+        color: colors.slate[500],
         fontSize: 14,
     },
 });

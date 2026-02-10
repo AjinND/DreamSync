@@ -23,6 +23,18 @@ import {
 } from 'firebase/firestore';
 import { auth, db, rtdb } from '../../firebaseConfig';
 import { Chat, Message } from '../types/chat';
+import {
+    decryptField,
+    decryptFromSender,
+    decryptGroupKey,
+    encryptField,
+    encryptForRecipient,
+    encryptGroupKeyForUser,
+    generateGroupKey,
+} from './encryption';
+import { KeyManager } from './keyManager';
+import { validate, messageSchema } from './validation';
+import { encodeBase64, decodeBase64 } from 'tweetnacl-util';
 
 export const ChatService = {
     /**
@@ -82,6 +94,25 @@ export const ChatService = {
             return chatId;
         }
 
+        // Generate group encryption key and encrypt for each participant
+        const groupKey = generateGroupKey();
+        const chatKeyPair = await KeyManager.getChatKeyPair();
+        const encryptedKeys: Record<string, any> = {};
+
+        if (chatKeyPair) {
+            for (const userId of participants) {
+                const publicKey = await KeyManager.getPublicKey(userId);
+                if (publicKey) {
+                    encryptedKeys[userId] = encryptGroupKeyForUser(
+                        groupKey,
+                        chatKeyPair.secretKey,
+                        publicKey,
+                        chatKeyPair.publicKey,
+                    );
+                }
+            }
+        }
+
         const newChat: Partial<Chat> = {
             id: chatId,
             type: 'journey',
@@ -91,10 +122,17 @@ export const ChatService = {
             participants,
             createdAt: Date.now(),
             updatedAt: Date.now(),
-            unreadCounts: participants.reduce((acc, uid) => ({ ...acc, [uid]: 0 }), {})
+            unreadCounts: participants.reduce((acc, uid) => ({ ...acc, [uid]: 0 }), {}),
+            encryptedKeys: Object.keys(encryptedKeys).length > 0 ? encryptedKeys : undefined,
+            encryptionEnabled: Object.keys(encryptedKeys).length > 0,
         };
 
-        await setDoc(chatDocRef, newChat);
+        // Strip undefined values for Firestore
+        const firestoreData = Object.fromEntries(
+            Object.entries(newChat).filter(([, v]) => v !== undefined)
+        );
+
+        await setDoc(chatDocRef, firestoreData);
         return chatId;
     },
 
@@ -105,41 +143,132 @@ export const ChatService = {
         const currentUserId = auth.currentUser?.uid;
         if (!currentUserId) throw new Error("Not authenticated");
 
-        // 1. Push to Realtime Database
+        // Validate message input
+        validate(messageSchema, { text, type });
+
+        const chatKeyPair = await KeyManager.getChatKeyPair();
+
+        // 1. Determine encryption method and encrypt
+        let messageData: Record<string, any>;
+        let lastMessageText: string;
+
         const messagesRef = ref(rtdb, `messages/${chatId}`);
         const newMessageRef = push(messagesRef);
 
-        const messageData = {
-            id: newMessageRef.key,
-            senderId: currentUserId,
-            text,
-            type,
-            mediaUrl: mediaUrl || null,
-            createdAt: rtdbTimestamp(),
-            readBy: {
-                [currentUserId]: rtdbTimestamp()
+        if (chatKeyPair) {
+            // Fetch chat doc to determine DM vs group encryption
+            const chatDocRef = doc(db, 'chats', chatId);
+            const chatDoc = await getDoc(chatDocRef);
+            const chatData = chatDoc.exists() ? chatDoc.data() as Chat : null;
+
+            if (chatData?.type === 'dm') {
+                // DM: Asymmetric encryption (nacl.box)
+                const otherUserId = chatData.participants.find(uid => uid !== currentUserId);
+                const recipientPublicKey = otherUserId
+                    ? await KeyManager.getPublicKey(otherUserId)
+                    : null;
+
+                if (recipientPublicKey) {
+                    const payload = encryptForRecipient(text, chatKeyPair.secretKey, recipientPublicKey, chatKeyPair.publicKey);
+                    messageData = {
+                        id: newMessageRef.key,
+                        senderId: currentUserId,
+                        text: '', // Cleared for encrypted messages
+                        type,
+                        encrypted: true,
+                        ciphertext: payload.ciphertext,
+                        nonce: payload.nonce,
+                        senderPublicKey: payload.senderPublicKey,
+                        encryptionVersion: payload.version,
+                        mediaUrl: mediaUrl || null,
+                        createdAt: rtdbTimestamp(),
+                        readBy: { [currentUserId]: rtdbTimestamp() },
+                    };
+
+                    // Encrypt media URL if present
+                    if (mediaUrl) {
+                        const encMediaUrl = encryptForRecipient(mediaUrl, chatKeyPair.secretKey, recipientPublicKey, chatKeyPair.publicKey);
+                        messageData.encryptedMediaUrl = encMediaUrl.ciphertext;
+                        messageData.mediaUrlNonce = encMediaUrl.nonce;
+                        messageData.mediaUrl = null; // Clear plaintext
+                    }
+
+                    lastMessageText = '[Encrypted message]';
+                } else {
+                    // Fallback: send unencrypted if recipient has no public key
+                    messageData = ChatService._buildPlaintextMessage(newMessageRef.key!, currentUserId, text, type, mediaUrl);
+                    lastMessageText = type === 'image' ? '📷 Image' : text;
+                }
+            } else if (chatData?.encryptedKeys?.[currentUserId]) {
+                // Group: Symmetric encryption with group key
+                const myEncKey = chatData.encryptedKeys[currentUserId];
+                const senderPublicKeyBytes = decodeBase64(myEncKey.senderPublicKey);
+                const groupKey = decryptGroupKey(myEncKey, chatKeyPair.secretKey, senderPublicKeyBytes);
+
+                if (groupKey) {
+                    const encrypted = encryptField(text, groupKey);
+                    messageData = {
+                        id: newMessageRef.key,
+                        senderId: currentUserId,
+                        text: '', // Cleared
+                        type,
+                        encrypted: true,
+                        ciphertext: encrypted.c,
+                        nonce: encrypted.n,
+                        senderPublicKey: encodeBase64(chatKeyPair.publicKey),
+                        encryptionVersion: encrypted.v,
+                        mediaUrl: mediaUrl || null,
+                        createdAt: rtdbTimestamp(),
+                        readBy: { [currentUserId]: rtdbTimestamp() },
+                    };
+
+                    if (mediaUrl) {
+                        const encMedia = encryptField(mediaUrl, groupKey);
+                        messageData.encryptedMediaUrl = encMedia.c;
+                        messageData.mediaUrlNonce = encMedia.n;
+                        messageData.mediaUrl = null;
+                    }
+
+                    lastMessageText = '[Encrypted message]';
+                } else {
+                    messageData = ChatService._buildPlaintextMessage(newMessageRef.key!, currentUserId, text, type, mediaUrl);
+                    lastMessageText = type === 'image' ? '📷 Image' : text;
+                }
+            } else {
+                // No encryption keys available for this chat
+                messageData = ChatService._buildPlaintextMessage(newMessageRef.key!, currentUserId, text, type, mediaUrl);
+                lastMessageText = type === 'image' ? '📷 Image' : text;
             }
-        };
+        } else {
+            // No key pair — send unencrypted
+            messageData = ChatService._buildPlaintextMessage(newMessageRef.key!, currentUserId, text, type, mediaUrl);
+            lastMessageText = type === 'image' ? '📷 Image' : text;
+        }
 
         await set(newMessageRef, messageData);
 
-        // 2. Update Firestore Chat Metadata (Last Message & Unread Counts)
+        // 2. Update Firestore Chat Metadata
         const chatRef = doc(db, 'chats', chatId);
-        // We need to increment unread counts for EVERYONE ELSE
-        // This usually requires a cloud function for atomicity, but for now we do client side
-        // Warning: Race conditions possible without Cloud Functions.
-
-        // For MVP: Just update lastMessage and updatedAt. 
-        // Real unread counts should be calculated or handled via backend.
         await updateDoc(chatRef, {
             lastMessage: {
-                text: type === 'image' ? '📷 Image' : text,
+                text: lastMessageText,
                 senderId: currentUserId,
                 timestamp: Date.now()
             },
             updatedAt: Date.now()
         });
     },
+
+    /** Build a plaintext message object (no encryption). */
+    _buildPlaintextMessage: (id: string, senderId: string, text: string, type: string, mediaUrl?: string) => ({
+        id,
+        senderId,
+        text,
+        type,
+        mediaUrl: mediaUrl || null,
+        createdAt: rtdbTimestamp(),
+        readBy: { [senderId]: rtdbTimestamp() },
+    }),
 
     /**
      * Subscribe to Messages (RTDB)
@@ -148,22 +277,138 @@ export const ChatService = {
         const messagesRef = ref(rtdb, `messages/${chatId}`);
         const q = rtdbQuery(messagesRef, limitToLast(50));
 
-        const unsubscribe = onValue(q, (snapshot) => {
+        // Cache chat data + keys for decryption
+        let cachedChatData: Chat | null = null;
+        let cachedGroupKey: Uint8Array | null = null;
+
+        const unsubscribe = onValue(q, async (snapshot) => {
             const data = snapshot.val();
             if (!data) {
                 callback([]);
                 return;
             }
 
-            const messages: Message[] = Object.values(data).map((msg: any) => ({
-                id: msg.id,
-                senderId: msg.senderId,
-                text: msg.text,
-                createdAt: msg.createdAt,
-                type: msg.type || 'text',
-                mediaUrl: msg.mediaUrl,
-                readBy: msg.readBy || {}
-            }));
+            const rawMessages: any[] = Object.values(data);
+            const chatKeyPair = await KeyManager.getChatKeyPair();
+
+            // Lazy-load chat data for group key decryption
+            if (!cachedChatData && chatKeyPair) {
+                try {
+                    const chatDocRef = doc(db, 'chats', chatId);
+                    const chatDoc = await getDoc(chatDocRef);
+                    if (chatDoc.exists()) {
+                        cachedChatData = chatDoc.data() as Chat;
+
+                        // Decrypt group key if available
+                        const currentUserId = auth.currentUser?.uid;
+                        if (currentUserId && cachedChatData.encryptedKeys?.[currentUserId]) {
+                            const myEncKey = cachedChatData.encryptedKeys[currentUserId];
+                            const senderPubKey = decodeBase64(myEncKey.senderPublicKey);
+                            cachedGroupKey = decryptGroupKey(myEncKey, chatKeyPair.secretKey, senderPubKey);
+                        }
+                    }
+                } catch {
+                    // Continue without decryption
+                }
+            }
+
+            const messages: Message[] = await Promise.all(
+                rawMessages.map(async (msg: any) => {
+                    const base: Message = {
+                        id: msg.id,
+                        senderId: msg.senderId,
+                        text: msg.text || '',
+                        createdAt: msg.createdAt,
+                        type: msg.type || 'text',
+                        mediaUrl: msg.mediaUrl,
+                        readBy: msg.readBy || {},
+                        encrypted: msg.encrypted,
+                    };
+
+                    // Decrypt if message is encrypted
+                    if (msg.encrypted && chatKeyPair) {
+                        try {
+                            if (cachedChatData?.type === 'dm') {
+                                // DM: asymmetric decryption
+                                // nacl.box shared secret = scalar_mult(my_secret, their_public)
+                                // For decryption, we always need the OTHER party's public key.
+                                // If we sent the message, use the other participant's pubkey.
+                                // If we received the message, use the sender's pubkey.
+                                const currentUserId = auth.currentUser?.uid;
+                                const isSender = msg.senderId === currentUserId;
+
+                                let counterpartyPubKey: Uint8Array | null = null;
+                                if (isSender) {
+                                    // We sent this — need the other participant's public key
+                                    const otherUserId = cachedChatData.participants.find(
+                                        (uid: string) => uid !== currentUserId,
+                                    );
+                                    if (otherUserId) {
+                                        counterpartyPubKey = await KeyManager.getPublicKey(otherUserId);
+                                    }
+                                } else {
+                                    // We received this — need the sender's public key
+                                    counterpartyPubKey = msg.senderPublicKey
+                                        ? decodeBase64(msg.senderPublicKey)
+                                        : await KeyManager.getPublicKey(msg.senderId);
+                                }
+
+                                if (counterpartyPubKey) {
+                                    const decrypted = decryptFromSender(
+                                        {
+                                            ciphertext: msg.ciphertext,
+                                            nonce: msg.nonce,
+                                            senderPublicKey: msg.senderPublicKey,
+                                            version: msg.encryptionVersion || 1,
+                                        },
+                                        chatKeyPair.secretKey,
+                                        counterpartyPubKey,
+                                    );
+                                    base.text = decrypted ?? '[Unable to decrypt]';
+
+                                    // Decrypt media URL
+                                    if (msg.encryptedMediaUrl && msg.mediaUrlNonce) {
+                                        const decMedia = decryptFromSender(
+                                            {
+                                                ciphertext: msg.encryptedMediaUrl,
+                                                nonce: msg.mediaUrlNonce,
+                                                senderPublicKey: msg.senderPublicKey,
+                                                version: msg.encryptionVersion || 1,
+                                            },
+                                            chatKeyPair.secretKey,
+                                            counterpartyPubKey,
+                                        );
+                                        if (decMedia) base.mediaUrl = decMedia;
+                                    }
+                                } else {
+                                    base.text = '[Unable to decrypt]';
+                                }
+                            } else if (cachedGroupKey) {
+                                // Group: symmetric decryption
+                                const decrypted = decryptField(
+                                    { c: msg.ciphertext, n: msg.nonce, v: msg.encryptionVersion || 1 },
+                                    cachedGroupKey,
+                                );
+                                base.text = decrypted ?? '[Unable to decrypt]';
+
+                                if (msg.encryptedMediaUrl && msg.mediaUrlNonce) {
+                                    const decMedia = decryptField(
+                                        { c: msg.encryptedMediaUrl, n: msg.mediaUrlNonce, v: msg.encryptionVersion || 1 },
+                                        cachedGroupKey,
+                                    );
+                                    if (decMedia) base.mediaUrl = decMedia;
+                                }
+                            } else {
+                                base.text = '[Unable to decrypt]';
+                            }
+                        } catch {
+                            base.text = '[Unable to decrypt]';
+                        }
+                    }
+
+                    return base;
+                }),
+            );
 
             // Sort by time (Newest First for Inverted List)
             messages.sort((a, b) => {
