@@ -1,0 +1,108 @@
+/**
+ * Input Validation Schemas for DreamSync
+ *
+ * Uses Zod for schema-based validation at system boundaries.
+ */
+
+import { z } from 'zod';
+
+// ---------------------------------------------------------------------------
+// Auth Schemas
+// ---------------------------------------------------------------------------
+
+export const loginSchema = z.object({
+    email: z.string().email('Please enter a valid email address'),
+    password: z.string().min(8, 'Password must be at least 8 characters'),
+});
+
+export const signupSchema = z.object({
+    email: z.string().email('Please enter a valid email address'),
+    password: z
+        .string()
+        .min(8, 'Password must be at least 8 characters')
+        .regex(/[A-Z]/, 'Password must contain at least one uppercase letter')
+        .regex(/[0-9]/, 'Password must contain at least one number'),
+});
+
+// ---------------------------------------------------------------------------
+// Dream Schemas
+// ---------------------------------------------------------------------------
+
+export const dreamSchema = z.object({
+    title: z.string().min(1, 'Title is required').max(200, 'Title is too long'),
+    description: z.string().max(2000, 'Description is too long').optional(),
+    category: z.enum([
+        'travel', 'skill', 'adventure', 'creative',
+        'career', 'health', 'personal', 'other',
+    ]),
+    phase: z.enum(['dream', 'doing', 'done']).optional(),
+    location: z.string().max(200, 'Location is too long').optional(),
+    budget: z.number().min(0, 'Budget cannot be negative').optional(),
+    tags: z.array(z.string().max(50)).max(10, 'Maximum 10 tags').optional(),
+});
+
+// ---------------------------------------------------------------------------
+// Message Schema
+// ---------------------------------------------------------------------------
+
+export const messageSchema = z.object({
+    text: z
+        .string()
+        .min(1, 'Message cannot be empty')
+        .max(5000, 'Message is too long (max 5000 characters)'),
+    type: z.enum(['text', 'image', 'video', 'system']).optional(),
+});
+
+// ---------------------------------------------------------------------------
+// Profile Schema
+// ---------------------------------------------------------------------------
+
+export const profileUpdateSchema = z.object({
+    displayName: z
+        .string()
+        .min(1, 'Display name is required')
+        .max(100, 'Display name is too long')
+        .optional(),
+    bio: z.string().max(500, 'Bio is too long (max 500 characters)').optional(),
+});
+
+// ---------------------------------------------------------------------------
+// Expense Schema
+// ---------------------------------------------------------------------------
+
+export const expenseSchema = z.object({
+    title: z.string().min(1, 'Title is required').max(200, 'Title is too long'),
+    amount: z.number().min(0, 'Amount cannot be negative').max(999_999_999, 'Amount is too large'),
+    category: z.enum([
+        'transport', 'accommodation', 'food',
+        'activities', 'gear', 'other',
+    ]),
+});
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/** Validate data against a schema. Throws ZodError on failure. */
+export function validate<T>(schema: z.ZodSchema<T>, data: unknown): T {
+    return schema.parse(data);
+}
+
+/** Validate data against a schema. Returns { success, data, error } without throwing. */
+export function safeValidate<T>(
+    schema: z.ZodSchema<T>,
+    data: unknown,
+): { success: true; data: T } | { success: false; error: string } {
+    const result = schema.safeParse(data);
+
+    if (result.success) {
+        return { success: true, data: result.data };
+    }
+
+    // Concatenate all error messages
+    const errorMessage = result.error.issues
+        .map((issue: z.ZodIssue) => issue.message)
+        .join('. ');
+
+    return { success: false, error: errorMessage };
+}

@@ -55,14 +55,17 @@ export const onNewChatMessage = onValueCreated(
 
         if (!recentQuery.empty) return;
 
-        const truncatedText =
-          messageText.length > 100
+        // Use generic text for encrypted messages to avoid leaking content
+        const isEncrypted = message.encrypted === true;
+        const notificationBody = isEncrypted
+          ? "Sent an encrypted message"
+          : messageText.length > 100
             ? messageText.substring(0, 100) + "..."
-            : messageText;
+            : messageText || "Sent a message";
 
         await notifyUser(recipientId, "chat_message", {
           title: senderName,
-          body: truncatedText || "Sent a message",
+          body: notificationBody,
           data: { chatId },
           actorId: senderId,
           actorName: senderName,

@@ -4,6 +4,8 @@ import { createUserWithEmailAndPassword } from 'firebase/auth';
 import { useState } from 'react';
 import { Alert, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { auth } from '../../firebaseConfig';
+import { KeyManager } from '../../src/services/keyManager';
+import { safeValidate, signupSchema } from '../../src/services/validation';
 import { legacyColors as colors } from '../../src/theme';
 
 export default function Signup() {
@@ -12,17 +14,32 @@ export default function Signup() {
     const [loading, setLoading] = useState(false);
     const router = useRouter();
 
+    const [loadingText, setLoadingText] = useState('');
+
     const handleSignup = async () => {
         if (!email || !password) return Alert.alert("Error", "Please fill in all fields.");
 
+        // Validate input
+        const validation = safeValidate(signupSchema, { email, password });
+        if (!validation.success) {
+            return Alert.alert("Validation Error", validation.error);
+        }
+
         setLoading(true);
         try {
-            await createUserWithEmailAndPassword(auth, email, password);
+            setLoadingText('Creating account...');
+            const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+
+            // Initialize encryption keys
+            setLoadingText('Securing your account...');
+            await KeyManager.initializeKeysOnSignup(password, userCredential.user.uid);
+
             router.replace('/(tabs)');
         } catch (e: any) {
             Alert.alert("Signup Failed", e.message);
         } finally {
             setLoading(false);
+            setLoadingText('');
         }
     };
 
@@ -66,7 +83,7 @@ export default function Signup() {
                     disabled={loading}
                 >
                     <Text style={styles.buttonText}>
-                        {loading ? "Creating Account..." : "Sign Up"}
+                        {loading ? (loadingText || "Creating Account...") : "Sign Up"}
                     </Text>
                 </TouchableOpacity>
             </View>

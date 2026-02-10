@@ -8,6 +8,7 @@ import { auth } from "../firebaseConfig";
 import { OfflineBanner } from "../src/components/ui/OfflineBanner";
 import { NotificationService } from "../src/services/notifications";
 import { useNotificationStore } from "../src/store/useNotificationStore";
+import { KeyManager } from "../src/services/keyManager";
 import { UsersService } from "../src/services/users";
 import { legacyColors as colors } from "../src/theme";
 
@@ -21,6 +22,8 @@ export default function RootLayout() {
   // Set up push notification listeners (foreground display + deep link routing)
   useNotificationHandler();
 
+  const [needsReauth, setNeedsReauth] = useState(false);
+
   // Handle user state changes
   function onAuthStateChangedHandler(user: User | null) {
     setUser(user);
@@ -29,6 +32,13 @@ export default function RootLayout() {
       UsersService.ensureUserProfile().catch(err =>
         console.error('Failed to ensure user profile:', err)
       );
+
+      // Check encryption key availability (cold start after reinstall/data clear)
+      KeyManager.isKeyInitialized().then(initialized => {
+        if (!initialized) {
+          setNeedsReauth(true);
+        }
+      });
 
       // Register for push notifications and subscribe to unread count
       NotificationService.registerForPushNotifications()
@@ -42,9 +52,11 @@ export default function RootLayout() {
 
       useNotificationStore.getState().subscribeToUnread();
     } else {
-      // User signed out — clean up
+      // User signed out — clean up encryption keys
+      KeyManager.clearKeys().catch(() => {});
       useNotificationStore.getState().unsubscribeFromUnread();
       pushTokenRef.current = null;
+      setNeedsReauth(false);
     }
     if (initializing) setInitializing(false);
   }
@@ -62,11 +74,14 @@ export default function RootLayout() {
     if (!user && !inAuthGroup) {
       // If not logged in and trying to access protected route, Redirect to login
       router.replace("/(auth)/login");
-    } else if (user && inAuthGroup) {
+    } else if (user && needsReauth && segments[1] !== "reauth") {
+      // Auth persists but encryption keys are missing — need password re-entry
+      router.replace("/(auth)/reauth");
+    } else if (user && inAuthGroup && !needsReauth) {
       // If logged in and in auth group, redirect to home
       router.replace("/(tabs)");
     }
-  }, [user, initializing, segments]);
+  }, [user, initializing, segments, needsReauth]);
 
   if (initializing) {
     return (

@@ -1,7 +1,11 @@
 import { db } from '@/firebaseConfig';
 import { Journey } from '@/src/types/social';
+import { Chat } from '@/src/types/chat';
 import { addDoc, arrayRemove, arrayUnion, collection, deleteField, doc, getDoc, getDocs, query, updateDoc, where, writeBatch } from 'firebase/firestore';
+import { decodeBase64 } from 'tweetnacl-util';
 import { ChatService } from './chat';
+import { decryptGroupKey, encryptGroupKeyForUser, generateGroupKey } from './encryption';
+import { KeyManager } from './keyManager';
 
 export const JourneysService = {
     /**
@@ -144,6 +148,9 @@ export const JourneysService = {
             await updateDoc(chatRef, {
                 participants: arrayUnion(userId)
             });
+
+            // Distribute group encryption key to the new participant
+            await JourneysService._distributeGroupKey(chatId, userId);
         } catch (error) {
             console.error('Error joining journey:', error);
             throw error;
@@ -212,6 +219,9 @@ export const JourneysService = {
                 await updateDoc(chatRef, {
                     participants: arrayUnion(userId)
                 });
+
+                // Distribute group encryption key to the accepted participant
+                await JourneysService._distributeGroupKey(chatId, userId);
             } else {
                 // Just remove the request
                 await updateDoc(journeyRef, {
@@ -287,16 +297,110 @@ export const JourneysService = {
                 journeyParticipants: arrayRemove(userId)
             });
 
-            // Remove from chat participants if chat exists
+            // Remove from chat participants and rotate group key if chat exists
             if (journey.chatId) {
                 const chatRef = doc(db, 'chats', journey.chatId);
                 await updateDoc(chatRef, {
-                    participants: arrayRemove(userId)
+                    participants: arrayRemove(userId),
+                    [`encryptedKeys.${userId}`]: deleteField(),
                 });
+
+                // Rotate group key for remaining participants
+                await JourneysService._rotateGroupKey(journey.chatId, userId);
             }
         } catch (error) {
             console.error('Error leaving journey:', error);
             throw error;
+        }
+    },
+
+    /**
+     * Distribute the group encryption key to a new participant.
+     * The current user decrypts their copy of the group key, then re-encrypts it for the new user.
+     */
+    _distributeGroupKey: async (chatId: string, newUserId: string): Promise<void> => {
+        try {
+            const chatKeyPair = await KeyManager.getChatKeyPair();
+            if (!chatKeyPair) return;
+
+            const currentUserId = (await import('@/firebaseConfig')).auth.currentUser?.uid;
+            if (!currentUserId) return;
+
+            const chatDocRef = doc(db, 'chats', chatId);
+            const chatDoc = await getDoc(chatDocRef);
+            if (!chatDoc.exists()) return;
+
+            const chatData = chatDoc.data() as Chat;
+            const myEncKey = chatData.encryptedKeys?.[currentUserId];
+            if (!myEncKey) return;
+
+            // Decrypt group key
+            const senderPubKey = decodeBase64(myEncKey.senderPublicKey);
+            const groupKey = decryptGroupKey(myEncKey, chatKeyPair.secretKey, senderPubKey);
+            if (!groupKey) return;
+
+            // Encrypt group key for the new user
+            const newUserPublicKey = await KeyManager.getPublicKey(newUserId);
+            if (!newUserPublicKey) return;
+
+            const encryptedForNewUser = encryptGroupKeyForUser(
+                groupKey,
+                chatKeyPair.secretKey,
+                newUserPublicKey,
+                chatKeyPair.publicKey,
+            );
+
+            await updateDoc(chatDocRef, {
+                [`encryptedKeys.${newUserId}`]: encryptedForNewUser,
+            });
+        } catch (error) {
+            console.error('[JourneysService] Failed to distribute group key:', error);
+            // Non-fatal: chat will still work, just unencrypted for this user
+        }
+    },
+
+    /**
+     * Rotate the group encryption key after a participant leaves.
+     * Generates a new group key and re-encrypts it for all remaining participants.
+     */
+    _rotateGroupKey: async (chatId: string, departedUserId: string): Promise<void> => {
+        try {
+            const chatKeyPair = await KeyManager.getChatKeyPair();
+            if (!chatKeyPair) return;
+
+            const chatDocRef = doc(db, 'chats', chatId);
+            const chatDoc = await getDoc(chatDocRef);
+            if (!chatDoc.exists()) return;
+
+            const chatData = chatDoc.data() as Chat;
+            if (!chatData.encryptionEnabled) return;
+
+            // Generate new group key
+            const newGroupKey = generateGroupKey();
+
+            // Re-encrypt for all remaining participants (except the departed user)
+            const newEncryptedKeys: Record<string, any> = {};
+            const remainingParticipants = chatData.participants.filter(
+                (uid: string) => uid !== departedUserId,
+            );
+
+            for (const participantId of remainingParticipants) {
+                const pubKey = await KeyManager.getPublicKey(participantId);
+                if (pubKey) {
+                    newEncryptedKeys[participantId] = encryptGroupKeyForUser(
+                        newGroupKey,
+                        chatKeyPair.secretKey,
+                        pubKey,
+                        chatKeyPair.publicKey,
+                    );
+                }
+            }
+
+            if (Object.keys(newEncryptedKeys).length > 0) {
+                await updateDoc(chatDocRef, { encryptedKeys: newEncryptedKeys });
+            }
+        } catch (error) {
+            console.error('[JourneysService] Failed to rotate group key:', error);
         }
     },
 

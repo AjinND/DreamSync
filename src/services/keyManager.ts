@@ -1,0 +1,292 @@
+/**
+ * Key Manager for DreamSync
+ *
+ * Manages the lifecycle of encryption keys:
+ * - Secure local storage (expo-secure-store on native, sessionStorage on web)
+ * - Key derivation from password on signup/login
+ * - Public key publication to Firestore
+ * - In-memory caching for derived sub-keys
+ */
+
+import * as SecureStore from 'expo-secure-store';
+import { doc, getDoc, updateDoc } from 'firebase/firestore';
+import { Platform } from 'react-native';
+import { encodeBase64, decodeBase64 } from 'tweetnacl-util';
+import nacl from 'tweetnacl';
+import { db } from '../../firebaseConfig';
+import { KeyDerivationMeta, UserKeyData } from '../types/encryption';
+import {
+    deriveChatKeyPair,
+    deriveFieldEncryptionKey,
+    deriveKeyFromPassword,
+    generateSalt,
+} from './encryption';
+
+const SECURE_KEY_MASTER = 'dreamsync_master_key';
+const SECURE_KEY_SALT = 'dreamsync_key_salt';
+const KDF_ITERATIONS = 100_000;
+const KEY_VERSION = 1;
+
+// ---------------------------------------------------------------------------
+// In-memory cache (cleared on sign-out)
+// ---------------------------------------------------------------------------
+
+let cachedMasterKey: Uint8Array | null = null;
+let cachedChatKeyPair: nacl.BoxKeyPair | null = null;
+let cachedFieldKey: Uint8Array | null = null;
+const publicKeyCache: Map<string, Uint8Array> = new Map();
+
+// ---------------------------------------------------------------------------
+// Secure Storage Abstraction
+// ---------------------------------------------------------------------------
+
+async function secureSet(key: string, value: string): Promise<void> {
+    if (Platform.OS === 'web') {
+        try {
+            // Use sessionStorage on web — cleared when tab closes, not accessible after XSS persistence
+            sessionStorage.setItem(key, value);
+        } catch {
+            // sessionStorage may be unavailable in some contexts
+        }
+    } else {
+        await SecureStore.setItemAsync(key, value);
+    }
+}
+
+async function secureGet(key: string): Promise<string | null> {
+    if (Platform.OS === 'web') {
+        try {
+            return sessionStorage.getItem(key);
+        } catch {
+            return null;
+        }
+    }
+    return SecureStore.getItemAsync(key);
+}
+
+async function secureDelete(key: string): Promise<void> {
+    if (Platform.OS === 'web') {
+        try {
+            sessionStorage.removeItem(key);
+        } catch {
+            // ignore
+        }
+    } else {
+        await SecureStore.deleteItemAsync(key);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Public API
+// ---------------------------------------------------------------------------
+
+export const KeyManager = {
+    /**
+     * Generate keys on first signup.
+     * 1. Generate salt
+     * 2. Derive master key from password
+     * 3. Derive chat keypair & field key
+     * 4. Store master key in secure storage
+     * 5. Publish public key + derivation meta to Firestore
+     */
+    async initializeKeysOnSignup(password: string, userId: string): Promise<void> {
+        const salt = generateSalt();
+        const masterKey = deriveKeyFromPassword(password, salt, KDF_ITERATIONS);
+
+        // Derive sub-keys
+        const chatKeyPair = deriveChatKeyPair(masterKey);
+        const fieldKey = deriveFieldEncryptionKey(masterKey);
+
+        // Store master key and salt locally (salt is backup in case Firestore write fails)
+        await secureSet(SECURE_KEY_MASTER, encodeBase64(masterKey));
+        await secureSet(SECURE_KEY_SALT, salt);
+
+        // Cache in memory
+        cachedMasterKey = masterKey;
+        cachedChatKeyPair = chatKeyPair;
+        cachedFieldKey = fieldKey;
+
+        // Publish to Firestore — retry once on failure
+        const keyData = {
+            publicKey: encodeBase64(chatKeyPair.publicKey),
+            keyVersion: KEY_VERSION,
+            keySalt: salt,
+            keyIterations: KDF_ITERATIONS,
+            keyDerivationVersion: KEY_VERSION,
+        };
+
+        const userRef = doc(db, 'users', userId);
+        try {
+            await updateDoc(userRef, keyData);
+        } catch {
+            // User doc may not exist yet (race with ensureUserProfile).
+            // Store salt locally; publishKeyData will be called by ensureUserProfile.
+            console.warn('[KeyManager] Initial key publish failed, will retry via ensureUserProfile');
+        }
+    },
+
+    /**
+     * Re-derive keys on login (or reauth).
+     * 1. Fetch salt from Firestore
+     * 2. Re-derive master key from password
+     * 3. Verify public key matches
+     * 4. Store & cache
+     */
+    async initializeKeysOnLogin(password: string, userId: string): Promise<void> {
+        const meta = await KeyManager.getDerivationMeta(userId);
+
+        if (!meta) {
+            // User signed up before encryption was added — initialize fresh
+            await KeyManager.initializeKeysOnSignup(password, userId);
+            return;
+        }
+
+        const masterKey = deriveKeyFromPassword(
+            password,
+            meta.salt,
+            meta.iterations,
+        );
+
+        // Derive chat keypair and verify against stored public key
+        const chatKeyPair = deriveChatKeyPair(masterKey);
+        const storedPublicKey = await KeyManager.getPublicKey(userId);
+
+        if (storedPublicKey) {
+            const derivedPub = encodeBase64(chatKeyPair.publicKey);
+            const storedPub = encodeBase64(storedPublicKey);
+
+            if (derivedPub !== storedPub) {
+                throw new Error(
+                    'Key verification failed. The password may be incorrect or keys were rotated.',
+                );
+            }
+        }
+
+        const fieldKey = deriveFieldEncryptionKey(masterKey);
+
+        // Store & cache
+        await secureSet(SECURE_KEY_MASTER, encodeBase64(masterKey));
+        await secureSet(SECURE_KEY_SALT, meta.salt);
+        cachedMasterKey = masterKey;
+        cachedChatKeyPair = chatKeyPair;
+        cachedFieldKey = fieldKey;
+    },
+
+    /** Check if a master key is available (in secure storage or memory). */
+    async isKeyInitialized(): Promise<boolean> {
+        if (cachedMasterKey) return true;
+        const stored = await secureGet(SECURE_KEY_MASTER);
+        return stored !== null;
+    },
+
+    /** Get or derive the master key from secure storage. */
+    async getMasterKey(): Promise<Uint8Array | null> {
+        if (cachedMasterKey) return cachedMasterKey;
+
+        const stored = await secureGet(SECURE_KEY_MASTER);
+        if (!stored) return null;
+
+        cachedMasterKey = decodeBase64(stored);
+        return cachedMasterKey;
+    },
+
+    /** Get or derive the chat keypair. */
+    async getChatKeyPair(): Promise<nacl.BoxKeyPair | null> {
+        if (cachedChatKeyPair) return cachedChatKeyPair;
+
+        const masterKey = await KeyManager.getMasterKey();
+        if (!masterKey) return null;
+
+        cachedChatKeyPair = deriveChatKeyPair(masterKey);
+        return cachedChatKeyPair;
+    },
+
+    /** Get or derive the field encryption key. */
+    async getFieldEncryptionKey(): Promise<Uint8Array | null> {
+        if (cachedFieldKey) return cachedFieldKey;
+
+        const masterKey = await KeyManager.getMasterKey();
+        if (!masterKey) return null;
+
+        cachedFieldKey = deriveFieldEncryptionKey(masterKey);
+        return cachedFieldKey;
+    },
+
+    /**
+     * Fetch another user's public key from Firestore.
+     * Cached in-memory for the session.
+     */
+    async getPublicKey(userId: string): Promise<Uint8Array | null> {
+        const cached = publicKeyCache.get(userId);
+        if (cached) return cached;
+
+        const userRef = doc(db, 'users', userId);
+        const snapshot = await getDoc(userRef);
+
+        if (!snapshot.exists()) return null;
+
+        const data = snapshot.data() as Partial<UserKeyData>;
+        if (!data.publicKey) return null;
+
+        const key = decodeBase64(data.publicKey);
+        publicKeyCache.set(userId, key);
+        return key;
+    },
+
+    /** Fetch key derivation metadata from Firestore. */
+    async getDerivationMeta(userId: string): Promise<KeyDerivationMeta | null> {
+        const userRef = doc(db, 'users', userId);
+        const snapshot = await getDoc(userRef);
+
+        if (!snapshot.exists()) return null;
+
+        const data = snapshot.data();
+        if (!data.keySalt || !data.keyIterations) return null;
+
+        return {
+            salt: data.keySalt,
+            iterations: data.keyIterations,
+            version: data.keyDerivationVersion ?? 1,
+        };
+    },
+
+    /**
+     * Publish key data to Firestore (used after ensureUserProfile creates the doc).
+     * Only publishes the public key and version. Does NOT generate a new salt —
+     * salt is always written during signup and stored locally as backup.
+     */
+    async publishKeyData(userId: string): Promise<void> {
+        const chatKeyPair = await KeyManager.getChatKeyPair();
+        if (!chatKeyPair) return;
+
+        const userRef = doc(db, 'users', userId);
+        const updateData: Record<string, any> = {
+            publicKey: encodeBase64(chatKeyPair.publicKey),
+            keyVersion: KEY_VERSION,
+        };
+
+        // Check if salt needs to be written (first publish after signup race condition)
+        const existingMeta = await KeyManager.getDerivationMeta(userId);
+        if (!existingMeta) {
+            // Try to recover salt from local secure storage
+            const localSalt = await secureGet(SECURE_KEY_SALT);
+            if (localSalt) {
+                updateData.keySalt = localSalt;
+                updateData.keyIterations = KDF_ITERATIONS;
+                updateData.keyDerivationVersion = KEY_VERSION;
+            }
+        }
+
+        await updateDoc(userRef, updateData);
+    },
+
+    /** Clear all keys from memory and secure storage (sign-out). */
+    async clearKeys(): Promise<void> {
+        cachedMasterKey = null;
+        cachedChatKeyPair = null;
+        cachedFieldKey = null;
+        publicKeyCache.clear();
+        await secureDelete(SECURE_KEY_MASTER);
+        await secureDelete(SECURE_KEY_SALT);
+    },
+};

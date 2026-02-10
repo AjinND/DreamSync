@@ -12,6 +12,9 @@ import {
 } from 'firebase/firestore';
 import { auth, db } from '../../firebaseConfig';
 import { BucketItem, Phase } from '../types/item';
+import { decryptDreamFields, encryptDreamFields, isEncryptedField } from './encryption';
+import { KeyManager } from './keyManager';
+import { safeValidate, dreamSchema } from './validation';
 
 const COLLECTION_NAME = 'items';
 
@@ -25,6 +28,20 @@ export const ItemService = {
             throw new Error("User not authenticated");
         }
         console.log("[ItemService] Current User ID:", user.uid);
+
+        // Validate input
+        const validation = safeValidate(dreamSchema, {
+            title: item.title,
+            description: item.description,
+            category: item.category,
+            phase: item.phase,
+            location: item.location,
+            budget: item.budget,
+            tags: item.tags,
+        });
+        if (!validation.success) {
+            throw new Error(`Validation failed: ${validation.error}`);
+        }
 
         // Test Connectivity / DB Existence
         try {
@@ -43,12 +60,20 @@ export const ItemService = {
         }
 
         try {
-            // ... strict sanitization ...
-            const sanitizedItem = JSON.parse(JSON.stringify({
+            // Encrypt sensitive fields for private items
+            let itemData: Record<string, any> = {
                 ...item,
                 userId: user.uid,
                 createdAt: Date.now(),
-            }));
+            };
+
+            const fieldKey = await KeyManager.getFieldEncryptionKey();
+            if (fieldKey && itemData.isPublic !== true) {
+                itemData = encryptDreamFields(itemData, fieldKey) as Record<string, any>;
+            }
+
+            // ... strict sanitization ...
+            const sanitizedItem = JSON.parse(JSON.stringify(itemData));
 
             console.log("[ItemService] Sanitized Item for Firestore:", sanitizedItem);
             console.log("[ItemService] Attempting to write to 'items' collection...");
@@ -88,19 +113,51 @@ export const ItemService = {
         }
 
         const snapshot = await getDocs(q);
-        return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as BucketItem));
+        const items = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as BucketItem));
+
+        // Decrypt encrypted fields & lazy-migrate unencrypted private items
+        const fieldKey = await KeyManager.getFieldEncryptionKey();
+        if (fieldKey) {
+            return Promise.all(items.map(async (item) => {
+                if (item.encryptionVersion) {
+                    return decryptDreamFields(item, fieldKey);
+                }
+                // Lazy migration: encrypt plaintext private items
+                if (item.isPublic !== true && !item.encryptionVersion) {
+                    const encrypted = encryptDreamFields(item, fieldKey);
+                    // Write encrypted version back (non-blocking)
+                    const docRef = doc(db, COLLECTION_NAME, item.id);
+                    updateDoc(docRef, encrypted as Record<string, any>).catch((err) => {
+                        console.warn('[ItemService] Lazy migration failed for item:', item.id, err);
+                    });
+                }
+                return item;
+            }));
+        }
+        return items;
     },
 
     // Update
-    async updateItem(id: string, updates: Partial<BucketItem>) {
+    async updateItem(id: string, updates: Partial<BucketItem>, options?: { skipEncryption?: boolean }) {
         const docRef = doc(db, COLLECTION_NAME, id);
+
+        let processedUpdates: Record<string, any> = { ...updates };
+
+        // Encrypt sensitive fields for private items (unless caller handled encryption)
+        if (!options?.skipEncryption) {
+            const fieldKey = await KeyManager.getFieldEncryptionKey();
+            if (fieldKey && processedUpdates.isPublic !== true) {
+                processedUpdates = encryptDreamFields(processedUpdates, fieldKey) as Record<string, any>;
+            }
+        }
+
         // Sanitize updates to remove undefined values, as Firestore rejects them
-        const sanitizedUpdates = Object.entries(updates).reduce((acc, [key, value]) => {
+        const sanitizedUpdates = Object.entries(processedUpdates).reduce((acc, [key, value]) => {
             if (value !== undefined) {
-                acc[key as keyof BucketItem] = value as any;
+                (acc as any)[key] = value;
             }
             return acc;
-        }, {} as Partial<BucketItem>);
+        }, {} as Record<string, any>);
 
         await updateDoc(docRef, sanitizedUpdates);
     },
@@ -131,6 +188,11 @@ export const ItemService = {
             snapshot.forEach(doc => results.push({ id: doc.id, ...doc.data() } as BucketItem));
         }
 
+        // Decrypt encrypted fields
+        const fieldKey = await KeyManager.getFieldEncryptionKey();
+        if (fieldKey) {
+            return results.map(item => item.encryptionVersion ? decryptDreamFields(item, fieldKey) : item);
+        }
         return results;
     },
 
@@ -149,9 +211,18 @@ export const ItemService = {
         const docRef = doc(db, COLLECTION_NAME, itemId);
 
         return onSnapshot(docRef,
-            (docSnap) => {
+            async (docSnap) => {
                 if (docSnap.exists()) {
-                    const item = { id: docSnap.id, ...docSnap.data() } as BucketItem;
+                    let item = { id: docSnap.id, ...docSnap.data() } as BucketItem;
+
+                    // Decrypt if encrypted
+                    if (item.encryptionVersion) {
+                        const fieldKey = await KeyManager.getFieldEncryptionKey();
+                        if (fieldKey) {
+                            item = decryptDreamFields(item, fieldKey);
+                        }
+                    }
+
                     callback(item);
                 } else {
                     callback(null);

@@ -11,6 +11,9 @@ import {
 } from 'firebase/firestore';
 import { auth, db } from '../../firebaseConfig';
 import { UserProfile } from '../types/social';
+import { decryptProfileFields, encryptProfileFields, isEncryptedField } from './encryption';
+import { KeyManager } from './keyManager';
+import { safeValidate, profileUpdateSchema } from './validation';
 
 const COLLECTION_NAME = 'users';
 
@@ -26,7 +29,19 @@ export const UsersService = {
             return null;
         }
 
-        return { id: snapshot.id, ...snapshot.data() } as UserProfile;
+        let profileData = { id: snapshot.id, ...snapshot.data() } as UserProfile;
+
+        // Only decrypt if this is the current user's own profile
+        // Other users' profiles are encrypted with THEIR key, not ours
+        const currentUserId = auth.currentUser?.uid;
+        if (currentUserId === userId) {
+            const fieldKey = await KeyManager.getFieldEncryptionKey();
+            if (fieldKey && (isEncryptedField(profileData.email) || isEncryptedField(profileData.bio))) {
+                profileData = decryptProfileFields(profileData, fieldKey) as UserProfile;
+            }
+        }
+
+        return profileData;
     },
 
     /**
@@ -40,7 +55,31 @@ export const UsersService = {
         const snapshot = await getDoc(docRef);
 
         if (snapshot.exists()) {
-            return { id: snapshot.id, ...snapshot.data() } as UserProfile;
+            const profile = { id: snapshot.id, ...snapshot.data() } as UserProfile;
+
+            // Publish key data if not yet stored (e.g. signup race condition)
+            if (!profile.publicKey) {
+                await KeyManager.publishKeyData(user.uid).catch(() => {});
+            }
+
+            // Decrypt profile fields if needed, or lazy-migrate plaintext fields
+            const fieldKey = await KeyManager.getFieldEncryptionKey();
+            if (fieldKey) {
+                if (isEncryptedField(profile.email) || isEncryptedField(profile.bio)) {
+                    return decryptProfileFields(profile, fieldKey) as UserProfile;
+                }
+
+                // Lazy migration: encrypt plaintext profile fields
+                if (typeof profile.email === 'string' || typeof profile.bio === 'string') {
+                    const encrypted = encryptProfileFields(
+                        { email: profile.email, bio: profile.bio },
+                        fieldKey,
+                    );
+                    updateDoc(docRef, encrypted).catch(() => {});
+                }
+            }
+
+            return profile;
         }
 
         // Create new profile
@@ -54,12 +93,21 @@ export const UsersService = {
             createdAt: Date.now(),
         };
 
-        // Firestore doesn't accept undefined, so strip those fields
-        const firestoreData = Object.fromEntries(
+        // Encrypt sensitive fields if key is available
+        const fieldKey = await KeyManager.getFieldEncryptionKey();
+        let firestoreData: Record<string, any> = Object.fromEntries(
             Object.entries(newProfile).filter(([, v]) => v !== undefined)
         );
 
+        if (fieldKey) {
+            firestoreData = encryptProfileFields(firestoreData, fieldKey);
+        }
+
         await setDoc(docRef, firestoreData);
+
+        // Publish key data to the new user document
+        await KeyManager.publishKeyData(user.uid).catch(() => {});
+
         return { id: user.uid, ...newProfile };
     },
 
@@ -70,8 +118,26 @@ export const UsersService = {
         const user = auth.currentUser;
         if (!user) throw new Error('User not authenticated');
 
+        // Validate input (only validate fields that are present)
+        const validationData: Record<string, any> = {};
+        if (updates.displayName !== undefined) validationData.displayName = updates.displayName;
+        if (updates.bio !== undefined) validationData.bio = updates.bio;
+        if (Object.keys(validationData).length > 0) {
+            const validation = safeValidate(profileUpdateSchema, validationData);
+            if (!validation.success) {
+                throw new Error(`Validation failed: ${validation.error}`);
+            }
+        }
+
+        // Encrypt sensitive fields if key is available
+        let updateData: Record<string, any> = { ...updates };
+        const fieldKey = await KeyManager.getFieldEncryptionKey();
+        if (fieldKey) {
+            updateData = encryptProfileFields(updateData, fieldKey);
+        }
+
         const docRef = doc(db, COLLECTION_NAME, user.uid);
-        await updateDoc(docRef, updates);
+        await updateDoc(docRef, updateData);
     },
 
     /**

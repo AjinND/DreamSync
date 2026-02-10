@@ -72,6 +72,8 @@ export interface BucketItem {
     // Budget
     budget?: number;
     expenses?: Expense[];
+    // Encryption
+    encryptionVersion?: number;
 }
 
 export interface UserStats {

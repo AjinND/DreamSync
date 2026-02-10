@@ -7,6 +7,7 @@ interface ChatState {
     activeChatId: string | null;
     messages: Message[];
     isLoading: boolean;
+    decryptionError: boolean;
 
     // Actions
     fetchChats: () => void; // Subscribes to chat list
@@ -25,6 +26,7 @@ export const useChatStore = create<ChatState>((set, get) => {
         activeChatId: null,
         messages: [],
         isLoading: false,
+        decryptionError: false,
 
         fetchChats: () => {
             if (chatsUnsubscribe) return; // Already subscribed
@@ -52,7 +54,8 @@ export const useChatStore = create<ChatState>((set, get) => {
 
             messagesUnsubscribe = ChatService.subscribeToMessages(chatId, (messages) => {
                 clearTimeout(loadingTimeout);
-                set({ messages, isLoading: false });
+                const hasDecryptionErrors = messages.some(m => m.text === '[Unable to decrypt]');
+                set({ messages, isLoading: false, decryptionError: hasDecryptionErrors });
             });
         },
 
@@ -73,7 +76,7 @@ export const useChatStore = create<ChatState>((set, get) => {
                 messagesUnsubscribe();
                 messagesUnsubscribe = null;
             }
-            set({ chats: [], activeChatId: null, messages: [], isLoading: false });
+            set({ chats: [], activeChatId: null, messages: [], isLoading: false, decryptionError: false });
         },
 
         sendMessage: async (text: string, type = 'text', mediaUrl) => {
