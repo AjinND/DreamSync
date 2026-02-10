@@ -1,6 +1,6 @@
 /**
  * DreamSync - Dream Detail Screen
- * Refactored with extracted components for cleaner architecture
+ * Clean minimalistic redesign: no parallax, no reanimated tab content, no emojis
  */
 
 import { auth } from '@/firebaseConfig';
@@ -18,6 +18,7 @@ import {
     ProgressTab,
     Reflections,
 } from '@/src/components/dream';
+import { ConfettiExplosion } from '@/src/components/animations/ConfettiExplosion';
 import { EmptyState, Header } from '@/src/components/shared';
 import { CommentSection } from '@/src/components/social';
 import { Button, Card, IconButton } from '@/src/components/ui';
@@ -27,17 +28,19 @@ import { useBucketStore } from '@/src/store/useBucketStore';
 import { useCommunityStore } from '@/src/store/useCommunityStore';
 import { useTheme } from '@/src/theme';
 import { BucketItem, Expense, Phase } from '@/src/types/item';
+import * as Haptics from 'expo-haptics';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import {
+    BookOpen,
     Calendar,
     ChevronLeft,
+    DollarSign,
     Flame,
     MapPin,
     Moon,
-    Sparkles,
+    TrendingUp,
     Trophy,
-    Users
 } from 'lucide-react-native';
 import { useEffect, useState } from 'react';
 import {
@@ -50,13 +53,19 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+type TabId = 'story' | 'progress' | 'expenses';
+
 const PHASES: { id: Phase; label: string; icon: any }[] = [
     { id: 'dream', label: 'Dream', icon: Moon },
     { id: 'doing', label: 'Doing', icon: Flame },
     { id: 'done', label: 'Done', icon: Trophy },
 ];
 
-const TABS = ['Story', 'Progress', 'Expenses'];
+const TABS: { id: TabId; label: string; icon: any }[] = [
+    { id: 'story', label: 'Story', icon: BookOpen },
+    { id: 'progress', label: 'Progress', icon: TrendingUp },
+    { id: 'expenses', label: 'Expenses', icon: DollarSign },
+];
 
 export default function DreamDetailScreen() {
     const { id } = useLocalSearchParams();
@@ -68,19 +77,23 @@ export default function DreamDetailScreen() {
         updateItem,
         deleteItem,
         addInspiration,
+        deleteInspiration,
         addMemory,
         addReflection,
         addProgress,
         addExpense,
+        subscribeToItem,
+        unsubscribeFromItem,
     } = useBucketStore();
 
     const { updateDreamMetadata } = useCommunityStore();
 
     const [item, setItem] = useState<BucketItem | undefined>(items.find((i) => i.id === id));
     const [isLoading, setIsLoading] = useState(false);
-    const [activeTab, setActiveTab] = useState('Story');
+    const [activeTab, setActiveTab] = useState<TabId>('story');
     const [isDeleting, setIsDeleting] = useState(false);
     const [chatId, setChatId] = useState<string | null>(null);
+    const [showConfetti, setShowConfetti] = useState(false);
 
     // Check ownership & participation
     const userId = auth.currentUser?.uid;
@@ -93,17 +106,11 @@ export default function DreamDetailScreen() {
     useEffect(() => {
         const checkParticipation = async () => {
             if (isJourney && item && userId) {
-                // Determine participation
                 try {
-                    // We need to fetch the journey to check participants list
-                    // Optimization: We could store 'isParticipant' in local item if we synced it, 
-                    // but for now fetch to be safe and get fresh list
                     const journey = await JourneysService.getJourneyByDreamId(item.id);
                     if (journey) {
                         const participants = journey.participants || [];
                         setIsParticipant(participants.includes(userId));
-
-                        // Set Chat ID if journey exists
                         setChatId(`journey_${journey.id}`);
                     }
                 } catch (e) {
@@ -126,30 +133,44 @@ export default function DreamDetailScreen() {
     const [showExpenseModal, setShowExpenseModal] = useState(false);
 
     useEffect(() => {
-        const loadDream = async () => {
-            if (typeof id !== 'string' || isDeleting) return;
+        if (!id || typeof id !== 'string' || isDeleting) return;
 
-            const localItem = items.find((i) => i.id === id);
-            if (localItem) {
-                setItem(localItem);
-                return;
-            }
+        const shouldUseRealTimeSync = isOwner || isParticipant;
 
-            setIsLoading(true);
-            try {
-                const remoteItem = await CommunityService.getDreamById(id);
-                if (remoteItem) {
-                    setItem(remoteItem);
+        if (shouldUseRealTimeSync) {
+            subscribeToItem(id, (updatedItem) => {
+                if (updatedItem) {
+                    setItem(updatedItem);
                 }
-            } catch (error) {
-                console.error('Failed to fetch dream:', error);
-            } finally {
-                setIsLoading(false);
-            }
-        };
+            });
 
-        loadDream();
-    }, [items, id, isDeleting]);
+            return () => {
+                unsubscribeFromItem(id);
+            };
+        } else {
+            const loadDream = async () => {
+                const localItem = items.find((i) => i.id === id);
+                if (localItem) {
+                    setItem(localItem);
+                    return;
+                }
+
+                setIsLoading(true);
+                try {
+                    const remoteItem = await CommunityService.getDreamById(id);
+                    if (remoteItem) {
+                        setItem(remoteItem);
+                    }
+                } catch (error) {
+                    console.error('Failed to fetch dream:', error);
+                } finally {
+                    setIsLoading(false);
+                }
+            };
+
+            loadDream();
+        }
+    }, [id, isOwner, isParticipant, isDeleting]);
 
     const getPhaseColor = (phase: Phase) => {
         switch (phase) {
@@ -160,9 +181,7 @@ export default function DreamDetailScreen() {
     };
 
     const handleEdit = () => {
-        if (!canEdit) return; // Allow participants to edit details too? Or restricted?
-        // For shared goals, usually participants can edit basic info.
-        // Let's allow it for now, unless specific requirement restricts it.
+        if (!canEdit) return;
         router.push(`/item/add?id=${id}`);
     };
 
@@ -183,11 +202,11 @@ export default function DreamDetailScreen() {
                 isPublic: false,
             });
             Alert.alert(
-                'Inspired! ✨',
+                'Inspired!',
                 'This dream has been added to your list.',
                 [
                     { text: 'View My List', onPress: () => router.push('/(tabs)') },
-                    { text: 'Keep Browsing', style: 'cancel' }
+                    { text: 'Keep Browsing', style: 'cancel' },
                 ]
             );
         } catch (error) {
@@ -201,7 +220,6 @@ export default function DreamDetailScreen() {
     const handleStartJourney = async () => {
         if (!item || !auth.currentUser) return;
 
-        // Prevent if already a journey
         if (item.collaborationType === 'group') {
             Alert.alert('Already a Journey', 'This dream is already a shared journey.');
             return;
@@ -209,20 +227,20 @@ export default function DreamDetailScreen() {
 
         try {
             setIsLoading(true);
-            // Create Journey
+            setItem(prev => prev ? { ...prev, collaborationType: 'group' } : undefined);
+
             await JourneysService.createJourney(item.id, auth.currentUser.uid, {
                 title: item.title,
                 description: item.description || '',
                 image: item.mainImage || null,
                 authorName: auth.currentUser.displayName || 'Anonymous',
-                authorAvatar: auth.currentUser.photoURL || null
+                authorAvatar: auth.currentUser.photoURL || null,
             });
 
-            // Update local item
             await updateItem(item.id, { collaborationType: 'group' });
-
-            Alert.alert('Journey Started! 🚀', 'You can now invite friends to this dream.');
+            Alert.alert('Journey Started!', 'You can now invite friends to this dream.');
         } catch (error) {
+            setItem(prev => prev ? { ...prev, collaborationType: 'solo' } : undefined);
             console.error('Failed to start journey:', error);
             Alert.alert('Error', 'Failed to start journey.');
         } finally {
@@ -250,10 +268,22 @@ export default function DreamDetailScreen() {
     };
 
     const handlePhaseChange = async (newPhase: Phase) => {
-        if (!canEdit) return; // Allow participants to update phase (e.g. mark as done)
+        if (!canEdit) return;
         if (item && newPhase !== item.phase) {
+            if (newPhase === 'done') {
+                setShowConfetti(true);
+                setTimeout(() => setShowConfetti(false), 100);
+            }
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
             await updateItem(item.id, { phase: newPhase });
         }
+    };
+
+    const handleDeleteInspiration = (inspirationId: string) => {
+        Alert.alert('Delete Inspiration', 'Are you sure?', [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Delete', style: 'destructive', onPress: () => deleteInspiration(item!.id, inspirationId) },
+        ]);
     };
 
     // Modal handlers
@@ -311,11 +341,12 @@ export default function DreamDetailScreen() {
         })
         : null;
 
-    const visibleTabs = canEdit ? TABS : ['Story'];
-
     return (
         <View style={[styles.container, { backgroundColor: colors.background }]}>
             <StatusBar style="light" />
+
+            {/* Confetti Explosion */}
+            <ConfettiExplosion trigger={showConfetti} />
 
             <ScrollView
                 style={styles.scrollView}
@@ -327,13 +358,14 @@ export default function DreamDetailScreen() {
                     item={item}
                     isOwner={canEdit}
                     onEdit={handleEdit}
-                    onGetInspired={handleGetInspired}
+                    onGetInspired={canEdit ? undefined : handleGetInspired}
                 />
 
                 {/* Collaboration Section */}
                 <CollaborationSection
                     dreamId={item.id}
                     isOwner={isOwner}
+                    collaborationType={item.collaborationType}
                     onStartJourney={handleStartJourney}
                 />
 
@@ -341,91 +373,85 @@ export default function DreamDetailScreen() {
                 <View style={[styles.contentWrapper, { backgroundColor: colors.background }]}>
                     {/* Phase Selector - Only for owners and participants */}
                     {canEdit && (
-                        <View style={[styles.phaseSelector, { backgroundColor: colors.surface }]}>
-                            {PHASES.map(p => (
-                                <TouchableOpacity
-                                    key={p.id}
-                                    onPress={() => handlePhaseChange(p.id)}
-                                    style={[
-                                        styles.phaseButton,
-                                        item.phase === p.id && { backgroundColor: getPhaseColor(p.id) + '20' }
-                                    ]}
-                                >
-                                    <p.icon
-                                        size={18}
-                                        color={item.phase === p.id ? getPhaseColor(p.id) : colors.textMuted}
-                                    />
-                                    <Text style={[
-                                        styles.phaseLabel,
-                                        { color: item.phase === p.id ? getPhaseColor(p.id) : colors.textMuted }
-                                    ]}>
-                                        {p.label}
-                                    </Text>
-                                </TouchableOpacity>
-                            ))}
+                        <View style={[styles.phaseSelector, { backgroundColor: colors.border + '30' }]}>
+                            {PHASES.map(({ id: phaseId, label, icon: Icon }) => {
+                                const isActive = item.phase === phaseId;
+                                const phaseColor = getPhaseColor(phaseId);
+                                return (
+                                    <TouchableOpacity
+                                        key={phaseId}
+                                        style={[
+                                            styles.phaseButton,
+                                            isActive && [styles.activePhaseButton, { backgroundColor: '#FFF' }],
+                                        ]}
+                                        onPress={() => handlePhaseChange(phaseId)}
+                                        disabled={isLoading}
+                                    >
+                                        <Icon size={14} color={isActive ? phaseColor : colors.textMuted} />
+                                        <Text style={[
+                                            styles.phaseLabel,
+                                            { color: isActive ? phaseColor : colors.textMuted },
+                                        ]}>
+                                            {label}
+                                        </Text>
+                                    </TouchableOpacity>
+                                );
+                            })}
                         </View>
                     )}
 
-                    {/* Info Chips */}
-                    <View style={styles.infoRow}>
-                        <View style={[styles.infoChip, { backgroundColor: colors.surface }]}>
-                            <Calendar size={14} color={colors.textSecondary} />
-                            <Text style={[styles.infoText, { color: colors.textSecondary }]} numberOfLines={1}>
-                                {formattedDate || 'Someday'}
-                            </Text>
-                        </View>
-                        {item.location && (
-                            <View style={[styles.infoChip, { backgroundColor: colors.surface }]}>
-                                <MapPin size={14} color={colors.textSecondary} />
-                                <Text style={[styles.infoText, { color: colors.textSecondary }]} numberOfLines={1}>
-                                    {item.location}
-                                </Text>
-                            </View>
-                        )}
-                        {item.with && item.with.length > 0 && (
-                            <View style={[styles.infoChip, { backgroundColor: colors.surface }]}>
-                                <Users size={14} color={colors.textSecondary} />
-                                <Text style={[styles.infoText, { color: colors.textSecondary }]}>
-                                    {item.with.length} people
-                                </Text>
-                            </View>
-                        )}
-                        {item.inspiredCount && item.inspiredCount > 0 && (
-                            <View style={[styles.infoChip, { backgroundColor: colors.accent + '15' }]}>
-                                <Sparkles size={14} color={colors.accent} />
-                                <Text style={[styles.infoText, { color: colors.accent }]}>
-                                    {item.inspiredCount} inspired
-                                </Text>
-                            </View>
-                        )}
-                    </View>
-
-                    {/* Tabs */}
-                    {visibleTabs.length > 1 && (
-                        <View style={[styles.tabBar, { backgroundColor: colors.surface }]}>
-                            {visibleTabs.map(tab => (
-                                <TouchableOpacity
-                                    key={tab}
-                                    style={[
-                                        styles.tabButton,
-                                        activeTab === tab && [styles.activeTab, { backgroundColor: colors.background }]
-                                    ]}
-                                    onPress={() => setActiveTab(tab)}
-                                >
-                                    <Text style={[
-                                        styles.tabText,
-                                        { color: activeTab === tab ? colors.textPrimary : colors.textMuted }
-                                    ]}>
-                                        {tab}
+                    {/* Meta Row */}
+                    {(formattedDate || item.location) && (
+                        <View style={styles.metaRow}>
+                            {formattedDate && (
+                                <View style={styles.metaItem}>
+                                    <Calendar size={14} color={colors.textMuted} />
+                                    <Text style={[styles.metaText, { color: colors.textSecondary }]}>
+                                        {formattedDate}
                                     </Text>
-                                </TouchableOpacity>
-                            ))}
+                                </View>
+                            )}
+                            {item.location && (
+                                <View style={styles.metaItem}>
+                                    <MapPin size={14} color={colors.textMuted} />
+                                    <Text style={[styles.metaText, { color: colors.textSecondary }]}>
+                                        {item.location}
+                                    </Text>
+                                </View>
+                            )}
+                        </View>
+                    )}
+
+                    {/* Tab Bar - Only show if user can edit */}
+                    {canEdit && (
+                        <View style={[styles.tabBar, { backgroundColor: colors.surface }]}>
+                            {TABS.map(({ id: tabId, label, icon: Icon }) => {
+                                const isActive = activeTab === tabId;
+                                return (
+                                    <TouchableOpacity
+                                        key={tabId}
+                                        style={[
+                                            styles.tabButton,
+                                            isActive && { backgroundColor: colors.primary + '15' },
+                                        ]}
+                                        onPress={() => setActiveTab(tabId)}
+                                    >
+                                        <Icon size={16} color={isActive ? colors.primary : colors.textMuted} />
+                                        <Text style={[
+                                            styles.tabText,
+                                            { color: isActive ? colors.primary : colors.textMuted },
+                                        ]}>
+                                            {label}
+                                        </Text>
+                                    </TouchableOpacity>
+                                );
+                            })}
                         </View>
                     )}
 
                     {/* Tab Content */}
                     <View style={styles.tabContent}>
-                        {activeTab === 'Story' && (
+                        {activeTab === 'story' && (
                             <>
                                 {/* Description */}
                                 {item.description && (
@@ -439,7 +465,9 @@ export default function DreamDetailScreen() {
                                 {/* Inspiration Board */}
                                 <InspirationBoard
                                     inspirations={item.inspirations}
+                                    isOwner={canEdit}
                                     onAdd={canEdit ? () => setShowInspirationModal(true) : undefined}
+                                    onDelete={canEdit ? handleDeleteInspiration : undefined}
                                 />
 
                                 {/* Memory Capsule */}
@@ -472,9 +500,7 @@ export default function DreamDetailScreen() {
                                             commentsCount={item.commentsCount}
                                             onCountChange={(count) => {
                                                 if (item.commentsCount !== count) {
-                                                    // Update local detail screen state
                                                     setItem(prev => prev ? { ...prev, commentsCount: count } : undefined);
-                                                    // Sync to community store for instant update
                                                     updateDreamMetadata(item.id, { commentsCount: count });
                                                 }
                                             }}
@@ -498,7 +524,7 @@ export default function DreamDetailScreen() {
                             </>
                         )}
 
-                        {activeTab === 'Progress' && (
+                        {activeTab === 'progress' && (
                             <ProgressTab
                                 item={item}
                                 isOwner={canEdit}
@@ -506,7 +532,7 @@ export default function DreamDetailScreen() {
                             />
                         )}
 
-                        {activeTab === 'Expenses' && (
+                        {activeTab === 'expenses' && (
                             <ExpensesTab
                                 item={item}
                                 isOwner={canEdit}
@@ -550,24 +576,6 @@ export default function DreamDetailScreen() {
 }
 
 const styles = StyleSheet.create({
-    fabContainer: {
-        position: 'absolute',
-        bottom: 30,
-        right: 20,
-        shadowColor: "#000",
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.3,
-        shadowRadius: 4.65,
-        elevation: 8,
-    },
-    fab: {
-        backgroundColor: '#A78BFA', // Primary color
-        width: 56,
-        height: 56,
-        borderRadius: 28,
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
     container: {
         flex: 1,
     },
@@ -585,9 +593,10 @@ const styles = StyleSheet.create({
         paddingTop: 20,
         minHeight: 400,
     },
+    // Phase Selector
     phaseSelector: {
         flexDirection: 'row',
-        borderRadius: 14,
+        borderRadius: 12,
         padding: 4,
         marginBottom: 16,
     },
@@ -596,55 +605,59 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'center',
-        paddingVertical: 10,
-        borderRadius: 10,
+        paddingVertical: 8,
+        borderRadius: 8,
         gap: 6,
+    },
+    activePhaseButton: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.08,
+        shadowRadius: 2,
+        elevation: 2,
     },
     phaseLabel: {
         fontSize: 13,
         fontWeight: '600',
     },
-    infoRow: {
+    // Meta Row
+    metaRow: {
         flexDirection: 'row',
         flexWrap: 'wrap',
-        gap: 8,
+        gap: 16,
+        paddingHorizontal: 4,
         marginBottom: 16,
     },
-    infoChip: {
+    metaItem: {
         flexDirection: 'row',
         alignItems: 'center',
-        paddingHorizontal: 10,
-        paddingVertical: 6,
-        borderRadius: 10,
-        gap: 5,
+        gap: 6,
     },
-    infoText: {
+    metaText: {
         fontSize: 13,
         fontWeight: '500',
     },
+    // Tab Bar
     tabBar: {
         flexDirection: 'row',
-        borderRadius: 14,
+        borderRadius: 12,
         padding: 4,
         marginBottom: 16,
     },
     tabButton: {
         flex: 1,
+        flexDirection: 'row',
         paddingVertical: 10,
         alignItems: 'center',
-        borderRadius: 10,
-    },
-    activeTab: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.08,
-        shadowRadius: 3,
-        elevation: 2,
+        justifyContent: 'center',
+        borderRadius: 8,
+        gap: 6,
     },
     tabText: {
         fontSize: 14,
         fontWeight: '600',
     },
+    // Tab Content
     tabContent: {
         gap: 16,
     },

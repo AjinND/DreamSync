@@ -4,7 +4,8 @@
  */
 
 import { DreamCard } from '@/src/components/dream';
-import { EmptyState, FilterChips, LoadingState, NotificationBell } from '@/src/components/shared';
+import { EmptyState, FilterChips, NotificationBell } from '@/src/components/shared';
+import { BucketLoaderFull } from '@/src/components/loading/BucketLoaderFull';
 import { useBucketStore } from '@/src/store/useBucketStore';
 import { useTheme } from '@/src/theme';
 import { useRouter } from 'expo-router';
@@ -122,7 +123,7 @@ export default function HomeScreen() {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
         <StatusBar style={isDark ? 'light' : 'dark'} />
-        <LoadingState message="Loading your dreams..." fullScreen />
+        <BucketLoaderFull message="Loading your dreams..." />
       </SafeAreaView>
     );
   }

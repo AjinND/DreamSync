@@ -19,6 +19,10 @@ import {
     TouchableOpacity,
     View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { Header } from '@/src/components/shared';
+import { IconButton } from '@/src/components/ui';
+import { ChevronLeft } from 'lucide-react-native';
 
 export default function EditProfileScreen() {
     const { colors } = useTheme();
@@ -31,6 +35,7 @@ export default function EditProfileScreen() {
     const [bio, setBio] = useState('');
     const [avatar, setAvatar] = useState<string | undefined>(undefined);
     const [newAvatarUri, setNewAvatarUri] = useState<string | null>(null);
+    const [profile, setProfile] = useState<any>(null);
 
     useEffect(() => {
         loadProfile();
@@ -41,6 +46,7 @@ export default function EditProfileScreen() {
         setIsLoading(true);
         try {
             const profile = await UsersService.getUserProfile(user.uid);
+            setProfile(profile);
             if (profile) {
                 setDisplayName(profile.displayName);
                 setBio(profile.bio || '');
@@ -75,6 +81,44 @@ export default function EditProfileScreen() {
         if (!result.canceled) {
             setNewAvatarUri(result.assets[0].uri);
         }
+    };
+
+    const handleRemovePhoto = () => {
+        Alert.alert(
+            'Remove Photo',
+            'Are you sure you want to remove your profile photo?',
+            [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                    text: 'Remove',
+                    style: 'destructive',
+                    onPress: async () => {
+                        try {
+                            if (!user) return;
+
+                            // If we have a new uri selected but not saved, just clear it
+                            if (newAvatarUri) {
+                                setNewAvatarUri(null);
+                                return;
+                            }
+
+                            // If we have a saved avatar, delete it from backend
+                            if (avatar) {
+                                setIsSaving(true);
+                                await UsersService.deleteProfilePhoto(user.uid);
+                                setAvatar(undefined);
+                                setProfile({ ...profile, avatar: undefined } as any); // Optimistic update
+                                setIsSaving(false);
+                            }
+                        } catch (error) {
+                            console.error('Failed to remove photo:', error);
+                            Alert.alert('Error', 'Failed to remove photo');
+                            setIsSaving(false);
+                        }
+                    }
+                }
+            ]
+        );
     };
 
     const handleSave = async () => {
@@ -116,25 +160,29 @@ export default function EditProfileScreen() {
 
     if (isLoading) {
         return (
-            <View style={[styles.container, styles.center, { backgroundColor: colors.background }]}>
+            <SafeAreaView style={[styles.container, styles.center, { backgroundColor: colors.background }]} edges={['top']}>
+                <Stack.Screen options={{ headerShown: false }} />
                 <ActivityIndicator size="large" color={colors.primary} />
-            </View>
+            </SafeAreaView>
         );
     }
 
     return (
-        <KeyboardAvoidingView
-            style={[styles.container, { backgroundColor: colors.background }]}
-            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        >
-            <Stack.Screen options={{
-                headerTitle: 'Edit Profile',
-                headerTintColor: colors.textPrimary,
-                headerStyle: { backgroundColor: colors.background },
-                headerShadowVisible: false,
-            }} />
+        <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
+            <Stack.Screen options={{ headerShown: false }} />
 
-            <ScrollView contentContainerStyle={styles.content}>
+            <Header
+                title="Edit Profile"
+                leftAction={
+                    <IconButton icon={ChevronLeft} onPress={() => router.back()} variant="ghost" />
+                }
+            />
+
+            <KeyboardAvoidingView
+                style={{ flex: 1 }}
+                behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            >
+                <ScrollView contentContainerStyle={styles.content}>
                 {/* Avatar Section */}
                 <View style={styles.avatarSection}>
                     <TouchableOpacity onPress={handlePickImage} activeOpacity={0.8}>
@@ -150,6 +198,11 @@ export default function EditProfileScreen() {
                     <TouchableOpacity onPress={handlePickImage}>
                         <Text style={[styles.changePhotoText, { color: colors.primary }]}>Change Photo</Text>
                     </TouchableOpacity>
+                    {(avatar || newAvatarUri) && (
+                        <TouchableOpacity onPress={handleRemovePhoto}>
+                            <Text style={[styles.removePhotoText, { color: colors.error }]}>Remove Photo</Text>
+                        </TouchableOpacity>
+                    )}
                 </View>
 
                 {/* Form */}
@@ -207,7 +260,8 @@ export default function EditProfileScreen() {
                     )}
                 </TouchableOpacity>
             </View>
-        </KeyboardAvoidingView>
+            </KeyboardAvoidingView>
+        </SafeAreaView>
     );
 }
 
@@ -239,6 +293,11 @@ const styles = StyleSheet.create({
         borderColor: '#FFF',
     },
     changePhotoText: {
+        marginTop: 12,
+        fontSize: 16,
+        fontWeight: '600',
+    },
+    removePhotoText: {
         marginTop: 12,
         fontSize: 16,
         fontWeight: '600',

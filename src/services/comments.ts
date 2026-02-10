@@ -9,6 +9,7 @@ import {
     collection,
     deleteDoc,
     doc,
+    getDoc,
     getDocs,
     increment,
     orderBy,
@@ -17,6 +18,7 @@ import {
 } from 'firebase/firestore';
 
 const ITEMS_COLLECTION = 'items';
+const USERS_COLLECTION = 'users';
 
 export const CommentsService = {
     /**
@@ -30,17 +32,23 @@ export const CommentsService = {
         }
 
         try {
+            // Fetch user profile from Firestore for accurate displayName
+            const userDocRef = doc(db, USERS_COLLECTION, user.uid);
+            const userDoc = await getDoc(userDocRef);
+            const userData = userDoc.exists() ? userDoc.data() : null;
+
             // Build comment object, only include userAvatar if it exists
             const comment: Omit<Comment, 'id'> = {
                 userId: user.uid,
-                userName: user.displayName || 'Anonymous',
+                userName: userData?.displayName || user.displayName || 'Anonymous',
                 text: text.trim(),
                 createdAt: Date.now(),
             };
 
             // Only add userAvatar if user has one (Firebase doesn't accept undefined)
-            if (user.photoURL) {
-                (comment as any).userAvatar = user.photoURL;
+            const avatarUrl = userData?.avatar || user.photoURL;
+            if (avatarUrl) {
+                (comment as any).userAvatar = avatarUrl;
             }
 
             // Add the comment to subcollection

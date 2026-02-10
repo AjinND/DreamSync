@@ -91,6 +91,70 @@ export const UsersService = {
     },
 
     /**
+     * Increment completed dreams count
+     */
+    async incrementCompletedDreamsCount(delta: number = 1): Promise<void> {
+        const user = auth.currentUser;
+        if (!user) return;
+
+        const docRef = doc(db, COLLECTION_NAME, user.uid);
+        const snapshot = await getDoc(docRef);
+
+        if (snapshot.exists()) {
+            const current = snapshot.data().completedDreamsCount || 0;
+            await updateDoc(docRef, { completedDreamsCount: Math.max(0, current + delta) });
+        }
+    },
+
+    /**
+     * Update multiple user stats atomically
+     */
+    async updateUserStats(updates: {
+        publicDreamsCount?: number;
+        completedDreamsCount?: number;
+    }): Promise<void> {
+        const user = auth.currentUser;
+        if (!user) return;
+
+        const docRef = doc(db, COLLECTION_NAME, user.uid);
+        const snapshot = await getDoc(docRef);
+
+        if (snapshot.exists()) {
+            const data = snapshot.data();
+            const updateData: any = {};
+
+            if (updates.publicDreamsCount !== undefined) {
+                const current = data.publicDreamsCount || 0;
+                updateData.publicDreamsCount = Math.max(0, current + updates.publicDreamsCount);
+            }
+
+            if (updates.completedDreamsCount !== undefined) {
+                const current = data.completedDreamsCount || 0;
+                updateData.completedDreamsCount = Math.max(0, current + updates.completedDreamsCount);
+            }
+
+            if (Object.keys(updateData).length > 0) {
+                await updateDoc(docRef, updateData);
+            }
+        }
+    },
+
+    /**
+     * Delete user's profile photo
+     */
+    async deleteProfilePhoto(userId: string): Promise<void> {
+        const { StorageService, StoragePaths } = await import('./storage');
+
+        // 1. Delete from Storage
+        const path = StoragePaths.profileAvatar(userId);
+        await StorageService.deleteImage(path);
+
+        // 2. Update Firestore
+        const docRef = doc(db, COLLECTION_NAME, userId);
+        await updateDoc(docRef, { avatar: null });
+    },
+
+    /**
      * Get a user's public dreams
      */
     async getUserPublicDreams(userId: string): Promise<any[]> {

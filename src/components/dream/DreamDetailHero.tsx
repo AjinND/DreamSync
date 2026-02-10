@@ -1,12 +1,23 @@
 /**
  * DreamDetailHero - Hero Section for Dream Detail Screen
- * Displays hero image, category badge, title, and back/edit actions
+ * Clean minimalistic design with Lucide icons (no emojis)
  */
 
 import { useTheme } from '@/src/theme';
 import { BucketItem, Phase } from '@/src/types/item';
 import { useRouter } from 'expo-router';
-import { ChevronLeft, Edit3, Sparkles } from 'lucide-react-native';
+import {
+    Briefcase,
+    ChevronLeft,
+    Edit3,
+    Heart,
+    Mountain,
+    Palette,
+    Plane,
+    Sparkles,
+    Star,
+    Target,
+} from 'lucide-react-native';
 import {
     Dimensions,
     Image,
@@ -19,14 +30,15 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
-const CATEGORY_LABELS: Record<string, { emoji: string; label: string }> = {
-    travel: { emoji: '✈️', label: 'Travel' },
-    skill: { emoji: '🎯', label: 'Skill' },
-    adventure: { emoji: '🏔️', label: 'Adventure' },
-    creative: { emoji: '🎨', label: 'Creative' },
-    career: { emoji: '💼', label: 'Career' },
-    health: { emoji: '💪', label: 'Health' },
-    personal: { emoji: '✨', label: 'Personal' },
+const CATEGORY_ICONS: Record<string, { icon: any; label: string }> = {
+    travel: { icon: Plane, label: 'Travel' },
+    skill: { icon: Target, label: 'Skill' },
+    adventure: { icon: Mountain, label: 'Adventure' },
+    creative: { icon: Palette, label: 'Creative' },
+    career: { icon: Briefcase, label: 'Career' },
+    health: { icon: Heart, label: 'Health' },
+    personal: { icon: Sparkles, label: 'Personal' },
+    other: { icon: Star, label: 'Other' },
 };
 
 interface DreamDetailHeroProps {
@@ -39,7 +51,8 @@ interface DreamDetailHeroProps {
 export function DreamDetailHero({ item, isOwner, onEdit, onGetInspired }: DreamDetailHeroProps) {
     const { colors } = useTheme();
     const router = useRouter();
-    const categoryInfo = CATEGORY_LABELS[item.category] || { emoji: '✨', label: 'Other' };
+    const categoryInfo = CATEGORY_ICONS[item.category] || CATEGORY_ICONS.other;
+    const CategoryIcon = categoryInfo.icon;
 
     const getPhaseColor = (phase: Phase) => {
         switch (phase) {
@@ -55,7 +68,7 @@ export function DreamDetailHero({ item, isOwner, onEdit, onGetInspired }: DreamD
                 <Image source={{ uri: item.mainImage }} style={styles.heroImage} resizeMode="cover" />
             ) : (
                 <View style={[styles.heroPlaceholder, { backgroundColor: getPhaseColor(item.phase) }]}>
-                    <Text style={styles.placeholderEmoji}>{categoryInfo.emoji}</Text>
+                    <CategoryIcon size={48} color="rgba(255,255,255,0.8)" />
                 </View>
             )}
 
@@ -84,7 +97,8 @@ export function DreamDetailHero({ item, isOwner, onEdit, onGetInspired }: DreamD
             {/* Hero Content */}
             <View style={styles.heroContent}>
                 <View style={styles.categoryPill}>
-                    <Text style={styles.categoryPillText}>{categoryInfo.emoji} {categoryInfo.label}</Text>
+                    <CategoryIcon size={14} color="#FFF" />
+                    <Text style={styles.categoryPillText}>{categoryInfo.label}</Text>
                 </View>
                 <Text style={styles.heroTitle} numberOfLines={2}>{item.title}</Text>
             </View>
@@ -94,7 +108,7 @@ export function DreamDetailHero({ item, isOwner, onEdit, onGetInspired }: DreamD
 
 const styles = StyleSheet.create({
     heroContainer: {
-        height: SCREEN_WIDTH * 0.6, // Slightly reduced height
+        height: SCREEN_WIDTH * 0.6,
         position: 'relative',
     },
     heroImage: {
@@ -106,9 +120,6 @@ const styles = StyleSheet.create({
         height: '100%',
         alignItems: 'center',
         justifyContent: 'center',
-    },
-    placeholderEmoji: {
-        fontSize: 64,
     },
     heroOverlay: {
         ...StyleSheet.absoluteFillObject,
@@ -144,6 +155,7 @@ const styles = StyleSheet.create({
     categoryPill: {
         flexDirection: 'row',
         alignItems: 'center',
+        gap: 6,
         paddingHorizontal: 12,
         paddingVertical: 6,
         borderRadius: 16,

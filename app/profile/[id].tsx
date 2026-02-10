@@ -5,17 +5,17 @@
 import { auth } from '@/firebaseConfig';
 import { ProfileDreamGrid, ProfileHeader } from '@/src/components/profile';
 import { EmptyState, Header } from '@/src/components/shared';
+import { BucketLoaderFull } from '@/src/components/loading';
 import { Button, IconButton } from '@/src/components/ui';
 import { UsersService } from '@/src/services/users';
 import { useTheme } from '@/src/theme';
 import { BucketItem } from '@/src/types/item';
 import { UserProfile } from '@/src/types/social';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { ChevronLeft, Edit2, UserX } from 'lucide-react-native';
 import { useEffect, useState } from 'react';
 import {
-    ActivityIndicator,
     ScrollView,
     StyleSheet,
     View,
@@ -63,12 +63,13 @@ export default function ProfileScreen() {
 
     const handleEditProfile = () => {
         // Navigate to account/settings for profile editing
-        router.push('/(tabs)/account');
+        router.push('/settings/profile');
     };
 
     if (isLoading) {
         return (
             <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
+                <Stack.Screen options={{ headerShown: false }} />
                 <StatusBar style={isDark ? 'light' : 'dark'} />
                 <Header
                     title="Profile"
@@ -76,9 +77,7 @@ export default function ProfileScreen() {
                         <IconButton icon={ChevronLeft} onPress={() => router.back()} variant="ghost" />
                     }
                 />
-                <View style={styles.loadingContainer}>
-                    <ActivityIndicator size="large" color={colors.primary} />
-                </View>
+                <BucketLoaderFull message="Loading profile..." />
             </SafeAreaView>
         );
     }
@@ -86,6 +85,7 @@ export default function ProfileScreen() {
     if (!profile) {
         return (
             <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
+                <Stack.Screen options={{ headerShown: false }} />
                 <StatusBar style={isDark ? 'light' : 'dark'} />
                 <Header
                     title="Profile"
@@ -105,6 +105,7 @@ export default function ProfileScreen() {
 
     return (
         <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
+            <Stack.Screen options={{ headerShown: false }} />
             <StatusBar style={isDark ? 'light' : 'dark'} />
 
             <Header

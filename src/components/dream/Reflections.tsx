@@ -1,7 +1,7 @@
 import { Card } from '@/src/components/ui';
 import { useTheme } from '@/src/theme';
 import { Reflection } from '@/src/types/item';
-import { Plus, Quote } from 'lucide-react-native';
+import { PenLine, Plus, Quote } from 'lucide-react-native';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 interface ReflectionsProps {
@@ -53,7 +53,7 @@ export function Reflections({ reflections = [], onAdd }: ReflectionsProps) {
                     style={[styles.emptyState, { borderColor: colors.border }]}
                     onPress={onAdd}
                 >
-                    <Text style={styles.emptyEmoji}>✍️</Text>
+                    <PenLine size={32} color={colors.textMuted} />
                     <Text style={[styles.emptyTitle, { color: colors.textSecondary }]}>
                         Time to reflect
                     </Text>
@@ -118,8 +118,7 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'center',
     },
-    emptyEmoji: {
-        fontSize: 32,
+    emptyIcon: {
         marginBottom: 12,
     },
     emptyTitle: {

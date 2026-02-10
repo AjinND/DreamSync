@@ -4,9 +4,12 @@ service cloud.firestore {
     
     // Items (Dreams) Collection
     match /items/{itemId} {
-      // 1. READ: Allow reading Public items, Own items, OR items that are part of a Journey (group/open)
+      // 1. READ: Allow reading if:
+      //    - Item is public, OR
+      //    - User owns the item, OR
+      //    - Item is a journey (group/open) - anyone can browse before joining
       allow read: if request.auth != null && (
-        resource.data.isPublic == true || 
+        resource.data.isPublic == true ||
         resource.data.userId == request.auth.uid ||
         resource.data.collaborationType == 'group' ||
         resource.data.collaborationType == 'open'
@@ -20,14 +23,19 @@ service cloud.firestore {
       allow delete: if request.auth != null && 
                     resource.data.userId == request.auth.uid;
       
-      // 4. UPDATE: 
+      // 4. UPDATE:
       // - Owner can update everything
       // - Others can ONLY update likes/comments counts on PUBLIC dreams
+      // - Journey participants can update content but NOT sensitive fields
       allow update: if request.auth != null && (
         resource.data.userId == request.auth.uid ||
         (resource.data.isPublic == true &&
          request.resource.data.diff(resource.data).affectedKeys()
-           .hasAny(['likes', 'likesCount', 'commentsCount']))
+           .hasOnly(['likes', 'likesCount', 'commentsCount'])) ||
+        ('journeyParticipants' in resource.data &&
+         request.auth.uid in resource.data.journeyParticipants &&
+         !request.resource.data.diff(resource.data).affectedKeys()
+           .hasAny(['userId', 'collaborationType', 'isPublic']))
       );
     }
     
@@ -79,6 +87,9 @@ service cloud.firestore {
 
       // Allow updates only by participants
       allow update: if request.auth != null && request.auth.uid in resource.data.participants;
+
+      // Allow deletion by participants (journey owner deletes chat when deleting journey)
+      allow delete: if request.auth != null && request.auth.uid in resource.data.participants;
     }
 
     // Notifications Collection

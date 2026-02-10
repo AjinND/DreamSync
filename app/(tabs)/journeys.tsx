@@ -6,6 +6,7 @@
 import { auth } from '@/firebaseConfig'; // Added import
 import { DreamCard } from '@/src/components/dream/DreamCard';
 import { EmptyState, NotificationBell } from '@/src/components/shared';
+import { BucketLoaderInline } from '@/src/components/loading';
 import { JourneysService } from '@/src/services/journeys';
 import { useBucketStore } from '@/src/store/useBucketStore';
 import { useTheme } from '@/src/theme';
@@ -14,7 +15,7 @@ import { Journey } from '@/src/types/social';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { MessageCircle, Search, Users } from 'lucide-react-native';
 import { useCallback, useMemo, useState } from 'react';
-import { ActivityIndicator, RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 export default function JourneysScreen() {
@@ -178,7 +179,9 @@ export default function JourneysScreen() {
             >
                 {activeTab === 'my-journeys' ? (
                     <>
-                        {allMyJourneys.length > 0 ? (
+                        {isLoadingMyJourneys ? (
+                            <BucketLoaderInline message="Loading your journeys..." />
+                        ) : allMyJourneys.length > 0 ? (
                             <View style={styles.grid}>
                                 {allMyJourneys.map(item => {
                                     // Logic to find journey metadata for "My Journeys" list (optional, but good for avatar)
@@ -225,7 +228,7 @@ export default function JourneysScreen() {
                 ) : (
                     <>
                         {isLoadingExplore ? (
-                            <ActivityIndicator size="large" color={colors.primary} style={{ marginTop: 40 }} />
+                            <BucketLoaderInline message="Discovering journeys..." />
                         ) : (
                             <>
                                 {openJourneys.length > 0 ? (

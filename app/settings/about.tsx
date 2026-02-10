@@ -1,7 +1,7 @@
 import { useTheme } from '@/src/theme';
 import { Ionicons } from '@expo/vector-icons';
 import Constants from 'expo-constants';
-import { Stack } from 'expo-router';
+import { Stack, useRouter } from 'expo-router';
 import {
     Linking,
     ScrollView,
@@ -10,9 +10,14 @@ import {
     TouchableOpacity,
     View
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { Header } from '@/src/components/shared';
+import { IconButton } from '@/src/components/ui';
+import { ChevronLeft } from 'lucide-react-native';
 
 export default function AboutScreen() {
     const { colors } = useTheme();
+    const router = useRouter();
     const version = Constants.expoConfig?.version || '1.0.0';
 
     const handleLink = (url: string) => {
@@ -20,13 +25,17 @@ export default function AboutScreen() {
     };
 
     return (
-        <ScrollView contentContainerStyle={styles.container} style={{ backgroundColor: colors.background }}>
-            <Stack.Screen options={{
-                headerTitle: 'About',
-                headerTintColor: colors.textPrimary,
-                headerStyle: { backgroundColor: colors.background },
-                headerShadowVisible: false,
-            }} />
+        <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }} edges={['top']}>
+            <Stack.Screen options={{ headerShown: false }} />
+
+            <Header
+                title="About"
+                leftAction={
+                    <IconButton icon={ChevronLeft} onPress={() => router.back()} variant="ghost" />
+                }
+            />
+
+            <ScrollView contentContainerStyle={styles.container}>
 
             <View style={styles.logoSection}>
                 <View style={[styles.logoContainer, { backgroundColor: colors.primary }]}>
@@ -71,7 +80,8 @@ export default function AboutScreen() {
                     © 2024 DreamSync. All rights reserved.
                 </Text>
             </View>
-        </ScrollView>
+            </ScrollView>
+        </SafeAreaView>
     );
 }
 

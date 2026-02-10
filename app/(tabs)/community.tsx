@@ -5,6 +5,7 @@
 
 import { CommunityCard, TagChips } from '@/src/components/community';
 import { EmptyState, NotificationBell } from '@/src/components/shared';
+import { BucketLoaderInline } from '@/src/components/loading';
 import { useCommunityStore } from '@/src/store/useCommunityStore';
 import { useTheme } from '@/src/theme';
 import { useFocusEffect } from 'expo-router';
@@ -12,7 +13,6 @@ import { StatusBar } from 'expo-status-bar';
 import { Globe } from 'lucide-react-native';
 import { useCallback, useEffect } from 'react';
 import {
-    ActivityIndicator,
     FlatList,
     RefreshControl,
     StyleSheet,
@@ -78,14 +78,7 @@ export default function CommunityScreen() {
 
     const ListEmpty = () => {
         if (isLoading) {
-            return (
-                <View style={styles.loadingContainer}>
-                    <ActivityIndicator size="large" color={colors.primary} />
-                    <Text style={[styles.loadingText, { color: colors.textSecondary }]}>
-                        Loading dreams...
-                    </Text>
-                </View>
-            );
+            return <BucketLoaderInline message="Loading dreams..." />;
         }
 
         return (

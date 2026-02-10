@@ -1,6 +1,6 @@
 import { useTheme } from '@/src/theme';
 import { Memory } from '@/src/types/item';
-import { Heart, Plus } from 'lucide-react-native';
+import { Camera, Heart, Plus } from 'lucide-react-native';
 import { Dimensions, Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 interface MemoryCapsuleProps {
@@ -55,7 +55,7 @@ export function MemoryCapsule({ memories = [], onAdd }: MemoryCapsuleProps) {
                     style={[styles.emptyState, { borderColor: colors.border }]}
                     onPress={onAdd}
                 >
-                    <Text style={styles.emptyEmoji}>📸</Text>
+                    <Camera size={32} color={colors.textMuted} />
                     <Text style={[styles.emptyTitle, { color: colors.textSecondary }]}>
                         Capture the moment
                     </Text>
@@ -130,8 +130,7 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'center',
     },
-    emptyEmoji: {
-        fontSize: 32,
+    emptyIcon: {
         marginBottom: 12,
     },
     emptyTitle: {

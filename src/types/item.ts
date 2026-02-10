@@ -63,6 +63,7 @@ export interface BucketItem {
     tags?: string[];        // Interest tags for discovery
     basedOnTemplateId?: string;
     collaborationType?: 'solo' | 'open' | 'group';
+    journeyParticipants?: string[]; // User IDs who have access via journey participation
     // Content
     inspirations?: Inspiration[];
     reflections?: Reflection[];
