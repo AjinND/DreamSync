@@ -1,3 +1,5 @@
+// MUST be first import - polyfills crypto.getRandomValues for TweetNaCl
+import "react-native-get-random-values";
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { initializeApp } from 'firebase/app';
 import {

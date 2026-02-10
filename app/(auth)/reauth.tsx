@@ -24,12 +24,16 @@ export default function Reauth() {
         setLoading(true);
         try {
             await KeyManager.initializeKeysOnLogin(password, user.uid);
+            // Successfully initialized keys, navigate to tabs
+            // The _layout.tsx effect will verify keys and clear needsReauth flag
             router.replace('/(tabs)');
         } catch (e: any) {
-            Alert.alert(
-                "Re-authentication Failed",
-                "Could not set up encryption. Please check your password and try again.",
-            );
+            console.error('[Reauth] Key initialization failed:', e);
+            const errorMessage = e.message?.includes('verification failed')
+                ? 'Incorrect password. Please try again.'
+                : 'Could not set up encryption. Please check your password and try again.\n\nError: ' + (e.message || 'Unknown error');
+
+            Alert.alert("Re-authentication Failed", errorMessage);
         } finally {
             setLoading(false);
         }

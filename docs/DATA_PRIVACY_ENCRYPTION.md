@@ -16,8 +16,9 @@
 6. [Setup & Deployment Checklist](#setup--deployment-checklist)
 7. [How It Works](#how-it-works)
 8. [Existing User Migration](#existing-user-migration)
-9. [Known Limitations](#known-limitations)
-10. [Troubleshooting](#troubleshooting)
+9. [Verification & Testing](#verification--testing)
+10. [Known Limitations](#known-limitations)
+11. [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -303,6 +304,82 @@ No new composite indexes are required. The existing indexes should continue to w
    - Create a private dream (encrypted in Firestore)
    - Toggle it to public — verify Firestore fields become plaintext
    - Toggle it back to private — verify fields get encrypted again
+
+---
+
+## Verification & Testing
+
+### Automated Verification Scripts
+
+Two scripts are provided in the `scripts/` directory to help verify encryption status:
+
+#### 1. Get Your User ID
+
+```bash
+# Interactive mode
+npx ts-node scripts/getUserId.ts
+
+# Or provide email directly
+npx ts-node scripts/getUserId.ts your-email@example.com
+```
+
+This script helps you find your Firebase user ID (UID) by signing in with your credentials.
+
+#### 2. Verify Encryption Status
+
+```bash
+# Check user profile and dreams
+npx ts-node scripts/verifyEncryption.ts <userId>
+
+# Check user profile, dreams, AND messages
+npx ts-node scripts/verifyEncryption.ts <userId> <chatId>
+```
+
+This script connects to your Firebase database and checks:
+- ✅ User profile fields (email, bio) encryption status
+- ✅ Private dream fields (reflections, memories, etc.) encryption status
+- ✅ Chat message encryption status (if chatId provided)
+- ✅ Key data publication status
+
+**Expected Output:**
+
+```
+🔍 DreamSync Encryption Verification
+
+👤 CHECKING USER PROFILE...
+  ✅ email: ENCRYPTED (v1)
+  ✅ bio: ENCRYPTED (v1)
+  ✅ Key Data Published: Yes
+
+📋 CHECKING DREAMS...
+  Dream: "My Private Dream"
+    ✅ reflections[0].answer: ENCRYPTED (v1)
+    ✅ memories[0].content: ENCRYPTED (v1)
+
+💬 CHECKING MESSAGES...
+  Message: "Test message"
+    ✅ ENCRYPTED
+```
+
+### Understanding Encryption Status
+
+For detailed explanation of why some data may still be plain text (especially for existing users), see:
+- [Encryption Status Guide](./ENCRYPTION_STATUS.md) - Comprehensive troubleshooting guide
+- [Scripts README](../scripts/README.md) - Detailed script usage instructions
+
+### Expected Behavior for Existing Users
+
+If you created data **before** encryption was implemented:
+
+| Data Type | Status | Why |
+|-----------|--------|-----|
+| Old messages | Plain text | Chat encryption is forward-only by design |
+| Old private dreams | Plain text → Encrypted | Lazy migration triggers when you open the dream |
+| New messages | Encrypted | All messages after reauth are encrypted |
+| New private dreams | Encrypted | All dreams created after reauth are encrypted |
+| User profile | Encrypted | Profile fields encrypted when updated after reauth |
+
+See [ENCRYPTION_STATUS.md](./ENCRYPTION_STATUS.md) for detailed migration options and troubleshooting.
 
 ---
 
