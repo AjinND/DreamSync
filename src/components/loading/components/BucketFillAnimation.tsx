@@ -1,86 +1,59 @@
-import React, { useEffect } from 'react';
-import { StyleSheet } from 'react-native';
+import React from 'react';
 import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  withRepeat,
-  withTiming,
-  Easing,
   SharedValue,
+  useAnimatedProps,
 } from 'react-native-reanimated';
-import { LinearGradient } from 'expo-linear-gradient';
-import { WaveEffect } from '../animations/WaveEffect';
+import { Rect, Defs, LinearGradient, Stop } from 'react-native-svg';
 
-interface BucketFillAnimationProps {
-  containerHeight: number;
-  duration?: number;
-  onFillProgressCreated?: (fillProgress: SharedValue<number>) => void;
+interface BucketFillProps {
+  width: number;
+  height: number;
+  fillProgress: SharedValue<number>;
 }
 
 // Dream Glow gradient colors
-const GRADIENT_COLORS: readonly [string, string, ...string[]] = [
+const GRADIENT_COLORS = [
   '#5EEAD4', // Teal (bottom)
   '#6366F1', // Indigo (middle)
   '#A78BFA', // Lavender (top)
 ];
 
+const AnimatedRect = Animated.createAnimatedComponent(Rect);
+
 export function BucketFillAnimation({
-  containerHeight,
-  duration = 2000,
-  onFillProgressCreated,
-}: BucketFillAnimationProps) {
-  const fillProgress = useSharedValue(0);
-
-  useEffect(() => {
-    // Pass fillProgress to parent
-    onFillProgressCreated?.(fillProgress);
-
-    fillProgress.value = withRepeat(
-      withTiming(1, {
-        duration,
-        easing: Easing.inOut(Easing.ease),
-      }),
-      -1, // Infinite loop
-      false // Don't reverse
-    );
-  }, [duration]);
-
-  const animatedStyle = useAnimatedStyle(() => {
+  width,
+  height,
+  fillProgress,
+}: BucketFillProps) {
+  
+  const animatedProps = useAnimatedProps(() => {
+    // Calculate the height of the fill based on progress
+    // We draw from bottom up, so y moves from height to 0
+    const fillHeight = fillProgress.value * height;
+    const y = height - fillHeight;
+    
     return {
-      height: fillProgress.value * containerHeight,
+      y,
+      height: fillHeight,
     };
   });
 
   return (
     <>
-      <Animated.View style={[styles.fillContainer, animatedStyle]}>
-        <LinearGradient
-          colors={GRADIENT_COLORS}
-          style={styles.gradient}
-          start={{ x: 0, y: 1 }}
-          end={{ x: 0, y: 0 }}
-        />
-      </Animated.View>
-
-      {/* Wave effect on top of liquid */}
-      <WaveEffect
-        fillProgress={fillProgress}
-        containerHeight={containerHeight}
+      <Defs>
+        <LinearGradient id="bucketFillGradient" x1="0" y1="1" x2="0" y2="0">
+          <Stop offset="0" stopColor={GRADIENT_COLORS[0]} />
+          <Stop offset="0.5" stopColor={GRADIENT_COLORS[1]} />
+          <Stop offset="1" stopColor={GRADIENT_COLORS[2]} />
+        </LinearGradient>
+      </Defs>
+      
+      <AnimatedRect
+        x="0"
+        width={width}
+        animatedProps={animatedProps}
+        fill="url(#bucketFillGradient)"
       />
     </>
   );
 }
-
-const styles = StyleSheet.create({
-  fillContainer: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    overflow: 'hidden',
-  },
-  gradient: {
-    flex: 1,
-    width: '100%',
-  },
-});

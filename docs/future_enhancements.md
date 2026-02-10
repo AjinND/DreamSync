@@ -2,7 +2,8 @@
 
 2. Storage optimization for the images with security best practises. -- completed
 
-3. Data privacy and encryption of all the messages or any important factors. -- completed
+3. Data privacy and encryption of all the messages or any important factors. -- completed, Later found - For dreams - title and descriptions are not encrypted. Progress tab - description, expense is encrypted. Will think of adding more parts to encrypt. I feel atleast Title should be encrypted and the Progress tab all data should be encrypted, not just description. What do you think aboout adding more fields for encryption?
+When a dream is public, no encryption is applied.
 
 4. Implement Loading screen for the entire application. Not just a simple indicator, but an impressive design which shows a "bucket" and something which resembles the bucketist. the screen should be visible whenever the app is fetching data from the server. -- completed (the bucket icon is not proper. need to redesign the bucket icon)
 

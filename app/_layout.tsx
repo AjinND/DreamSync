@@ -3,13 +3,13 @@ import { StatusBar } from "expo-status-bar";
 import { onAuthStateChanged, User } from "firebase/auth";
 import { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, View } from "react-native";
-import { useNotificationHandler } from "../hooks/useNotificationHandler";
 import { auth } from "../firebaseConfig";
+import { useNotificationHandler } from "../hooks/useNotificationHandler";
 import { OfflineBanner } from "../src/components/ui/OfflineBanner";
-import { NotificationService } from "../src/services/notifications";
-import { useNotificationStore } from "../src/store/useNotificationStore";
 import { KeyManager } from "../src/services/keyManager";
+import { NotificationService } from "../src/services/notifications";
 import { UsersService } from "../src/services/users";
+import { useNotificationStore } from "../src/store/useNotificationStore";
 import { legacyColors as colors } from "../src/theme";
 
 export default function RootLayout() {
@@ -53,7 +53,7 @@ export default function RootLayout() {
       useNotificationStore.getState().subscribeToUnread();
     } else {
       // User signed out — clean up encryption keys
-      KeyManager.clearKeys().catch(() => {});
+      KeyManager.clearKeys().catch(() => { });
       useNotificationStore.getState().unsubscribeFromUnread();
       pushTokenRef.current = null;
       setNeedsReauth(false);
@@ -76,7 +76,16 @@ export default function RootLayout() {
       router.replace("/(auth)/login");
     } else if (user && needsReauth && segments[1] !== "reauth") {
       // Auth persists but encryption keys are missing — need password re-entry
-      router.replace("/(auth)/reauth");
+      // Re-check key initialization status (in case it was just completed)
+      KeyManager.isKeyInitialized().then(initialized => {
+        if (!initialized) {
+          router.replace("/(auth)/reauth");
+        } else {
+          // Keys are now available, clear reauth flag
+          setNeedsReauth(false);
+          router.replace("/(tabs)");
+        }
+      });
     } else if (user && inAuthGroup && !needsReauth) {
       // If logged in and in auth group, redirect to home
       router.replace("/(tabs)");
