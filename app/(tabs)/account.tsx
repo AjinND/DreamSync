@@ -58,6 +58,8 @@ export default function AccountScreen() {
                             }
                             useNotificationStore.getState().clear();
                             useChatStore.getState().clear();
+                            // Cleanup real-time subscriptions
+                            useBucketStore.getState().clearSubscriptions();
                             await signOut(auth);
                             router.replace('/(auth)/login');
                         } catch (error) {

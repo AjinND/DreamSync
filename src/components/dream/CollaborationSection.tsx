@@ -1,28 +1,48 @@
+/**
+ * CollaborationSection - Journey collaboration UI
+ * Clean version: no reanimated, no Ionicons, Lucide only
+ */
+
 import { auth } from '@/firebaseConfig';
 import { JourneysService } from '@/src/services/journeys';
+import { UsersService } from '@/src/services/users';
 import { useTheme } from '@/src/theme';
-import { Journey } from '@/src/types/social';
-import { Ionicons } from '@expo/vector-icons';
+import { Journey, UserProfile } from '@/src/types/social';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { Avatar } from '../ui';
+import { Avatar, Badge } from '../ui';
+import { ArrowRight, Check, Lock, LockOpen, Trash2, Users, X } from 'lucide-react-native';
 
 interface CollaborationSectionProps {
     dreamId: string;
     isOwner: boolean;
+    collaborationType?: 'solo' | 'open' | 'group';
     onStartJourney?: () => void;
 }
 
-export function CollaborationSection({ dreamId, isOwner, onStartJourney }: CollaborationSectionProps) {
+export function CollaborationSection({ dreamId, isOwner, collaborationType, onStartJourney }: CollaborationSectionProps) {
     const { colors } = useTheme();
     const [journey, setJourney] = useState<Journey | null>(null);
     const [loading, setLoading] = useState(true);
     const [isProcessing, setIsProcessing] = useState(false);
+    const [userProfiles, setUserProfiles] = useState<Record<string, UserProfile>>({});
     const userId = auth.currentUser?.uid;
 
     useEffect(() => {
         loadJourney();
-    }, [dreamId, isProcessing]); // Reload when processing changes
+    }, [dreamId, collaborationType]);
+
+    // Fetch user profiles when journey data changes
+    useEffect(() => {
+        if (!journey) return;
+
+        const allUserIds = [
+            ...journey.participants,
+            ...(journey.requests || [])
+        ];
+
+        fetchUserProfiles(allUserIds);
+    }, [journey?.participants, journey?.requests]);
 
     const loadJourney = async () => {
         try {
@@ -33,6 +53,31 @@ export function CollaborationSection({ dreamId, isOwner, onStartJourney }: Colla
         } finally {
             setLoading(false);
         }
+    };
+
+    const fetchUserProfiles = async (userIds: string[]) => {
+        const profiles: Record<string, UserProfile> = {};
+
+        await Promise.all(
+            userIds.map(async (uid) => {
+                // Skip if already fetched
+                if (userProfiles[uid]) {
+                    profiles[uid] = userProfiles[uid];
+                    return;
+                }
+
+                try {
+                    const profile = await UsersService.getUserProfile(uid);
+                    if (profile) {
+                        profiles[uid] = profile;
+                    }
+                } catch (error) {
+                    console.error(`Failed to fetch profile for ${uid}:`, error);
+                }
+            })
+        );
+
+        setUserProfiles(prev => ({ ...prev, ...profiles }));
     };
 
     const handleJoinRequest = async () => {
@@ -54,6 +99,7 @@ export function CollaborationSection({ dreamId, isOwner, onStartJourney }: Colla
         try {
             await JourneysService.handleJoinRequest(journey.id, requesterId, action);
             Alert.alert(action === 'accept' ? 'Welcome!' : 'Request Rejected', 'The list has been updated.');
+            await loadJourney();
         } catch (error) {
             Alert.alert('Error', `Failed to ${action} request.`);
         } finally {
@@ -67,9 +113,16 @@ export function CollaborationSection({ dreamId, isOwner, onStartJourney }: Colla
             const newStatus = !journey.settings?.isOpen;
             await JourneysService.updateSettings(journey.id, {
                 isOpen: newStatus,
-                maxParticipants: journey.settings?.maxParticipants || 5
+                maxParticipants: journey.settings?.maxParticipants || 5,
             });
-            setJourney(prev => prev ? { ...prev, settings: { ...prev.settings, isOpen: newStatus, maxParticipants: prev.settings?.maxParticipants || 5 } } : null);
+            setJourney(prev => prev ? {
+                ...prev,
+                settings: {
+                    ...prev.settings,
+                    isOpen: newStatus,
+                    maxParticipants: prev.settings?.maxParticipants || 5,
+                },
+            } : null);
         } catch (error) {
             Alert.alert('Error', 'Failed to update settings');
         }
@@ -77,24 +130,49 @@ export function CollaborationSection({ dreamId, isOwner, onStartJourney }: Colla
 
     const updateMaxParticipants = async (newMax: number) => {
         if (!journey || !isOwner) return;
-        // Optimistic update
         setJourney(prev => prev ? ({
             ...prev,
             settings: {
                 ...prev.settings!,
                 isOpen: prev.settings?.isOpen || false,
-                maxParticipants: newMax
-            }
+                maxParticipants: newMax,
+            },
         }) : null);
 
         try {
             await JourneysService.updateSettings(journey.id, {
                 isOpen: journey.settings?.isOpen || false,
-                maxParticipants: newMax
+                maxParticipants: newMax,
             });
         } catch (error) {
             console.error(error);
         }
+    };
+
+    const handleDeleteJourney = () => {
+        if (!journey || !userId) return;
+        Alert.alert(
+            'Delete Journey',
+            'This will remove the journey, its chat, and revert the dream to solo mode. This cannot be undone.',
+            [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                    text: 'Delete',
+                    style: 'destructive',
+                    onPress: async () => {
+                        setIsProcessing(true);
+                        try {
+                            await JourneysService.deleteJourney(journey.id, userId);
+                            setJourney(null);
+                        } catch (error) {
+                            Alert.alert('Error', 'Failed to delete journey.');
+                        } finally {
+                            setIsProcessing(false);
+                        }
+                    }
+                }
+            ]
+        );
     };
 
     if (loading) {
@@ -103,12 +181,12 @@ export function CollaborationSection({ dreamId, isOwner, onStartJourney }: Colla
 
     // 1. No Journey Exists
     if (!journey) {
-        if (!isOwner) return null; // Don't show anything to visitors if no journey exists
+        if (!isOwner) return null;
 
         return (
             <View style={[styles.container, { backgroundColor: colors.surface }]}>
                 <View style={styles.header}>
-                    <Ionicons name="people" size={20} color={colors.primary} />
+                    <Users size={20} color={colors.primary} />
                     <Text style={[styles.title, { color: colors.textPrimary }]}>Go Farther Together</Text>
                 </View>
                 <Text style={[styles.description, { color: colors.textSecondary }]}>
@@ -119,7 +197,7 @@ export function CollaborationSection({ dreamId, isOwner, onStartJourney }: Colla
                     onPress={onStartJourney}
                 >
                     <Text style={styles.buttonText}>Start Journey</Text>
-                    <Ionicons name="arrow-forward" size={16} color="#FFF" />
+                    <ArrowRight size={16} color="#FFF" />
                 </TouchableOpacity>
             </View>
         );
@@ -132,12 +210,12 @@ export function CollaborationSection({ dreamId, isOwner, onStartJourney }: Colla
 
     // View for Non-Participants (Seekers)
     if (!isParticipant && !isOwner) {
-        if (!isOpen) return null; // Private journey
+        if (!isOpen) return null;
 
         return (
             <View style={[styles.container, { backgroundColor: colors.surface }]}>
                 <View style={styles.header}>
-                    <Ionicons name="people-outline" size={20} color={colors.textSecondary} />
+                    <Users size={20} color={colors.textSecondary} />
                     <Text style={[styles.title, { color: colors.textPrimary }]}>Join this Journey</Text>
                 </View>
                 <Text style={[styles.description, { color: colors.textSecondary }]}>
@@ -153,7 +231,11 @@ export function CollaborationSection({ dreamId, isOwner, onStartJourney }: Colla
                         onPress={handleJoinRequest}
                         disabled={isProcessing}
                     >
-                        {isProcessing ? <ActivityIndicator color="#FFF" /> : <Text style={styles.buttonText}>Request to Join</Text>}
+                        {isProcessing ? (
+                            <ActivityIndicator color="#FFF" />
+                        ) : (
+                            <Text style={styles.buttonText}>Request to Join</Text>
+                        )}
                     </TouchableOpacity>
                 )}
             </View>
@@ -162,26 +244,32 @@ export function CollaborationSection({ dreamId, isOwner, onStartJourney }: Colla
 
     // View for Participants & Owner
     return (
-        <View style={[styles.container, { backgroundColor: colors.surface }]}>
+        <View style={[styles.container, styles.elevatedCard, { backgroundColor: colors.surface, borderTopColor: colors.accent + '40' }]}>
             <View style={styles.header}>
-                <Ionicons name="people" size={20} color={colors.accent} />
+                <Users size={20} color={colors.accent} />
                 <Text style={[styles.title, { color: colors.textPrimary }]}>Active Journey</Text>
-                <View style={[styles.badge, { backgroundColor: colors.accent + '20' }]}>
-                    <Text style={[styles.badgeText, { color: colors.accent }]}>
-                        {journey.participants.length} Travelers
-                    </Text>
-                </View>
+                <Badge
+                    label={isOpen ? 'Open' : 'Closed'}
+                    variant={isOpen ? 'success' : 'default'}
+                />
             </View>
 
             {/* Participants List */}
             <View style={styles.participants}>
-                {journey.participants.map((uid, index) => (
-                    <View key={uid} style={[styles.avatarContainer, { zIndex: 10 - index }]}>
-                        <Avatar name={`User ${uid.slice(0, 2)}`} size="sm" />
-                    </View>
-                ))}
+                {journey.participants.map((uid, index) => {
+                    const profile = userProfiles[uid];
+                    return (
+                        <View key={uid} style={[styles.avatarContainer, { zIndex: 10 - index }]}>
+                            <Avatar
+                                name={profile?.displayName || 'User'}
+                                uri={profile?.avatar}
+                                size="sm"
+                            />
+                        </View>
+                    );
+                })}
 
-                {/* Invite / Settings Controls for Owner */}
+                {/* Owner Controls */}
                 {isOwner && (
                     <View style={styles.ownerControls}>
                         {isOpen && (
@@ -193,7 +281,7 @@ export function CollaborationSection({ dreamId, isOwner, onStartJourney }: Colla
                                     <Text style={[styles.controlBtnText, { color: colors.textSecondary }]}>-</Text>
                                 </TouchableOpacity>
                                 <View style={styles.countContainer}>
-                                    <Ionicons name="people" size={12} color={colors.textSecondary} />
+                                    <Users size={12} color={colors.textSecondary} />
                                     <Text style={[styles.controlText, { color: colors.textPrimary }]}>
                                         {journey.settings?.maxParticipants || 5}
                                     </Text>
@@ -207,10 +295,17 @@ export function CollaborationSection({ dreamId, isOwner, onStartJourney }: Colla
                             </View>
                         )}
                         <TouchableOpacity
-                            style={[styles.addParticipant, { borderColor: colors.border, backgroundColor: isOpen ? colors.accent + '10' : 'transparent' }]}
                             onPress={toggleOpenStatus}
+                            style={[
+                                styles.lockButton,
+                                { borderColor: colors.border, backgroundColor: isOpen ? colors.accent + '10' : 'transparent' },
+                            ]}
                         >
-                            <Ionicons name={isOpen ? "lock-open" : "lock-closed"} size={16} color={isOpen ? colors.accent : colors.textSecondary} />
+                            {isOpen ? (
+                                <LockOpen size={16} color={colors.accent} />
+                            ) : (
+                                <Lock size={16} color={colors.textSecondary} />
+                            )}
                         </TouchableOpacity>
                     </View>
                 )}
@@ -220,23 +315,50 @@ export function CollaborationSection({ dreamId, isOwner, onStartJourney }: Colla
             {isOwner && journey.requests && journey.requests.length > 0 && (
                 <View style={styles.requestsContainer}>
                     <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>Pending Requests</Text>
-                    {journey.requests.map(reqId => (
-                        <View key={reqId} style={styles.requestRow}>
-                            <View style={styles.userInfo}>
-                                <Avatar name={`Req ${reqId.slice(0, 2)}`} size="sm" />
-                                <Text style={[styles.userName, { color: colors.textPrimary }]}>User {reqId.slice(0, 4)}...</Text>
+                    {journey.requests.map(reqId => {
+                        const profile = userProfiles[reqId];
+                        return (
+                            <View key={reqId} style={styles.requestRow}>
+                                <View style={styles.userInfo}>
+                                    <Avatar
+                                        name={profile?.displayName || 'User'}
+                                        uri={profile?.avatar}
+                                        size="sm"
+                                    />
+                                    <Text style={[styles.userName, { color: colors.textPrimary }]}>
+                                        {profile?.displayName || 'Loading...'}
+                                    </Text>
+                                </View>
+                                <View style={styles.actions}>
+                                    <TouchableOpacity
+                                        onPress={() => handleManageRequest(reqId, 'reject')}
+                                        style={[styles.actionBtn, { backgroundColor: '#D32F2F' }]}
+                                    >
+                                        <X size={14} color="#FFF" />
+                                    </TouchableOpacity>
+                                    <TouchableOpacity
+                                        onPress={() => handleManageRequest(reqId, 'accept')}
+                                        style={[styles.actionBtn, { backgroundColor: '#388E3C' }]}
+                                    >
+                                        <Check size={14} color="#FFF" />
+                                    </TouchableOpacity>
+                                </View>
                             </View>
-                            <View style={styles.actions}>
-                                <TouchableOpacity onPress={() => handleManageRequest(reqId, 'reject')} style={[styles.actionBtn, { backgroundColor: '#D32F2F' }]}>
-                                    <Ionicons name="close" size={16} color="#FFF" />
-                                </TouchableOpacity>
-                                <TouchableOpacity onPress={() => handleManageRequest(reqId, 'accept')} style={[styles.actionBtn, { backgroundColor: '#388E3C' }]}>
-                                    <Ionicons name="checkmark" size={16} color="#FFF" />
-                                </TouchableOpacity>
-                            </View>
-                        </View>
-                    ))}
+                        );
+                    })}
                 </View>
+            )}
+
+            {/* Delete Journey (Owner Only) */}
+            {isOwner && (
+                <TouchableOpacity
+                    onPress={handleDeleteJourney}
+                    disabled={isProcessing}
+                    style={[styles.deleteButton, { borderColor: '#D32F2F20' }]}
+                >
+                    <Trash2 size={14} color="#D32F2F" />
+                    <Text style={styles.deleteButtonText}>Delete Journey</Text>
+                </TouchableOpacity>
             )}
         </View>
     );
@@ -249,6 +371,14 @@ const styles = StyleSheet.create({
         padding: 16,
         borderRadius: 16,
         gap: 12,
+    },
+    elevatedCard: {
+        borderTopWidth: 1,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.1,
+        shadowRadius: 8,
+        elevation: 4,
     },
     loader: {
         marginVertical: 20,
@@ -281,34 +411,25 @@ const styles = StyleSheet.create({
         fontWeight: '600',
         fontSize: 15,
     },
-    badge: {
-        paddingHorizontal: 8,
-        paddingVertical: 4,
-        borderRadius: 8,
-    },
-    badgeText: {
-        fontSize: 12,
-        fontWeight: '600',
-    },
     participants: {
         flexDirection: 'row',
         alignItems: 'center',
         marginTop: 8,
     },
     avatarContainer: {
-        marginRight: -10,
+        marginRight: -8,
         borderWidth: 2,
         borderColor: '#FFF',
         borderRadius: 20,
     },
-    addParticipant: {
+    lockButton: {
         width: 32,
         height: 32,
         borderRadius: 16,
         borderWidth: 1,
         justifyContent: 'center',
         alignItems: 'center',
-        marginLeft: 18, // Offset for overlap
+        marginLeft: 18,
         borderStyle: 'dashed',
     },
     requestsContainer: {
@@ -381,5 +502,20 @@ const styles = StyleSheet.create({
     controlText: {
         fontSize: 12,
         fontWeight: '600',
+    },
+    deleteButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingVertical: 10,
+        borderRadius: 12,
+        borderWidth: 1,
+        gap: 6,
+        marginTop: 8,
+    },
+    deleteButtonText: {
+        color: '#D32F2F',
+        fontWeight: '500',
+        fontSize: 13,
     },
 });

@@ -5,6 +5,7 @@ import {
     doc,
     getDocs,
     limit,
+    onSnapshot,
     query,
     updateDoc,
     where
@@ -138,5 +139,31 @@ export const ItemService = {
         // In MVP, we might calculate this from local list or separate listeners
         // For now, return placeholders
         return { totalDreams: 0, totalDoing: 0, totalDone: 0 };
+    },
+
+    /**
+     * Subscribe to real-time updates for a single item
+     * Returns unsubscribe function for cleanup
+     */
+    subscribeToItem(itemId: string, callback: (item: BucketItem | null) => void) {
+        const docRef = doc(db, COLLECTION_NAME, itemId);
+
+        return onSnapshot(docRef,
+            (docSnap) => {
+                if (docSnap.exists()) {
+                    const item = { id: docSnap.id, ...docSnap.data() } as BucketItem;
+                    callback(item);
+                } else {
+                    callback(null);
+                }
+            },
+            (error) => {
+                console.error('[ItemService] Error subscribing to item:', error);
+                if (error.code === 'permission-denied') {
+                    console.error('[ItemService] Permission denied - user may have been removed from journey');
+                }
+                callback(null);
+            }
+        );
     }
 };

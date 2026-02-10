@@ -9,7 +9,7 @@ import { UsersService } from '@/src/services/users';
 import { useTheme } from '@/src/theme';
 import { DEFAULT_NOTIFICATION_PREFERENCES, NotificationPreferences } from '@/src/types/notification';
 import { isLegacySettings, migrateNotificationSettings } from '@/src/utils/settingsMigration';
-import { Stack } from 'expo-router';
+import { Stack, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import {
     ActivityIndicator,
@@ -22,9 +22,14 @@ import {
 } from 'react-native';
 import { doc, updateDoc } from 'firebase/firestore';
 import { db } from '@/firebaseConfig';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { Header } from '@/src/components/shared';
+import { IconButton } from '@/src/components/ui';
+import { ChevronLeft } from 'lucide-react-native';
 
 export default function NotificationsScreen() {
     const { colors } = useTheme();
+    const router = useRouter();
     const user = auth.currentUser;
     const [isLoading, setIsLoading] = useState(true);
     const [prefs, setPrefs] = useState<NotificationPreferences>(DEFAULT_NOTIFICATION_PREFERENCES);
@@ -129,28 +134,27 @@ export default function NotificationsScreen() {
 
     if (isLoading) {
         return (
-            <View style={[styles.container, styles.center, { backgroundColor: colors.background }]}>
-                <Stack.Screen options={{
-                    headerTitle: 'Notifications',
-                    headerTintColor: colors.textPrimary,
-                    headerStyle: { backgroundColor: colors.background },
-                    headerShadowVisible: false,
-                }} />
+            <SafeAreaView style={[styles.container, styles.center, { backgroundColor: colors.background }]} edges={['top']}>
+                <Stack.Screen options={{ headerShown: false }} />
                 <ActivityIndicator color={colors.primary} />
-            </View>
+            </SafeAreaView>
         );
     }
 
     const subDisabled = !prefs.pushEnabled;
 
     return (
-        <ScrollView style={[styles.container, { backgroundColor: colors.background }]}>
-            <Stack.Screen options={{
-                headerTitle: 'Notifications',
-                headerTintColor: colors.textPrimary,
-                headerStyle: { backgroundColor: colors.background },
-                headerShadowVisible: false,
-            }} />
+        <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
+            <Stack.Screen options={{ headerShown: false }} />
+
+            <Header
+                title="Notifications"
+                leftAction={
+                    <IconButton icon={ChevronLeft} onPress={() => router.back()} variant="ghost" />
+                }
+            />
+
+            <ScrollView style={{ flex: 1 }}>
 
             {/* Master Toggle */}
             <View style={styles.section}>
@@ -236,7 +240,8 @@ export default function NotificationsScreen() {
             </View>
 
             <View style={{ height: 40 }} />
-        </ScrollView>
+            </ScrollView>
+        </SafeAreaView>
     );
 }
 

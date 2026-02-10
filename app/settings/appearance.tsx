@@ -3,7 +3,7 @@ import { UsersService } from '@/src/services/users';
 import { useTheme } from '@/src/theme';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Stack } from 'expo-router';
+import { Stack, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import {
     ActivityIndicator,
@@ -14,11 +14,16 @@ import {
     TouchableOpacity,
     View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { Header } from '@/src/components/shared';
+import { IconButton } from '@/src/components/ui';
+import { ChevronLeft } from 'lucide-react-native';
 
 type ThemeMode = 'system' | 'light' | 'dark';
 
 export default function AppearanceScreen() {
     const { colors } = useTheme();
+    const router = useRouter();
     const user = auth.currentUser;
     const [selectedMode, setSelectedMode] = useState<ThemeMode>('system');
     const [isLoading, setIsLoading] = useState(true);
@@ -98,20 +103,25 @@ export default function AppearanceScreen() {
 
     if (isLoading) {
         return (
-            <View style={[styles.container, styles.center, { backgroundColor: colors.background }]}>
+            <SafeAreaView style={[styles.container, styles.center, { backgroundColor: colors.background }]} edges={['top']}>
+                <Stack.Screen options={{ headerShown: false }} />
                 <ActivityIndicator color={colors.primary} />
-            </View>
+            </SafeAreaView>
         );
     }
 
     return (
-        <ScrollView style={[styles.container, { backgroundColor: colors.background }]}>
-            <Stack.Screen options={{
-                headerTitle: 'Appearance',
-                headerTintColor: colors.textPrimary,
-                headerStyle: { backgroundColor: colors.background },
-                headerShadowVisible: false,
-            }} />
+        <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
+            <Stack.Screen options={{ headerShown: false }} />
+
+            <Header
+                title="Appearance"
+                leftAction={
+                    <IconButton icon={ChevronLeft} onPress={() => router.back()} variant="ghost" />
+                }
+            />
+
+            <ScrollView style={{ flex: 1 }}>
 
             <View style={styles.section}>
                 <Option mode="system" label="System Default" icon="settings-outline" />
@@ -122,7 +132,8 @@ export default function AppearanceScreen() {
             <Text style={[styles.note, { color: colors.textSecondary }]}>
                 Note: Theme changes may require an app restart to take full effect.
             </Text>
-        </ScrollView>
+            </ScrollView>
+        </SafeAreaView>
     );
 }
 

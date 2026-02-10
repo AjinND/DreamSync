@@ -44,7 +44,14 @@ export const useChatStore = create<ChatState>((set, get) => {
 
             set({ activeChatId: chatId, messages: [], isLoading: true });
 
+            // Set a timeout to prevent infinite loading
+            const loadingTimeout = setTimeout(() => {
+                console.log('[ChatStore] Message subscription timeout, forcing loading off');
+                set({ isLoading: false });
+            }, 3000);
+
             messagesUnsubscribe = ChatService.subscribeToMessages(chatId, (messages) => {
+                clearTimeout(loadingTimeout);
                 set({ messages, isLoading: false });
             });
         },

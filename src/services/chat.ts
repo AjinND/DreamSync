@@ -4,12 +4,14 @@ import {
     onValue,
     push,
     ref,
+    remove,
     query as rtdbQuery,
     serverTimestamp as rtdbTimestamp,
     set
 } from 'firebase/database';
 import {
     collection,
+    deleteDoc,
     doc,
     getDoc,
     onSnapshot,
@@ -198,5 +200,18 @@ export const ChatService = {
             console.error("[ChatService] Error subscribing to chats:", error);
             // If index is missing, it will log here
         });
+    },
+
+    /**
+     * Delete a journey chat (Firestore doc + RTDB messages)
+     */
+    deleteJourneyChat: async (chatId: string): Promise<void> => {
+        // Delete Firestore chat document
+        const chatDocRef = doc(db, 'chats', chatId);
+        await deleteDoc(chatDocRef);
+
+        // Delete all RTDB messages for this chat
+        const messagesRef = ref(rtdb, `messages/${chatId}`);
+        await remove(messagesRef);
     }
 };

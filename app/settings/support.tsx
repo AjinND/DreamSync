@@ -1,6 +1,6 @@
 import { useTheme } from '@/src/theme';
 import { Ionicons } from '@expo/vector-icons';
-import { Stack } from 'expo-router';
+import { Stack, useRouter } from 'expo-router';
 import { useState } from 'react';
 import {
     LayoutAnimation,
@@ -13,6 +13,10 @@ import {
     UIManager,
     View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { Header } from '@/src/components/shared';
+import { IconButton } from '@/src/components/ui';
+import { ChevronLeft } from 'lucide-react-native';
 
 if (
     Platform.OS === 'android' &&
@@ -42,6 +46,7 @@ const FAQS = [
 
 export default function SupportScreen() {
     const { colors } = useTheme();
+    const router = useRouter();
     const [expandedIndex, setExpandedIndex] = useState<number | null>(null);
 
     const toggleExpand = (index: number) => {
@@ -54,13 +59,17 @@ export default function SupportScreen() {
     };
 
     return (
-        <ScrollView style={[styles.container, { backgroundColor: colors.background }]}>
-            <Stack.Screen options={{
-                headerTitle: 'Help & Support',
-                headerTintColor: colors.textPrimary,
-                headerStyle: { backgroundColor: colors.background },
-                headerShadowVisible: false,
-            }} />
+        <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
+            <Stack.Screen options={{ headerShown: false }} />
+
+            <Header
+                title="Help & Support"
+                leftAction={
+                    <IconButton icon={ChevronLeft} onPress={() => router.back()} variant="ghost" />
+                }
+            />
+
+            <ScrollView style={{ flex: 1 }}>
 
             <View style={styles.content}>
                 <Text style={[styles.header, { color: colors.textPrimary }]}>Frequently Asked Questions</Text>
@@ -107,7 +116,8 @@ export default function SupportScreen() {
                     </TouchableOpacity>
                 </View>
             </View>
-        </ScrollView>
+            </ScrollView>
+        </SafeAreaView>
     );
 }
 

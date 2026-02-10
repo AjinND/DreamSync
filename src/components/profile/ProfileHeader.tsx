@@ -50,7 +50,7 @@ export function ProfileHeader({ profile, isOwnProfile }: ProfileHeaderProps) {
                     <Text style={[styles.statValue, { color: colors.textPrimary }]}>
                         {profile.publicDreamsCount}
                     </Text>
-                    <Text style={[styles.statLabel, { color: colors.textMuted }]}>Dreams</Text>
+                    <Text style={[styles.statLabel, { color: colors.textMuted }]}>Public Dreams</Text>
                 </View>
 
                 <View style={[styles.divider, { backgroundColor: colors.border }]} />
@@ -63,16 +63,6 @@ export function ProfileHeader({ profile, isOwnProfile }: ProfileHeaderProps) {
                         {profile.completedDreamsCount}
                     </Text>
                     <Text style={[styles.statLabel, { color: colors.textMuted }]}>Completed</Text>
-                </View>
-
-                <View style={[styles.divider, { backgroundColor: colors.border }]} />
-
-                <View style={styles.statItem}>
-                    <View style={[styles.statIcon, { backgroundColor: colors.accent + '15' }]}>
-                        <Sparkles size={16} color={colors.accent} />
-                    </View>
-                    <Text style={[styles.statValue, { color: colors.textPrimary }]}>0</Text>
-                    <Text style={[styles.statLabel, { color: colors.textMuted }]}>Inspired</Text>
                 </View>
             </View>
         </View>

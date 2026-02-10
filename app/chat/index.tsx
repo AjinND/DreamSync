@@ -33,7 +33,8 @@ export default function ChatListScreen() {
             if (!auth.currentUser) return;
 
             const myJourneys = await JourneysService.getUserJourneys(auth.currentUser.uid);
-            for (const journey of myJourneys) {
+            const eligible = myJourneys.filter((j: { participants: string[] }) => j.participants.length >= 2);
+            for (const journey of eligible) {
                 await ChatService.createJourneyChat(
                     journey.id,
                     journey.participants,

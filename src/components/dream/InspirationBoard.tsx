@@ -1,93 +1,222 @@
+/**
+ * InspirationBoard - Clean horizontal gallery for dream inspirations
+ * No Ken Burns, no pulsing, no emojis. Just a smooth FlatList.
+ */
+
+import { EmptyState } from '@/src/components/shared';
 import { Card } from '@/src/components/ui';
 import { useTheme } from '@/src/theme';
 import { Inspiration } from '@/src/types/item';
-import { Plus, Sparkles } from 'lucide-react-native';
-import { Dimensions, Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Link, Plus, Sparkles, Trash2 } from 'lucide-react-native';
+import { useCallback, useRef, useState } from 'react';
+import {
+    Dimensions,
+    FlatList,
+    Image,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
+    ViewToken,
+} from 'react-native';
+
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const CARD_WIDTH = 260;
+const CARD_GAP = 12;
 
 interface InspirationBoardProps {
     inspirations?: Inspiration[];
+    isOwner?: boolean;
     onAdd?: () => void;
+    onDelete?: (inspirationId: string) => void;
 }
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
-
-export function InspirationBoard({ inspirations = [], onAdd }: InspirationBoardProps) {
+export function InspirationBoard({ inspirations = [], isOwner, onAdd, onDelete }: InspirationBoardProps) {
     const { colors } = useTheme();
+    const flatListRef = useRef<FlatList>(null);
+    const [activeIndex, setActiveIndex] = useState(0);
 
     const hasContent = inspirations && inspirations.length > 0;
-    const featured = hasContent ? inspirations[0] : null;
+
+    const onViewableItemsChanged = useCallback(({ viewableItems }: { viewableItems: ViewToken[] }) => {
+        if (viewableItems.length > 0 && viewableItems[0].index != null) {
+            setActiveIndex(viewableItems[0].index);
+        }
+    }, []);
+
+    const viewabilityConfig = useRef({ viewAreaCoveragePercentThreshold: 50 }).current;
+
+    const renderCard = useCallback(({ item }: { item: Inspiration }) => {
+        return (
+            <InspirationCard
+                inspiration={item}
+                colors={colors}
+                isOwner={isOwner}
+                onDelete={onDelete}
+            />
+        );
+    }, [colors, isOwner, onDelete]);
 
     return (
         <View style={styles.container}>
+            {/* Header */}
             <View style={styles.header}>
                 <View style={styles.headerLeft}>
                     <Sparkles size={18} color={colors.primary} />
-                    <Text style={[styles.title, { color: colors.textPrimary }]}>Inspiration Board</Text>
+                    <Text style={[styles.title, { color: colors.textPrimary }]}>
+                        Inspirations
+                    </Text>
+                    {hasContent && (
+                        <Text style={[styles.count, { color: colors.textMuted }]}>
+                            {inspirations.length}
+                        </Text>
+                    )}
                 </View>
                 {onAdd && (
-                    <TouchableOpacity onPress={onAdd} style={[styles.addButton, { backgroundColor: colors.primary + '15' }]}>
+                    <TouchableOpacity
+                        onPress={onAdd}
+                        style={[styles.addButton, { backgroundColor: colors.primary + '15' }]}
+                    >
                         <Plus size={16} color={colors.primary} />
                     </TouchableOpacity>
                 )}
             </View>
 
-            {hasContent && featured ? (
+            {hasContent ? (
                 <>
-                    {featured.type === 'image' && (
-                        <View style={styles.featuredContainer}>
-                            <Image
-                                source={{ uri: featured.content }}
-                                style={styles.featuredImage}
-                                resizeMode="cover"
-                            />
-                            <View style={styles.overlay}>
-                                <Text style={styles.overlayText}>This photo started it all</Text>
-                            </View>
+                    <FlatList
+                        ref={flatListRef}
+                        data={inspirations}
+                        horizontal
+                        showsHorizontalScrollIndicator={false}
+                        snapToInterval={CARD_WIDTH + CARD_GAP}
+                        decelerationRate="fast"
+                        contentContainerStyle={styles.listContent}
+                        renderItem={renderCard}
+                        keyExtractor={(item) => item.id}
+                        onViewableItemsChanged={onViewableItemsChanged}
+                        viewabilityConfig={viewabilityConfig}
+                    />
+                    {/* Pagination dots */}
+                    {inspirations.length > 1 && (
+                        <View style={styles.dots}>
+                            {inspirations.map((_, index) => (
+                                <View
+                                    key={index}
+                                    style={[
+                                        styles.dot,
+                                        {
+                                            backgroundColor: index === activeIndex
+                                                ? colors.primary
+                                                : colors.border,
+                                        },
+                                    ]}
+                                />
+                            ))}
                         </View>
-                    )}
-
-                    {featured.type === 'quote' && (
-                        <Card style={[styles.quoteCard, { backgroundColor: colors.surface }]}>
-                            <Text style={[styles.quoteText, { color: colors.textPrimary }]}>
-                                "{featured.content}"
-                            </Text>
-                            {featured.caption && (
-                                <Text style={[styles.quoteAuthor, { color: colors.textSecondary }]}>
-                                    — {featured.caption}
-                                </Text>
-                            )}
-                        </Card>
-                    )}
-
-                    {featured.type === 'link' && (
-                        <Card style={[styles.linkCard, { backgroundColor: colors.surface }]}>
-                            <Text style={[styles.linkText, { color: colors.primary }]} numberOfLines={2}>
-                                🔗 {featured.content}
-                            </Text>
-                            {featured.caption && (
-                                <Text style={[styles.linkCaption, { color: colors.textSecondary }]}>
-                                    {featured.caption}
-                                </Text>
-                            )}
-                        </Card>
                     )}
                 </>
             ) : (
-                <TouchableOpacity
-                    style={[styles.emptyState, { borderColor: colors.border }]}
-                    onPress={onAdd}
-                >
-                    <Text style={styles.emptyEmoji}>💭</Text>
-                    <Text style={[styles.emptyTitle, { color: colors.textSecondary }]}>
-                        What inspired this dream?
-                    </Text>
-                    <Text style={[styles.emptySubtitle, { color: colors.textMuted }]}>
-                        Add a quote, image, or link
-                    </Text>
-                </TouchableOpacity>
+                <EmptyState
+                    icon={Sparkles}
+                    title="What inspired this dream?"
+                    description="Add a quote, image, or link"
+                    action={onAdd ? { label: 'Add Inspiration', onPress: onAdd } : undefined}
+                />
             )}
         </View>
     );
+}
+
+function InspirationCard({
+    inspiration,
+    colors,
+    isOwner,
+    onDelete,
+}: {
+    inspiration: Inspiration;
+    colors: any;
+    isOwner?: boolean;
+    onDelete?: (id: string) => void;
+}) {
+    const deleteButton = isOwner && onDelete ? (
+        <TouchableOpacity
+            style={styles.deleteButton}
+            onPress={() => onDelete(inspiration.id)}
+        >
+            <Trash2 size={14} color={colors.error} />
+        </TouchableOpacity>
+    ) : null;
+
+    if (inspiration.type === 'image') {
+        return (
+            <View style={styles.card}>
+                <View style={styles.imageCard}>
+                    <Image
+                        source={{ uri: inspiration.content }}
+                        style={styles.cardImage}
+                        resizeMode="cover"
+                    />
+                    {inspiration.caption && (
+                        <View style={styles.captionOverlay}>
+                            <Text style={styles.captionText} numberOfLines={2}>
+                                {inspiration.caption}
+                            </Text>
+                        </View>
+                    )}
+                    {deleteButton}
+                </View>
+            </View>
+        );
+    }
+
+    if (inspiration.type === 'quote') {
+        return (
+            <View style={styles.card}>
+                <Card style={[styles.quoteCard, { backgroundColor: colors.primary + '08' }]}>
+                    <Text
+                        style={[styles.quoteText, { color: colors.textPrimary }]}
+                        numberOfLines={5}
+                    >
+                        &ldquo;{inspiration.content}&rdquo;
+                    </Text>
+                    {inspiration.caption && (
+                        <Text style={[styles.attribution, { color: colors.textSecondary }]}>
+                            — {inspiration.caption}
+                        </Text>
+                    )}
+                    {deleteButton}
+                </Card>
+            </View>
+        );
+    }
+
+    if (inspiration.type === 'link') {
+        return (
+            <View style={styles.card}>
+                <Card style={[styles.linkCard, { backgroundColor: colors.surface }]}>
+                    <Link size={20} color={colors.primary} />
+                    <Text
+                        style={[styles.linkText, { color: colors.primary }]}
+                        numberOfLines={2}
+                    >
+                        {inspiration.content}
+                    </Text>
+                    {inspiration.caption && (
+                        <Text
+                            style={[styles.linkCaption, { color: colors.textSecondary }]}
+                            numberOfLines={2}
+                        >
+                            {inspiration.caption}
+                        </Text>
+                    )}
+                    {deleteButton}
+                </Card>
+            </View>
+        );
+    }
+
+    return null;
 }
 
 const styles = StyleSheet.create({
@@ -110,6 +239,10 @@ const styles = StyleSheet.create({
         fontSize: 18,
         fontWeight: '600',
     },
+    count: {
+        fontSize: 14,
+        fontWeight: '500',
+    },
     addButton: {
         width: 32,
         height: 32,
@@ -117,76 +250,91 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         alignItems: 'center',
     },
-    featuredContainer: {
+    listContent: {
+        paddingHorizontal: 20,
+        gap: CARD_GAP,
+    },
+    card: {
+        width: CARD_WIDTH,
+    },
+    imageCard: {
         borderRadius: 16,
         overflow: 'hidden',
-        height: SCREEN_WIDTH * 0.6,
         position: 'relative',
     },
-    featuredImage: {
-        width: '100%',
-        height: '100%',
+    cardImage: {
+        width: CARD_WIDTH,
+        height: 180,
     },
-    overlay: {
+    captionOverlay: {
         position: 'absolute',
-        bottom: 12,
-        left: 12,
-        backgroundColor: 'rgba(0,0,0,0.6)',
+        bottom: 0,
+        left: 0,
+        right: 0,
+        backgroundColor: 'rgba(0,0,0,0.5)',
         paddingHorizontal: 12,
-        paddingVertical: 6,
-        borderRadius: 8,
+        paddingVertical: 10,
     },
-    overlayText: {
+    captionText: {
         color: '#FFFFFF',
-        fontSize: 12,
+        fontSize: 13,
         fontWeight: '500',
     },
     quoteCard: {
-        padding: 24,
-        alignItems: 'center',
+        padding: 20,
+        borderRadius: 16,
+        minHeight: 180,
         justifyContent: 'center',
-        minHeight: 150,
+        position: 'relative',
     },
     quoteText: {
-        fontSize: 18,
+        fontSize: 16,
         fontStyle: 'italic',
         textAlign: 'center',
-        marginBottom: 12,
-        lineHeight: 28,
+        lineHeight: 24,
     },
-    quoteAuthor: {
-        fontSize: 14,
+    attribution: {
+        fontSize: 13,
         fontWeight: '500',
+        textAlign: 'center',
+        marginTop: 12,
     },
     linkCard: {
-        padding: 16,
+        padding: 20,
+        borderRadius: 16,
+        minHeight: 180,
+        justifyContent: 'center',
+        gap: 8,
+        position: 'relative',
     },
     linkText: {
         fontSize: 14,
-        marginBottom: 4,
+        lineHeight: 20,
     },
     linkCaption: {
         fontSize: 12,
+        lineHeight: 16,
     },
-    emptyState: {
-        borderWidth: 2,
-        borderStyle: 'dashed',
-        borderRadius: 16,
-        padding: 32,
+    deleteButton: {
+        position: 'absolute',
+        top: 8,
+        right: 8,
+        width: 28,
+        height: 28,
+        borderRadius: 14,
+        backgroundColor: 'rgba(0,0,0,0.3)',
         alignItems: 'center',
         justifyContent: 'center',
     },
-    emptyEmoji: {
-        fontSize: 32,
-        marginBottom: 12,
+    dots: {
+        flexDirection: 'row',
+        justifyContent: 'center',
+        gap: 6,
+        marginTop: 12,
     },
-    emptyTitle: {
-        fontSize: 16,
-        fontWeight: '600',
-        marginBottom: 4,
-    },
-    emptySubtitle: {
-        fontSize: 14,
+    dot: {
+        width: 6,
+        height: 6,
+        borderRadius: 3,
     },
 });
-

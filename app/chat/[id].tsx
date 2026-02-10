@@ -74,35 +74,34 @@ export default function ChatRoomScreen() {
         const initChat = async () => {
             if (!id) return;
 
-            enterChat(id);
-
-            // Legacy Handling
-            if (id.startsWith('journey_')) {
-                const journeyId = id.replace('journey_', '');
-                if (!currentChat) {
-                    setIsInitializing(true);
-                    try {
-                        const journey = await JourneysService.getJourneyById(journeyId);
-                        if (journey) {
-                            await ChatService.createJourneyChat(
-                                journeyId,
-                                journey.participants,
-                                journey.preview?.title,
-                                journey.preview?.image
-                            );
-                        }
-                    } catch (e) {
-                        console.error("Failed to init legacy chat", e);
-                    } finally {
-                        setIsInitializing(false);
+            // Legacy Handling - Initialize journey chat if needed (only for 2+ participants)
+            if (id.startsWith('journey_') && !currentChat) {
+                setIsInitializing(true);
+                try {
+                    const journeyId = id.replace('journey_', '');
+                    const journey = await JourneysService.getJourneyById(journeyId);
+                    if (journey && journey.participants.length >= 2) {
+                        await ChatService.createJourneyChat(
+                            journeyId,
+                            journey.participants,
+                            journey.preview?.title,
+                            journey.preview?.image
+                        );
                     }
+                } catch (e) {
+                    console.error("Failed to init legacy chat", e);
+                } finally {
+                    setIsInitializing(false);
                 }
             }
+
+            // Always enter chat to subscribe to messages
+            enterChat(id);
         };
 
         initChat();
         return () => leaveChat();
-    }, [id, currentChat]);
+    }, [id]);
 
     const handleSend = (text: string) => {
         sendMessage(text);

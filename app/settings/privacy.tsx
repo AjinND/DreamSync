@@ -2,7 +2,7 @@ import { auth } from '@/firebaseConfig';
 import { UsersService } from '@/src/services/users';
 import { useTheme } from '@/src/theme';
 import { UserSettings } from '@/src/types/social';
-import { Stack } from 'expo-router';
+import { Stack, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import {
     ActivityIndicator,
@@ -13,9 +13,14 @@ import {
     Text,
     View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { Header } from '@/src/components/shared';
+import { IconButton } from '@/src/components/ui';
+import { ChevronLeft } from 'lucide-react-native';
 
 export default function PrivacyScreen() {
     const { colors } = useTheme();
+    const router = useRouter();
     const user = auth.currentUser;
     const [isLoading, setIsLoading] = useState(true);
     const [settings, setSettings] = useState<UserSettings['privacy']>({
@@ -86,20 +91,25 @@ export default function PrivacyScreen() {
 
     if (isLoading) {
         return (
-            <View style={[styles.container, styles.center, { backgroundColor: colors.background }]}>
+            <SafeAreaView style={[styles.container, styles.center, { backgroundColor: colors.background }]} edges={['top']}>
+                <Stack.Screen options={{ headerShown: false }} />
                 <ActivityIndicator color={colors.primary} />
-            </View>
+            </SafeAreaView>
         );
     }
 
     return (
-        <ScrollView style={[styles.container, { backgroundColor: colors.background }]}>
-            <Stack.Screen options={{
-                headerTitle: 'Privacy',
-                headerTintColor: colors.textPrimary,
-                headerStyle: { backgroundColor: colors.background },
-                headerShadowVisible: false,
-            }} />
+        <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
+            <Stack.Screen options={{ headerShown: false }} />
+
+            <Header
+                title="Privacy"
+                leftAction={
+                    <IconButton icon={ChevronLeft} onPress={() => router.back()} variant="ghost" />
+                }
+            />
+
+            <ScrollView style={{ flex: 1 }}>
 
             <View style={styles.section}>
                 <Text style={[styles.sectionTitle, { color: colors.primary }]}>Visibility</Text>
@@ -125,7 +135,8 @@ export default function PrivacyScreen() {
                     Your private dreams are never shared. Only dreams you explicitly mark as "Shared" or "Public" are visible to the community.
                 </Text>
             </View>
-        </ScrollView>
+            </ScrollView>
+        </SafeAreaView>
     );
 }
 

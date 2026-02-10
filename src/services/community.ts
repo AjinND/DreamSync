@@ -126,12 +126,13 @@ export const CommunityService = {
 
         console.log(`[CommunityService] Toggling like for dream: ${dreamId}`);
 
-        const docRef = doc(db, COLLECTION_NAME, dreamId);
-        const docSnap = await getDoc(docRef);
+        try {
+            const docRef = doc(db, COLLECTION_NAME, dreamId);
+            const docSnap = await getDoc(docRef);
 
-        if (!docSnap.exists()) {
-            throw new Error('Dream not found');
-        }
+            if (!docSnap.exists()) {
+                throw new Error('Dream not found');
+            }
 
         const dreamData = docSnap.data() as BucketItem;
         const currentLikes = dreamData.likes || [];
@@ -154,6 +155,14 @@ export const CommunityService = {
             console.log(`[CommunityService] Liked dream: ${dreamId}`);
             return { liked: true };
         }
+        } catch (error: any) {
+            if (error.message === 'Dream not found') throw error;
+            if (error.code === 'permission-denied' || error.message?.includes('permission')) {
+                console.error(`[CommunityService] Permission denied for toggling like on dream: ${dreamId}`);
+                throw new Error('You do not have permission to like this dream');
+            }
+            throw error;
+        }
     },
 
     /**
@@ -170,12 +179,24 @@ export const CommunityService = {
      */
     async getDreamById(dreamId: string): Promise<BucketItem | null> {
         console.log(`[CommunityService] Fetching dream: ${dreamId}`);
-        const docRef = doc(db, COLLECTION_NAME, dreamId);
-        const docSnap = await getDoc(docRef);
+        try {
+            const docRef = doc(db, COLLECTION_NAME, dreamId);
+            const docSnap = await getDoc(docRef);
 
-        if (docSnap.exists()) {
-            return { id: docSnap.id, ...docSnap.data() } as BucketItem;
+            if (docSnap.exists()) {
+                console.log(`[CommunityService] Dream found: ${dreamId}`);
+                return { id: docSnap.id, ...docSnap.data() } as BucketItem;
+            }
+            console.log(`[CommunityService] Dream not found: ${dreamId}`);
+            return null;
+        } catch (error: any) {
+            // Check if it's a permission error
+            if (error.code === 'permission-denied' || error.message?.includes('permission')) {
+                console.error(`[CommunityService] Permission denied for dream: ${dreamId}`, error);
+                throw new Error('You do not have permission to view this dream');
+            }
+            console.error(`[CommunityService] Error fetching dream: ${dreamId}`, error);
+            throw error;
         }
-        return null;
     },
 };

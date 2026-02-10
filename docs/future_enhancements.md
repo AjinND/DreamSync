@@ -4,7 +4,7 @@
 
 3. Data privacy and encryption of all the messages or any important factors. 
 
-4. Implement Loading screen for the entire application. Not just a simple indicator, but an impressive design which shows a "bucket" and something which resembles the bucketist. the screen should be visible whenever the app is fetching data from the server.
+4. Implement Loading screen for the entire application. Not just a simple indicator, but an impressive design which shows a "bucket" and something which resembles the bucketist. the screen should be visible whenever the app is fetching data from the server. -- completed (the bucket icon is not proper. need to redesign the bucket icon)
 
 5. Journeys should come as a dream for the users who are part of the journey in the home page as well. They should have permission for updating the dream as well. -- completed
 
@@ -30,14 +30,22 @@
     - App Store Assets
     - Launch Checklist
 
-14. When i click on the Profile photo, it takes me to the profile page. But im seeing two headers. One is the default header with name profile/[id] and the other is the header which is part of the profile page. This should be fixed. 
+14. When i click on the Profile photo, it takes me to the profile page. But im seeing two headers. One is the default header with name profile/[id] and the other is the header which is part of the profile page. This should be fixed. -- completed
 
 15. One error i noticed - I started a dream as a journey and the dream is visible in the other user's explore tab. Then i delete the dream, but it is still visible in the other user's explore tab. This should be fixed. 
 
-16. User clicked on start a journey, journey, started. But the UI didnt got changed in the dream details page. It was still showing "Start a Journey" button, until i go back and reopen the dream. This should be fixed. 
+16. User clicked on start a journey from the dream details page, journey started. But the UI didnt got changed in the dream details page. It was still showing "Start a Journey" button until i go back and reopen the dream. This should be fixed. -- completed
 
-17. When request is placed to join a journey, the user should be able to see the request in the notifications tab. And when the user clicks on the request, it should take them to the dream details page. Also in the details page, the Pending requests should show the Name of the user. Currently it showing userid from the db(which is a random string). Similarly for the comments.
+17. In the details page, the Pending requests should show the Name of the user. Currently it showing userid from the db(which is a random string). Similarly for the comments. -- completed
 
-18. When the user who joined the journey, tried to do any changes to the dream, it was showing some permission error. Insufficient permissions.
+18. When the user who joined the journey, tried to do any changes to the dream, it was showing some permission error. Insufficient permissions. -- completed.
 
-19. In shared journeys, when one user updates the dream, it should reflect the changes for all the users who have joined the journey instantly. Currently it is not reflecting the changes instantly. It is taking some time and then i need to refresh the page to see the changes.
+19. In shared journeys, when one user updates the dream, it should reflect the changes for all the users who have joined the journey instantly. Currently it is not reflecting the changes instantly. It is taking some time and then i need to refresh the page to see the changes -- completed.
+
+20. No notification recieved to owner when someone requests to join the journey.
+
+21. Need to implement clean up activity for backend in most cases. Check where no clean up activity is not implemented and come up with a plan to implement it. 
+
+22. Now when i open a chat which is created for a journey, it keeps on showing the skeleton. Not showing the chatscreen. -- completed
+
+23. Even though i add multiple inspirations to the dream, it is not showing up in the dream details page. Only the 1st inspiration is visible. But in DB they are getting saved. -- completed
