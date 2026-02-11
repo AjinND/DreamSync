@@ -10,9 +10,17 @@ export interface Inspiration {
 
 export interface Reflection {
     id: string;
-    question: string;
-    answer: string;
+    contentBlocks?: ReflectionBlock[];
+    // Legacy fields kept for backward compatibility with existing data.
+    question?: string;
+    answer?: string;
     date: number;
+}
+
+export interface ReflectionBlock {
+    type: 'text' | 'image' | 'link';
+    value: string;
+    caption?: string;
 }
 
 export interface Memory {

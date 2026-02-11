@@ -36,7 +36,7 @@ export function ProgressTab({ item, isOwner, onAddProgress }: ProgressTabProps) 
 
     return (
         <View style={styles.container}>
-            {isOwner && (
+            {isOwner && item.phase === 'doing' && (
                 <TouchableOpacity
                     style={[styles.addButton, { borderColor: colors.primary }]}
                     onPress={onAddProgress}

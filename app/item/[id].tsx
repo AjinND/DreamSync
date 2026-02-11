@@ -27,7 +27,7 @@ import { JourneysService } from '@/src/services/journeys';
 import { useBucketStore } from '@/src/store/useBucketStore';
 import { useCommunityStore } from '@/src/store/useCommunityStore';
 import { useTheme } from '@/src/theme';
-import { BucketItem, Expense, Phase } from '@/src/types/item';
+import { BucketItem, Expense, Phase, ReflectionBlock } from '@/src/types/item';
 import * as Haptics from 'expo-haptics';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
@@ -79,6 +79,7 @@ export default function DreamDetailScreen() {
         addInspiration,
         deleteInspiration,
         addMemory,
+        deleteMemory,
         addReflection,
         addProgress,
         addExpense,
@@ -195,8 +196,6 @@ export default function DreamDetailScreen() {
                 description: item.description,
                 category: item.category,
                 phase: 'dream',
-                mainImage: item.mainImage,
-                images: item.images,
                 basedOnTemplateId: item.id,
                 collaborationType: 'solo',
                 isPublic: false,
@@ -292,14 +291,22 @@ export default function DreamDetailScreen() {
         await addInspiration(item.id, { type, content, caption });
     };
 
-    const handleAddMemory = async (imageUrl: string, caption: string) => {
+    const handleAddMemory = async (memoryId: string, imageUrl: string, caption: string) => {
         if (!item) return;
-        await addMemory(item.id, { imageUrl, caption, date: Date.now() });
+        await addMemory(item.id, { id: memoryId, imageUrl, caption, date: Date.now() });
     };
 
-    const handleAddReflection = async (question: string, answer: string) => {
+    const handleDeleteMemory = (memoryId: string) => {
         if (!item) return;
-        await addReflection(item.id, { question, answer, date: Date.now() });
+        Alert.alert('Delete Memory', 'Are you sure you want to delete this memory?', [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Delete', style: 'destructive', onPress: () => deleteMemory(item.id, memoryId) },
+        ]);
+    };
+
+    const handleAddReflection = async (blocks: ReflectionBlock[]) => {
+        if (!item) return;
+        await addReflection(item.id, { contentBlocks: blocks, date: Date.now() });
     };
 
     const handleAddProgress = async (title: string, description?: string, imageUrl?: string) => {
@@ -475,6 +482,7 @@ export default function DreamDetailScreen() {
                                     <MemoryCapsule
                                         memories={item.memories}
                                         onAdd={canEdit ? () => setShowMemoryModal(true) : undefined}
+                                        onDelete={canEdit ? handleDeleteMemory : undefined}
                                     />
                                 )}
 
@@ -552,6 +560,7 @@ export default function DreamDetailScreen() {
             <AddMemoryModal
                 visible={showMemoryModal}
                 dreamId={item.id}
+                isPublic={item.isPublic}
                 onClose={() => setShowMemoryModal(false)}
                 onSave={handleAddMemory}
             />
@@ -563,6 +572,7 @@ export default function DreamDetailScreen() {
             <AddProgressModal
                 visible={showProgressModal}
                 dreamId={item.id}
+                isPublic={item.isPublic}
                 onClose={() => setShowProgressModal(false)}
                 onSave={handleAddProgress}
             />

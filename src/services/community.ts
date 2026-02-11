@@ -10,16 +10,61 @@ import {
     doc,
     getDoc,
     getDocs,
-    increment,
     limit,
     query,
     updateDoc,
     where
 } from 'firebase/firestore';
 import { auth, db } from '../../firebaseConfig';
+import { isEncryptedField } from './encryption';
 import { BucketItem } from '../types/item';
 
 const COLLECTION_NAME = 'items';
+
+const sanitizeForPublicView = (dream: BucketItem): BucketItem => {
+    const sanitized: BucketItem = { ...dream };
+
+    // Never expose owner/collaborator-only fields in community payload.
+    delete (sanitized as any).progress;
+    delete (sanitized as any).expenses;
+
+    if (isEncryptedField((sanitized as any).location)) sanitized.location = '';
+    if (isEncryptedField((sanitized as any).budget)) sanitized.budget = 0;
+
+    if (Array.isArray(sanitized.memories)) {
+        sanitized.memories = sanitized.memories
+            .map((m: any) => ({
+                ...m,
+                caption: isEncryptedField(m?.caption) ? '' : m?.caption,
+                imageUrl: isEncryptedField(m?.imageUrl) ? '' : m?.imageUrl,
+            }))
+            .filter((m: any) => typeof m?.imageUrl === 'string' && m.imageUrl.trim().length > 0);
+    }
+
+    if (Array.isArray(sanitized.reflections)) {
+        sanitized.reflections = sanitized.reflections.map((r: any) => ({
+            ...r,
+            answer: isEncryptedField(r?.answer) ? '' : r?.answer,
+            contentBlocks: Array.isArray(r?.contentBlocks)
+                ? r.contentBlocks.map((block: any) => ({
+                    ...block,
+                    value: isEncryptedField(block?.value) ? '' : block?.value,
+                    caption: isEncryptedField(block?.caption) ? '' : block?.caption,
+                }))
+                : r?.contentBlocks,
+        }));
+    }
+
+    if (Array.isArray(sanitized.inspirations)) {
+        sanitized.inspirations = sanitized.inspirations.map((i: any) => ({
+            ...i,
+            content: isEncryptedField(i?.content) ? '' : i?.content,
+            caption: isEncryptedField(i?.caption) ? '' : i?.caption,
+        }));
+    }
+
+    return sanitized;
+};
 
 export const CommunityService = {
     /**
@@ -35,17 +80,14 @@ export const CommunityService = {
             const q = query(
                 collection(db, COLLECTION_NAME),
                 where('isPublic', '==', true),
+                where('phase', 'in', ['doing', 'done']),
                 limit(maxItems + 10) // Fetch extra to account for client-side filtering
             );
 
             const snapshot = await getDocs(q);
             console.log(`[CommunityService] Found ${snapshot.size} public dreams`);
 
-            let dreams = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as BucketItem));
-
-            // Client-side filter: Exclude items in 'dream' phase (must be 'doing' or 'done')
-            // Also allow Journeys (collaborationType 'group'/'open') to appear in Community Feed
-            dreams = dreams.filter(d => d.phase !== 'dream');
+            let dreams = snapshot.docs.map(doc => sanitizeForPublicView({ id: doc.id, ...doc.data() } as BucketItem));
 
             // Sort client-side by createdAt (descending) since we removed orderBy
             dreams.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
@@ -73,6 +115,7 @@ export const CommunityService = {
             const q = query(
                 collection(db, COLLECTION_NAME),
                 where('isPublic', '==', true),
+                where('phase', 'in', ['doing', 'done']),
                 where('tags', 'array-contains', tag),
                 limit(maxItems)
             );
@@ -80,7 +123,7 @@ export const CommunityService = {
             const snapshot = await getDocs(q);
             console.log(`[CommunityService] Found ${snapshot.size} dreams with tag ${tag}`);
 
-            const dreams = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as BucketItem));
+            const dreams = snapshot.docs.map(doc => sanitizeForPublicView({ id: doc.id, ...doc.data() } as BucketItem));
             dreams.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
 
             return dreams;
@@ -100,6 +143,7 @@ export const CommunityService = {
             const q = query(
                 collection(db, COLLECTION_NAME),
                 where('isPublic', '==', true),
+                where('phase', 'in', ['doing', 'done']),
                 where('category', '==', category),
                 limit(maxItems)
             );
@@ -107,7 +151,7 @@ export const CommunityService = {
             const snapshot = await getDocs(q);
             console.log(`[CommunityService] Found ${snapshot.size} dreams in category ${category}`);
 
-            const dreams = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as BucketItem));
+            const dreams = snapshot.docs.map(doc => sanitizeForPublicView({ id: doc.id, ...doc.data() } as BucketItem));
             dreams.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
 
             return dreams;
@@ -142,7 +186,6 @@ export const CommunityService = {
             // Unlike: Remove user from likes array
             await updateDoc(docRef, {
                 likes: arrayRemove(user.uid),
-                likesCount: increment(-1),
             });
             console.log(`[CommunityService] Unliked dream: ${dreamId}`);
             return { liked: false };
@@ -150,7 +193,6 @@ export const CommunityService = {
             // Like: Add user to likes array
             await updateDoc(docRef, {
                 likes: arrayUnion(user.uid),
-                likesCount: increment(1),
             });
             console.log(`[CommunityService] Liked dream: ${dreamId}`);
             return { liked: true };
@@ -185,7 +227,7 @@ export const CommunityService = {
 
             if (docSnap.exists()) {
                 console.log(`[CommunityService] Dream found: ${dreamId}`);
-                return { id: docSnap.id, ...docSnap.data() } as BucketItem;
+                return sanitizeForPublicView({ id: docSnap.id, ...docSnap.data() } as BucketItem);
             }
             console.log(`[CommunityService] Dream not found: ${dreamId}`);
             return null;

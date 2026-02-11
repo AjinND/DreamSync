@@ -30,15 +30,25 @@ export const UsersService = {
         }
 
         let profileData = { id: snapshot.id, ...snapshot.data() } as UserProfile;
+        const currentUserId = auth.currentUser?.uid;
+        const isOwner = currentUserId === userId;
+
+        // Respect public-profile privacy for non-owners.
+        if (!isOwner && profileData.settings?.privacy?.isPublicProfile === false) {
+            return null;
+        }
 
         // Only decrypt if this is the current user's own profile
         // Other users' profiles are encrypted with THEIR key, not ours
-        const currentUserId = auth.currentUser?.uid;
-        if (currentUserId === userId) {
+        // NOTE: Only email is encrypted now, bio is public plaintext
+        if (isOwner) {
             const fieldKey = await KeyManager.getFieldEncryptionKey();
-            if (fieldKey && (isEncryptedField(profileData.email) || isEncryptedField(profileData.bio))) {
+            if (fieldKey && isEncryptedField(profileData.email)) {
                 profileData = decryptProfileFields(profileData, fieldKey) as UserProfile;
             }
+        } else {
+            // Never expose email outside the owner context.
+            delete (profileData as any).email;
         }
 
         return profileData;
@@ -62,21 +72,10 @@ export const UsersService = {
                 await KeyManager.publishKeyData(user.uid).catch(() => {});
             }
 
-            // Decrypt profile fields if needed, or lazy-migrate plaintext fields
+            // Decrypt profile fields if needed (only email, bio is public plaintext)
             const fieldKey = await KeyManager.getFieldEncryptionKey();
-            if (fieldKey) {
-                if (isEncryptedField(profile.email) || isEncryptedField(profile.bio)) {
-                    return decryptProfileFields(profile, fieldKey) as UserProfile;
-                }
-
-                // Lazy migration: encrypt plaintext profile fields
-                if (typeof profile.email === 'string' || typeof profile.bio === 'string') {
-                    const encrypted = encryptProfileFields(
-                        { email: profile.email, bio: profile.bio },
-                        fieldKey,
-                    );
-                    updateDoc(docRef, encrypted).catch(() => {});
-                }
+            if (fieldKey && isEncryptedField(profile.email)) {
+                return decryptProfileFields(profile, fieldKey) as UserProfile;
             }
 
             return profile;
@@ -93,13 +92,13 @@ export const UsersService = {
             createdAt: Date.now(),
         };
 
-        // Encrypt sensitive fields if key is available
+        // Encrypt sensitive fields if key is available (only email, bio is public plaintext)
         const fieldKey = await KeyManager.getFieldEncryptionKey();
         let firestoreData: Record<string, any> = Object.fromEntries(
             Object.entries(newProfile).filter(([, v]) => v !== undefined)
         );
 
-        if (fieldKey) {
+        if (fieldKey && firestoreData.email) {
             firestoreData = encryptProfileFields(firestoreData, fieldKey);
         }
 
@@ -129,10 +128,10 @@ export const UsersService = {
             }
         }
 
-        // Encrypt sensitive fields if key is available
+        // Encrypt sensitive fields if key is available (only email, bio is public plaintext)
         let updateData: Record<string, any> = { ...updates };
         const fieldKey = await KeyManager.getFieldEncryptionKey();
-        if (fieldKey) {
+        if (fieldKey && updateData.email) {
             updateData = encryptProfileFields(updateData, fieldKey);
         }
 
@@ -226,12 +225,21 @@ export const UsersService = {
     async getUserPublicDreams(userId: string): Promise<any[]> {
         const { collection, query, where, getDocs } = await import('firebase/firestore');
 
+        // Respect profile visibility settings for non-owners.
+        const currentUserId = auth.currentUser?.uid;
+        let targetProfile: UserProfile | null = null;
+        if (currentUserId !== userId) {
+            targetProfile = await UsersService.getUserProfile(userId);
+            if (!targetProfile) return [];
+        }
+
         const itemsRef = collection(db, 'items');
         // Avoid composite index by not using orderBy - sort client-side
         const q = query(
             itemsRef,
             where('userId', '==', userId),
-            where('isPublic', '==', true)
+            where('isPublic', '==', true),
+            where('phase', 'in', ['doing', 'done'])
         );
 
         const snapshot = await getDocs(q);
@@ -239,6 +247,12 @@ export const UsersService = {
 
         // Sort client-side by createdAt descending
         dreams.sort((a: any, b: any) => (b.createdAt || 0) - (a.createdAt || 0));
+
+        if (currentUserId !== userId) {
+            if (targetProfile?.settings?.privacy?.showCompletedDreams === false) {
+                return dreams.filter((dream: any) => dream.phase !== 'done');
+            }
+        }
 
         return dreams;
     },

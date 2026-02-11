@@ -104,6 +104,13 @@ export function DreamCard({
                 >
                     {item.title}
                 </Text>
+                {(item.collaborationType === 'group' || item.collaborationType === 'open') && (
+                    <View style={[styles.journeyBadge, { backgroundColor: colors.primary + '15' }]}>
+                        <Text style={[styles.journeyBadgeText, { color: colors.primary }]}>
+                            Journey
+                        </Text>
+                    </View>
+                )}
 
                 {!isCompact && item.description && (
                     <Text
@@ -146,7 +153,7 @@ export function DreamCard({
                                     />
                                 </Animated.View>
                                 <Text style={[styles.actionCount, { color: colors.textMuted }]}>
-                                    {item.likesCount || 0}
+                                    {item.likes?.length ?? item.likesCount ?? 0}
                                 </Text>
                             </TouchableOpacity>
 
@@ -212,6 +219,19 @@ const styles = StyleSheet.create({
         fontWeight: '700',
         lineHeight: 24,
         marginBottom: 4,
+    },
+    journeyBadge: {
+        alignSelf: 'flex-start',
+        borderRadius: 10,
+        paddingHorizontal: 8,
+        paddingVertical: 3,
+        marginBottom: 8,
+    },
+    journeyBadgeText: {
+        fontSize: 10,
+        fontWeight: '700',
+        textTransform: 'uppercase',
+        letterSpacing: 0.4,
     },
     description: {
         fontSize: 14,

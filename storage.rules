@@ -3,20 +3,57 @@ rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
 
-    // Profile avatars: only the owner can write, anyone authenticated can read
+    // Profile avatars: public read, only owner can write
+    // Moved to /avatars/ path for public discoverability
+    match /avatars/{userId}/{fileName} {
+      allow read: if true;
+      allow write: if request.auth != null && request.auth.uid == userId
+                   && (
+                     request.resource == null ||
+                     (
+                       request.resource.size < 5 * 1024 * 1024 &&
+                       request.resource.contentType.matches('image/.*')
+                     )
+                   );
+    }
+
+    // Legacy profile images path (for backwards compatibility)
     match /profile_images/{userId}/{fileName} {
       allow read: if request.auth != null;
       allow write: if request.auth != null && request.auth.uid == userId
-                   && request.resource.size < 5 * 1024 * 1024
-                   && request.resource.contentType.matches('image/.*');
+                   && (
+                     request.resource == null ||
+                     (
+                       request.resource.size < 5 * 1024 * 1024 &&
+                       request.resource.contentType.matches('image/.*')
+                     )
+                   );
     }
 
-    // Dream images: only the owner can write, anyone authenticated can read
+    // Public dream images: anyone can read, only owner can write
+    match /public_dreams/{dreamId}/{allPaths=**} {
+      allow read: if true;
+      allow write: if request.auth != null
+                   && (
+                     request.resource == null ||
+                     (
+                       request.resource.size < 10 * 1024 * 1024 &&
+                       request.resource.contentType.matches('image/.*')
+                     )
+                   );
+    }
+
+    // Private dream images: only owner can read/write
     match /dreams/{userId}/{dreamId}/{allPaths=**} {
-      allow read: if request.auth != null;
+      allow read: if request.auth != null && request.auth.uid == userId;
       allow write: if request.auth != null && request.auth.uid == userId
-                   && request.resource.size < 10 * 1024 * 1024
-                   && request.resource.contentType.matches('image/.*');
+                   && (
+                     request.resource == null ||
+                     (
+                       request.resource.size < 10 * 1024 * 1024 &&
+                       request.resource.contentType.matches('image/.*')
+                     )
+                   );
     }
 
     // Deny everything else by default

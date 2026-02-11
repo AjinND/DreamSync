@@ -12,19 +12,29 @@ import type { BucketItem } from '../types/item';
 /**
  * Centralized Storage path helpers.
  * All paths are deterministic so re-uploads overwrite (no orphans).
+ *
+ * Public dreams use /public_dreams/ path (world-readable).
+ * Private dreams use /dreams/{userId}/ path (owner-only).
+ * Profile avatars use /avatars/ path (world-readable).
  */
 export const StoragePaths = {
-    dreamCover: (userId: string, dreamId: string) =>
-        `dreams/${userId}/${dreamId}/cover.jpg`,
+    dreamCover: (userId: string, dreamId: string, isPublic: boolean = false) =>
+        isPublic
+            ? `public_dreams/${dreamId}/cover.jpg`
+            : `dreams/${userId}/${dreamId}/cover.jpg`,
 
-    dreamMemory: (userId: string, dreamId: string, memoryId: string) =>
-        `dreams/${userId}/${dreamId}/memories/${memoryId}.jpg`,
+    dreamMemory: (userId: string, dreamId: string, memoryId: string, isPublic: boolean = false) =>
+        isPublic
+            ? `public_dreams/${dreamId}/memories/${memoryId}.jpg`
+            : `dreams/${userId}/${dreamId}/memories/${memoryId}.jpg`,
 
-    dreamProgress: (userId: string, dreamId: string, progressId: string) =>
-        `dreams/${userId}/${dreamId}/progress/${progressId}.jpg`,
+    dreamProgress: (userId: string, dreamId: string, progressId: string, isPublic: boolean = false) =>
+        isPublic
+            ? `public_dreams/${dreamId}/progress/${progressId}.jpg`
+            : `dreams/${userId}/${dreamId}/progress/${progressId}.jpg`,
 
     profileAvatar: (userId: string) =>
-        `profile_images/${userId}/avatar.jpg`,
+        `avatars/${userId}/avatar.jpg`,
 };
 
 export const StorageService = {
@@ -117,19 +127,70 @@ export const StorageService = {
     },
 
     /**
+     * Delete a file by its download URL.
+     * Useful for legacy data where deterministic path and stored ID may not align.
+     */
+    async deleteImageByUrl(url: string): Promise<void> {
+        if (!url || typeof url !== 'string') return;
+        try {
+            const storageRef = ref(storage, url);
+            await deleteObject(storageRef);
+        } catch (error: any) {
+            if (error?.code !== 'storage/object-not-found') {
+                throw error;
+            }
+        }
+    },
+
+    /**
+     * Migrate an image from one Storage path to another (e.g. public↔private).
+     * Downloads from old path, uploads to new path, deletes old file.
+     * Returns the new download URL.
+     */
+    async migrateImagePath(oldPath: string, newPath: string): Promise<string> {
+        const oldRef = ref(storage, sanitizeStoragePath(oldPath));
+        const newRef = ref(storage, sanitizeStoragePath(newPath));
+
+        // 1. Download from old path
+        const downloadUrl = await getDownloadURL(oldRef);
+        const response = await fetch(downloadUrl);
+        const blob = await response.blob();
+
+        // 2. Upload to new path
+        await uploadBytesResumable(newRef, blob, {
+            contentType: blob.type || 'image/jpeg',
+        });
+
+        // 3. Get new download URL
+        const newDownloadUrl = await getDownloadURL(newRef);
+
+        // 4. Delete old file (best-effort, don't throw)
+        try {
+            await deleteObject(oldRef);
+        } catch (error: any) {
+            if (error?.code !== 'storage/object-not-found') {
+                console.warn('Failed to delete old image during migration:', error);
+            }
+        }
+
+        return newDownloadUrl;
+    },
+
+    /**
      * Delete all known Storage assets for a dream (cover, memories, progress).
      * Best-effort: failures are logged but not thrown.
      */
     async deleteDreamAssets(userId: string, dreamId: string, item: BucketItem): Promise<void> {
         const paths: string[] = [];
+        const isPublic = item.isPublic === true;
 
         // Cover image
-        paths.push(StoragePaths.dreamCover(userId, dreamId));
+        paths.push(StoragePaths.dreamCover(userId, dreamId, isPublic));
 
         // Memory images
         if (item.memories) {
             for (const memory of item.memories) {
-                paths.push(StoragePaths.dreamMemory(userId, dreamId, memory.id));
+                paths.push(StoragePaths.dreamMemory(userId, dreamId, memory.id, isPublic));
             }
         }
 
@@ -137,7 +198,7 @@ export const StorageService = {
         if (item.progress) {
             for (const entry of item.progress) {
                 if (entry.imageUrl) {
-                    paths.push(StoragePaths.dreamProgress(userId, dreamId, entry.id));
+                    paths.push(StoragePaths.dreamProgress(userId, dreamId, entry.id, isPublic));
                 }
             }
         }

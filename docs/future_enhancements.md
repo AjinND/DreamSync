@@ -3,7 +3,7 @@
 2. Storage optimization for the images with security best practises. -- completed
 
 3. Data privacy and encryption of all the messages or any important factors. -- completed, Later found - For dreams - title and descriptions are not encrypted. Progress tab - description, expense is encrypted. Will think of adding more parts to encrypt. I feel atleast Title should be encrypted and the Progress tab all data should be encrypted, not just description. What do you think aboout adding more fields for encryption?
-When a dream is public, no encryption is applied.
+When a dream is public, encryption applied to progress n expense tabs.
 
 4. Implement Loading screen for the entire application. Not just a simple indicator, but an impressive design which shows a "bucket" and something which resembles the bucketist. the screen should be visible whenever the app is fetching data from the server. -- completed (the bucket icon is not proper. need to redesign the bucket icon)
 
@@ -45,8 +45,10 @@ When a dream is public, no encryption is applied.
 
 20. No notification recieved to owner when someone requests to join the journey.
 
-21. Need to implement clean up activity for backend in most cases. Check where no clean up activity is not implemented and come up with a plan to implement it. 
+21. Need to implement clean up activity for backend in most cases. Check where no clean up activity is not implemented and come up with a plan to implement it. -- completed
 
 22. Now when i open a chat which is created for a journey, it keeps on showing the skeleton. Not showing the chatscreen. -- completed
 
 23. Even though i add multiple inspirations to the dream, it is not showing up in the dream details page. Only the 1st inspiration is visible. But in DB they are getting saved. -- completed
+
+24. Second thought on the loading screen - instead of having this bucket icon to load as the loading screen, lets have some animation of a checklist where some random dreams are being crossed over. Each time when loading it will show different items, random items being crossed over. -- completed

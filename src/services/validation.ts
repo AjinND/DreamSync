@@ -80,6 +80,58 @@ export const expenseSchema = z.object({
 });
 
 // ---------------------------------------------------------------------------
+// Inspiration / Progress / Reflection Schemas
+// ---------------------------------------------------------------------------
+
+const urlSchema = z.string().url('Please enter a valid URL');
+
+export const inspirationSchema = z.object({
+    type: z.enum(['image', 'quote', 'link']),
+    content: z.string().min(1, 'Content is required').max(5000, 'Content is too long'),
+    caption: z.string().max(200, 'Caption is too long').optional(),
+}).superRefine((data, ctx) => {
+    if ((data.type === 'image' || data.type === 'link')) {
+        const urlCheck = urlSchema.safeParse(data.content);
+        if (!urlCheck.success) {
+            ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                path: ['content'],
+                message: 'Please enter a valid URL',
+            });
+        }
+    }
+});
+
+export const progressSchema = z.object({
+    title: z.string().min(1, 'Title is required').max(200, 'Title is too long'),
+    description: z.string().max(2000, 'Description is too long').optional(),
+    imageUrl: urlSchema.optional(),
+    date: z.number().int().positive(),
+});
+
+export const reflectionBlockSchema = z.object({
+    type: z.enum(['text', 'image', 'link']),
+    value: z.string().min(1, 'Value is required').max(5000, 'Value is too long'),
+    caption: z.string().max(200, 'Caption is too long').optional(),
+}).superRefine((block, ctx) => {
+    if (block.type === 'image' || block.type === 'link') {
+        const urlCheck = urlSchema.safeParse(block.value);
+        if (!urlCheck.success) {
+            ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                path: ['value'],
+                message: 'Please enter a valid URL',
+            });
+        }
+    }
+});
+
+export const reflectionSchema = z.object({
+    contentBlocks: z.array(reflectionBlockSchema).min(1, 'At least one reflection block is required').max(10, 'Maximum 10 blocks allowed'),
+    date: z.number().int().positive(),
+});
+
+// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 

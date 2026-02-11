@@ -20,11 +20,12 @@ import {
 interface AddProgressModalProps {
     visible: boolean;
     dreamId: string;
+    isPublic?: boolean;
     onClose: () => void;
     onSave: (title: string, description?: string, imageUrl?: string) => void;
 }
 
-export function AddProgressModal({ visible, dreamId, onClose, onSave }: AddProgressModalProps) {
+export function AddProgressModal({ visible, dreamId, isPublic = false, onClose, onSave }: AddProgressModalProps) {
     const { colors } = useTheme();
     const [title, setTitle] = useState('');
     const [description, setDescription] = useState('');
@@ -68,7 +69,8 @@ export function AddProgressModal({ visible, dreamId, onClose, onSave }: AddProgr
 
             if (imageUri) {
                 const progressId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-                const path = StoragePaths.dreamProgress(userId, dreamId, progressId);
+                // Use public path for public dreams, private path for private dreams
+                const path = StoragePaths.dreamProgress(userId, dreamId, progressId, isPublic);
 
                 downloadUrl = await StorageService.uploadOptimizedImage(
                     imageUri,

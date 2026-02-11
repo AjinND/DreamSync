@@ -199,9 +199,8 @@ export function encryptDreamFields(
     item: Partial<BucketItem>,
     fieldKey: Uint8Array,
 ): Partial<BucketItem> {
-    if (item.isPublic === true) return item;
-
     const result = { ...item } as any;
+    const isPublicDream = result.isPublic === true;
 
     // Scalar fields
     if (typeof result.location === 'string' && result.location) {
@@ -211,20 +210,7 @@ export function encryptDreamFields(
         result.budget = encryptField(String(result.budget), fieldKey);
     }
 
-    // Array fields — encrypt inner content, keep structure
-    if (Array.isArray(result.reflections)) {
-        result.reflections = result.reflections.map((r: any) => ({
-            ...r,
-            answer: typeof r.answer === 'string' ? encryptField(r.answer, fieldKey) : r.answer,
-        }));
-    }
-    if (Array.isArray(result.memories)) {
-        result.memories = result.memories.map((m: any) => ({
-            ...m,
-            caption: typeof m.caption === 'string' ? encryptField(m.caption, fieldKey) : m.caption,
-            imageUrl: typeof m.imageUrl === 'string' ? encryptField(m.imageUrl, fieldKey) : m.imageUrl,
-        }));
-    }
+    // Always-encrypted arrays (also when dream is public)
     if (Array.isArray(result.expenses)) {
         result.expenses = result.expenses.map((e: any) => ({
             ...e,
@@ -236,17 +222,43 @@ export function encryptDreamFields(
     if (Array.isArray(result.progress)) {
         result.progress = result.progress.map((p: any) => ({
             ...p,
+            title: typeof p.title === 'string' ? encryptField(p.title, fieldKey) : p.title,
             description: typeof p.description === 'string'
                 ? encryptField(p.description, fieldKey)
                 : p.description,
+            imageUrl: typeof p.imageUrl === 'string' ? encryptField(p.imageUrl, fieldKey) : p.imageUrl,
         }));
     }
-    if (Array.isArray(result.inspirations)) {
-        result.inspirations = result.inspirations.map((i: any) => ({
-            ...i,
-            content: typeof i.content === 'string' ? encryptField(i.content, fieldKey) : i.content,
-            caption: typeof i.caption === 'string' ? encryptField(i.caption, fieldKey) : i.caption,
-        }));
+
+    // Only fully private dreams encrypt story/media fields.
+    if (!isPublicDream) {
+        if (Array.isArray(result.reflections)) {
+            result.reflections = result.reflections.map((r: any) => ({
+                ...r,
+                answer: typeof r.answer === 'string' ? encryptField(r.answer, fieldKey) : r.answer,
+                contentBlocks: Array.isArray(r.contentBlocks)
+                    ? r.contentBlocks.map((block: any) => ({
+                        ...block,
+                        value: typeof block.value === 'string' ? encryptField(block.value, fieldKey) : block.value,
+                        caption: typeof block.caption === 'string' ? encryptField(block.caption, fieldKey) : block.caption,
+                    }))
+                    : r.contentBlocks,
+            }));
+        }
+        if (Array.isArray(result.memories)) {
+            result.memories = result.memories.map((m: any) => ({
+                ...m,
+                caption: typeof m.caption === 'string' ? encryptField(m.caption, fieldKey) : m.caption,
+                imageUrl: typeof m.imageUrl === 'string' ? encryptField(m.imageUrl, fieldKey) : m.imageUrl,
+            }));
+        }
+        if (Array.isArray(result.inspirations)) {
+            result.inspirations = result.inspirations.map((i: any) => ({
+                ...i,
+                content: typeof i.content === 'string' ? encryptField(i.content, fieldKey) : i.content,
+                caption: typeof i.caption === 'string' ? encryptField(i.caption, fieldKey) : i.caption,
+            }));
+        }
     }
 
     result.encryptionVersion = ENCRYPTION_VERSION;
@@ -279,6 +291,13 @@ export function decryptDreamFields(
         result.reflections = result.reflections.map((r: any) => ({
             ...r,
             answer: isEncryptedField(r.answer) ? (decryptField(r.answer, fieldKey) ?? '') : r.answer,
+            contentBlocks: Array.isArray(r.contentBlocks)
+                ? r.contentBlocks.map((block: any) => ({
+                    ...block,
+                    value: isEncryptedField(block.value) ? (decryptField(block.value, fieldKey) ?? '') : block.value,
+                    caption: isEncryptedField(block.caption) ? (decryptField(block.caption, fieldKey) ?? '') : block.caption,
+                }))
+                : r.contentBlocks,
         }));
     }
     if (Array.isArray(result.memories)) {
@@ -301,9 +320,15 @@ export function decryptDreamFields(
     if (Array.isArray(result.progress)) {
         result.progress = result.progress.map((p: any) => ({
             ...p,
+            title: isEncryptedField(p.title)
+                ? (decryptField(p.title, fieldKey) ?? '')
+                : p.title,
             description: isEncryptedField(p.description)
                 ? (decryptField(p.description, fieldKey) ?? '')
                 : p.description,
+            imageUrl: isEncryptedField(p.imageUrl)
+                ? (decryptField(p.imageUrl, fieldKey) ?? '')
+                : p.imageUrl,
         }));
     }
     if (Array.isArray(result.inspirations)) {
@@ -317,35 +342,39 @@ export function decryptDreamFields(
     return result as BucketItem;
 }
 
-/** Encrypt sensitive profile fields. Returns a new object. */
+/**
+ * Encrypt sensitive profile fields. Returns a new object.
+ * NOTE: Bio is NOT encrypted - it's public for cross-user visibility.
+ * Only email is encrypted for privacy.
+ */
 export function encryptProfileFields(
     profile: Record<string, any>,
     fieldKey: Uint8Array,
 ): Record<string, any> {
     const result = { ...profile };
 
+    // Only encrypt email, not bio (bio is public)
     if (typeof result.email === 'string' && result.email) {
         result.email = encryptField(result.email, fieldKey);
-    }
-    if (typeof result.bio === 'string' && result.bio) {
-        result.bio = encryptField(result.bio, fieldKey);
     }
 
     return result;
 }
 
-/** Decrypt sensitive profile fields. Returns a new object. */
+/**
+ * Decrypt sensitive profile fields. Returns a new object.
+ * NOTE: Bio is NOT encrypted anymore - it's public.
+ * Only email is encrypted for privacy.
+ */
 export function decryptProfileFields(
     profile: Record<string, any>,
     fieldKey: Uint8Array,
 ): Record<string, any> {
     const result = { ...profile };
 
+    // Only decrypt email, not bio (bio is plaintext now)
     if (isEncryptedField(result.email)) {
         result.email = decryptField(result.email, fieldKey) ?? '';
-    }
-    if (isEncryptedField(result.bio)) {
-        result.bio = decryptField(result.bio, fieldKey) ?? '';
     }
 
     return result;
@@ -355,7 +384,10 @@ export function decryptProfileFields(
 // Detection Helper
 // ---------------------------------------------------------------------------
 
-/** Check if a value looks like an EncryptedField envelope. */
+/**
+ * Check if a value looks like an EncryptedField envelope.
+ * Used to detect encrypted fields before rendering or processing.
+ */
 export function isEncryptedField(value: unknown): value is EncryptedField {
     if (typeof value !== 'object' || value === null) return false;
     const obj = value as Record<string, unknown>;

@@ -2,15 +2,14 @@ import { Stack, useRouter, useSegments } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { onAuthStateChanged, User } from "firebase/auth";
 import { useEffect, useRef, useState } from "react";
-import { ActivityIndicator, View } from "react-native";
 import { auth } from "../firebaseConfig";
+import { BucketLoaderFull } from "../src/components/loading";
 import { useNotificationHandler } from "../hooks/useNotificationHandler";
 import { OfflineBanner } from "../src/components/ui/OfflineBanner";
 import { KeyManager } from "../src/services/keyManager";
 import { NotificationService } from "../src/services/notifications";
 import { UsersService } from "../src/services/users";
 import { useNotificationStore } from "../src/store/useNotificationStore";
-import { legacyColors as colors } from "../src/theme";
 
 export default function RootLayout() {
   const [user, setUser] = useState<User | null>(null);
@@ -93,11 +92,7 @@ export default function RootLayout() {
   }, [user, initializing, segments, needsReauth]);
 
   if (initializing) {
-    return (
-      <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
-        <ActivityIndicator size="large" color={colors.indigo[600]} />
-      </View>
-    );
+    return <BucketLoaderFull message="Preparing your workspace..." />;
   }
 
   return (

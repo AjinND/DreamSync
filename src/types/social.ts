@@ -73,7 +73,10 @@ export interface Journey {
     chatId: string;
     createdAt: number;
     settings?: {
+        // Legacy field: kept for backward compatibility with existing docs/data.
         isOpen: boolean;
+        discoverability?: 'public' | 'private';
+        joinPolicy?: 'request' | 'open';
         maxParticipants: number;
     };
     requests?: string[]; // User IDs asking to join

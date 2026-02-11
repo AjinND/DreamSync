@@ -1,19 +1,34 @@
 import { useTheme } from '@/src/theme';
 import { Memory } from '@/src/types/item';
-import { Camera, Heart, Plus } from 'lucide-react-native';
+import { Camera, Heart, Plus, Trash2 } from 'lucide-react-native';
+import { useMemo, useState } from 'react';
 import { Dimensions, Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 interface MemoryCapsuleProps {
     memories?: Memory[];
     onAdd?: () => void;
+    onDelete?: (memoryId: string) => void;
 }
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
-export function MemoryCapsule({ memories = [], onAdd }: MemoryCapsuleProps) {
+export function MemoryCapsule({ memories = [], onAdd, onDelete }: MemoryCapsuleProps) {
     const { colors } = useTheme();
+    const [failedImages, setFailedImages] = useState<Record<string, boolean>>({});
 
-    const hasContent = memories && memories.length > 0;
+    const canAdd = !!onAdd;
+    const visibleMemories = useMemo(
+        () =>
+            (memories || []).filter(
+                (memory) =>
+                    typeof memory?.imageUrl === 'string' &&
+                    memory.imageUrl.trim().length > 0
+            ),
+        [memories]
+    );
+
+    const hasContent = visibleMemories.length > 0;
+    const canDelete = typeof onDelete === 'function';
 
     return (
         <View style={styles.container}>
@@ -22,7 +37,7 @@ export function MemoryCapsule({ memories = [], onAdd }: MemoryCapsuleProps) {
                     <Heart size={18} color={colors.accent} fill={colors.accent} />
                     <Text style={[styles.title, { color: colors.textPrimary }]}>Memory Capsule</Text>
                 </View>
-                {onAdd && (
+                {canAdd && (
                     <TouchableOpacity onPress={onAdd} style={[styles.addButton, { backgroundColor: colors.accent + '15' }]}>
                         <Plus size={16} color={colors.accent} />
                     </TouchableOpacity>
@@ -35,16 +50,33 @@ export function MemoryCapsule({ memories = [], onAdd }: MemoryCapsuleProps) {
                     showsHorizontalScrollIndicator={false}
                     contentContainerStyle={styles.memoryScroll}
                 >
-                    {memories.map((memory) => (
+                    {visibleMemories.map((memory) => (
                         <View key={memory.id} style={styles.memoryCard}>
-                            <Image
-                                source={{ uri: memory.imageUrl }}
-                                style={styles.memoryImage}
-                                resizeMode="cover"
-                            />
+                            {canDelete && (
+                                <TouchableOpacity
+                                    style={styles.deleteButton}
+                                    onPress={() => onDelete(memory.id)}
+                                >
+                                    <Trash2 size={14} color="#FFFFFF" />
+                                </TouchableOpacity>
+                            )}
+                            {typeof memory.imageUrl === 'string' && memory.imageUrl && !failedImages[memory.id] ? (
+                                <Image
+                                    source={{ uri: memory.imageUrl }}
+                                    style={styles.memoryImage}
+                                    resizeMode="cover"
+                                    onError={() =>
+                                        setFailedImages((prev) => ({ ...prev, [memory.id]: true }))
+                                    }
+                                />
+                            ) : (
+                                <View style={[styles.memoryImage, styles.memoryImageFallback]}>
+                                    <Camera size={24} color="#FFFFFF" />
+                                </View>
+                            )}
                             <View style={styles.captionContainer}>
                                 <Text style={styles.captionText} numberOfLines={2}>
-                                    {memory.caption}
+                                    {typeof memory.caption === 'string' ? memory.caption : ''}
                                 </Text>
                             </View>
                         </View>
@@ -57,10 +89,10 @@ export function MemoryCapsule({ memories = [], onAdd }: MemoryCapsuleProps) {
                 >
                     <Camera size={32} color={colors.textMuted} />
                     <Text style={[styles.emptyTitle, { color: colors.textSecondary }]}>
-                        Capture the moment
+                        {canAdd ? 'Capture the moment' : 'No memories yet'}
                     </Text>
                     <Text style={[styles.emptySubtitle, { color: colors.textMuted }]}>
-                        Add photos from your journey
+                        {canAdd ? 'Add photos from your journey' : 'This dream has no memories shared yet'}
                     </Text>
                 </TouchableOpacity>
             )}
@@ -109,6 +141,11 @@ const styles = StyleSheet.create({
         width: '100%',
         height: '100%',
     },
+    memoryImageFallback: {
+        backgroundColor: 'rgba(0,0,0,0.35)',
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
     captionContainer: {
         position: 'absolute',
         bottom: 0,
@@ -116,6 +153,18 @@ const styles = StyleSheet.create({
         right: 0,
         backgroundColor: 'rgba(0,0,0,0.5)',
         padding: 12,
+    },
+    deleteButton: {
+        position: 'absolute',
+        top: 10,
+        right: 10,
+        zIndex: 2,
+        width: 28,
+        height: 28,
+        borderRadius: 14,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: 'rgba(0,0,0,0.55)',
     },
     captionText: {
         color: '#FFFFFF',

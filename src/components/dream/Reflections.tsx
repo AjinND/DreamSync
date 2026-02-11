@@ -2,7 +2,7 @@ import { Card } from '@/src/components/ui';
 import { useTheme } from '@/src/theme';
 import { Reflection } from '@/src/types/item';
 import { PenLine, Plus, Quote } from 'lucide-react-native';
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 interface ReflectionsProps {
     reflections?: Reflection[];
@@ -13,6 +13,12 @@ export function Reflections({ reflections = [], onAdd }: ReflectionsProps) {
     const { colors } = useTheme();
 
     const hasContent = reflections && reflections.length > 0;
+    const canAdd = !!onAdd;
+
+    // In read-only contexts (e.g., community), hide the section when no reflections exist.
+    if (!hasContent && !canAdd) {
+        return null;
+    }
 
     return (
         <View style={styles.container}>
@@ -21,7 +27,7 @@ export function Reflections({ reflections = [], onAdd }: ReflectionsProps) {
                     <Quote size={18} color={colors.statusDoing} />
                     <Text style={[styles.title, { color: colors.textPrimary }]}>Reflections</Text>
                 </View>
-                {onAdd && (
+                {canAdd && (
                     <TouchableOpacity onPress={onAdd} style={[styles.addButton, { backgroundColor: colors.statusDoing + '15' }]}>
                         <Plus size={16} color={colors.statusDoing} />
                     </TouchableOpacity>
@@ -36,12 +42,40 @@ export function Reflections({ reflections = [], onAdd }: ReflectionsProps) {
                             style={[styles.card, { backgroundColor: colors.surface, borderLeftColor: colors.statusDoing }]}
                             padding="md"
                         >
-                            <Text style={[styles.question, { color: colors.primary }]}>
-                                {reflection.question}
-                            </Text>
-                            <Text style={[styles.answer, { color: colors.textSecondary }]}>
-                                {reflection.answer}
-                            </Text>
+                            {reflection.contentBlocks && reflection.contentBlocks.length > 0 ? (
+                                <View style={styles.blocks}>
+                                    {reflection.contentBlocks.map((block, idx) => (
+                                        <View key={`${reflection.id}-${idx}`}>
+                                            {block.type === 'text' && (
+                                                <Text style={[styles.answer, { color: colors.textSecondary }]}>
+                                                    {block.value}
+                                                </Text>
+                                            )}
+                                            {block.type === 'image' && (
+                                                <Image source={{ uri: block.value }} style={styles.blockImage} />
+                                            )}
+                                            {block.type === 'link' && (
+                                                <Text style={[styles.link, { color: colors.primary }]}>
+                                                    {block.caption ? `${block.caption}: ` : ''}{block.value}
+                                                </Text>
+                                            )}
+                                        </View>
+                                    ))}
+                                </View>
+                            ) : (
+                                <>
+                                    {reflection.question && (
+                                        <Text style={[styles.question, { color: colors.primary }]}>
+                                            {reflection.question}
+                                        </Text>
+                                    )}
+                                    {reflection.answer && (
+                                        <Text style={[styles.answer, { color: colors.textSecondary }]}>
+                                            {reflection.answer}
+                                        </Text>
+                                    )}
+                                </>
+                            )}
                             <Text style={[styles.date, { color: colors.textMuted }]}>
                                 {new Date(reflection.date).toLocaleDateString()}
                             </Text>
@@ -106,6 +140,21 @@ const styles = StyleSheet.create({
         fontSize: 16,
         lineHeight: 24,
         marginBottom: 8,
+    },
+    blocks: {
+        gap: 8,
+        marginBottom: 8,
+    },
+    blockImage: {
+        width: '100%',
+        height: 180,
+        borderRadius: 10,
+        marginBottom: 4,
+    },
+    link: {
+        fontSize: 14,
+        textDecorationLine: 'underline',
+        lineHeight: 20,
     },
     date: {
         fontSize: 12,

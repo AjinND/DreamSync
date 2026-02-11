@@ -46,7 +46,7 @@ export function CommunityCard({ dream, onLike }: CommunityCardProps) {
     const router = useRouter();
 
     const isLiked = CommunityService.isLikedByUser(dream);
-    const likesCount = dream.likesCount || 0;
+    const likesCount = dream.likes?.length ?? dream.likesCount ?? 0;
     const commentsCount = dream.commentsCount || 0;
     const categoryEmoji = CATEGORY_EMOJI[dream.category] || '🌟';
     const phaseColor = PHASE_COLORS[dream.phase];
@@ -97,6 +97,13 @@ export function CommunityCard({ dream, onLike }: CommunityCardProps) {
                         <Text style={[styles.title, { color: colors.textPrimary }]} numberOfLines={1}>
                             {dream.title}
                         </Text>
+                        {(dream.collaborationType === 'group' || dream.collaborationType === 'open') && (
+                            <View style={[styles.journeyBadge, { backgroundColor: colors.primary + '15' }]}>
+                                <Text style={[styles.journeyBadgeText, { color: colors.primary }]}>
+                                    Journey
+                                </Text>
+                            </View>
+                        )}
                     </View>
 
                     {dream.description ? (
@@ -215,6 +222,17 @@ const styles = StyleSheet.create({
         fontWeight: '600',
         flex: 1,
         marginRight: 8,
+    },
+    journeyBadge: {
+        borderRadius: 10,
+        paddingHorizontal: 8,
+        paddingVertical: 2,
+    },
+    journeyBadgeText: {
+        fontSize: 10,
+        fontWeight: '700',
+        textTransform: 'uppercase',
+        letterSpacing: 0.4,
     },
     categoryEmoji: {
         fontSize: 14,

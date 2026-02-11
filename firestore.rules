@@ -1,6 +1,174 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function likesFrom(data) {
+      return ('likes' in data && data.likes is list) ? data.likes : [];
+    }
+
+    function canToggleOwnLikeOnly() {
+      let oldLikes = likesFrom(resource.data);
+      let newLikes = likesFrom(request.resource.data);
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likes']) &&
+        (
+          (newLikes.hasAll(oldLikes) &&
+           newLikes.size() == oldLikes.size() + 1 &&
+           request.auth.uid in newLikes) ||
+          (oldLikes.hasAll(newLikes) &&
+           newLikes.size() == oldLikes.size() - 1 &&
+           request.auth.uid in oldLikes)
+        );
+    }
+
+    function validCommentCreate() {
+      return request.resource.data.keys().hasAll(['userId', 'userName', 'text', 'createdAt']) &&
+        request.resource.data.keys().hasOnly(['userId', 'userName', 'userAvatar', 'text', 'createdAt']) &&
+        request.resource.data.userId == request.auth.uid &&
+        request.resource.data.userName is string &&
+        request.resource.data.userName.size() > 0 &&
+        request.resource.data.userName.size() <= 80 &&
+        (!('userAvatar' in request.resource.data) || request.resource.data.userAvatar is string) &&
+        request.resource.data.text is string &&
+        request.resource.data.text.size() > 0 &&
+        request.resource.data.text.size() <= 500 &&
+        request.resource.data.createdAt is int;
+    }
+
+    function isCommunityVisibleItem(data) {
+      return data.isPublic == true &&
+        data.phase in ['doing', 'done'];
+    }
+
+    function canBePublicByPhase(data) {
+      return !(data.isPublic == true) ||
+        data.phase in ['doing', 'done'];
+    }
+
+    function participantAllowedItemFieldsOnly() {
+      return !request.resource.data.diff(resource.data).affectedKeys()
+        .hasAny([
+          'userId',
+          'collaborationType',
+          'journeyParticipants',
+          'createdAt'
+        ]);
+    }
+
+    function validJourneyCreate() {
+      return request.resource.data.keys().hasAll(['dreamId', 'ownerId', 'participants', 'status', 'chatId', 'createdAt']) &&
+        request.resource.data.ownerId == request.auth.uid &&
+        request.resource.data.participants is list &&
+        request.resource.data.participants.size() == 1 &&
+        request.resource.data.participants[0] == request.auth.uid &&
+        request.resource.data.status in ['active', 'completed'];
+    }
+
+    function journeyImmutableFieldsUnchanged() {
+      return request.resource.data.ownerId == resource.data.ownerId &&
+        request.resource.data.dreamId == resource.data.dreamId &&
+        request.resource.data.createdAt == resource.data.createdAt;
+    }
+
+    function ownerJourneyUpdate() {
+      return request.auth.uid == resource.data.ownerId &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'participants',
+          'requests',
+          'settings',
+          'status',
+          'chatId',
+          'preview'
+        ]) &&
+        journeyImmutableFieldsUnchanged();
+    }
+
+    function participantJoinOrLeaveSelf() {
+      let oldParticipants = resource.data.participants;
+      let newParticipants = request.resource.data.participants;
+      let uid = request.auth.uid;
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['participants']) &&
+        journeyImmutableFieldsUnchanged() &&
+        oldParticipants is list &&
+        newParticipants is list &&
+        (
+          (
+            !(uid in oldParticipants) &&
+            uid in newParticipants &&
+            newParticipants.hasAll(oldParticipants) &&
+            newParticipants.size() == oldParticipants.size() + 1
+          ) ||
+          (
+            uid in oldParticipants &&
+            !(uid in newParticipants) &&
+            oldParticipants.hasAll(newParticipants) &&
+            newParticipants.size() == oldParticipants.size() - 1
+          )
+        );
+    }
+
+    function participantManageOwnRequest() {
+      let oldRequests = ('requests' in resource.data && resource.data.requests is list) ? resource.data.requests : [];
+      let newRequests = ('requests' in request.resource.data && request.resource.data.requests is list) ? request.resource.data.requests : [];
+      let uid = request.auth.uid;
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['requests']) &&
+        journeyImmutableFieldsUnchanged() &&
+        (
+          (
+            !(uid in oldRequests) &&
+            uid in newRequests &&
+            newRequests.hasAll(oldRequests) &&
+            newRequests.size() == oldRequests.size() + 1
+          ) ||
+          (
+            uid in oldRequests &&
+            !(uid in newRequests) &&
+            oldRequests.hasAll(newRequests) &&
+            newRequests.size() == oldRequests.size() - 1
+          )
+        );
+    }
+
+    function validChatCreate(chatId) {
+      let participants = request.resource.data.participants;
+      return request.resource.data.keys().hasAll(['id', 'type', 'participants', 'createdAt', 'updatedAt']) &&
+        request.resource.data.keys().hasOnly([
+          'id',
+          'type',
+          'participants',
+          'createdAt',
+          'updatedAt',
+          'journeyId',
+          'name',
+          'photoUrl',
+          'unreadCounts',
+          'encryptedKeys',
+          'encryptionEnabled',
+          'lastMessage'
+        ]) &&
+        request.resource.data.id == chatId &&
+        request.resource.data.type in ['dm', 'journey'] &&
+        participants is list &&
+        participants.size() >= 1 &&
+        participants.size() <= 50 &&
+        request.auth.uid in participants &&
+        (
+          (
+            request.resource.data.type == 'dm' &&
+            participants.size() == 2 &&
+            (
+              chatId == 'dm_' + participants[0] + '_' + participants[1] ||
+              chatId == 'dm_' + participants[1] + '_' + participants[0]
+            )
+          ) ||
+          (
+            request.resource.data.type == 'journey' &&
+            chatId.matches('^journey_.+')
+          )
+        );
+    }
     
     // Items (Dreams) Collection
     match /items/{itemId} {
@@ -8,102 +176,104 @@ service cloud.firestore {
       //    - Item is public, OR
       //    - User owns the item, OR
       //    - Item is a journey (group/open) - anyone can browse before joining
-      allow read: if request.auth != null && (
-        resource.data.isPublic == true ||
+      allow read: if isSignedIn() && (
+        isCommunityVisibleItem(resource.data) ||
         resource.data.userId == request.auth.uid ||
         resource.data.collaborationType == 'group' ||
         resource.data.collaborationType == 'open'
       );
       
       // 2. CREATE: Only allow creating own items
-      allow create: if request.auth != null && 
-                    request.resource.data.userId == request.auth.uid;
+      allow create: if isSignedIn() &&
+                    request.resource.data.userId == request.auth.uid &&
+                    canBePublicByPhase(request.resource.data);
       
       // 3. DELETE: Only owner can delete
-      allow delete: if request.auth != null && 
+      allow delete: if isSignedIn() && 
                     resource.data.userId == request.auth.uid;
       
       // 4. UPDATE:
       // - Owner can update everything
       // - Others can ONLY update likes/comments counts on PUBLIC dreams
       // - Journey participants can update content but NOT sensitive fields
-      allow update: if request.auth != null && (
-        resource.data.userId == request.auth.uid ||
-        (resource.data.isPublic == true &&
-         request.resource.data.diff(resource.data).affectedKeys()
-           .hasOnly(['likes', 'likesCount', 'commentsCount'])) ||
+      allow update: if isSignedIn() && (
+        (resource.data.userId == request.auth.uid &&
+         canBePublicByPhase(request.resource.data)) ||
+        (isCommunityVisibleItem(resource.data) && canToggleOwnLikeOnly()) ||
         ('journeyParticipants' in resource.data &&
          request.auth.uid in resource.data.journeyParticipants &&
-         !request.resource.data.diff(resource.data).affectedKeys()
-           .hasAny(['userId', 'collaborationType', 'isPublic']))
+         participantAllowedItemFieldsOnly() &&
+         canBePublicByPhase(request.resource.data))
       );
     }
     
     // Users Collection
     match /users/{userId} {
-      allow read: if request.auth != null;
-      allow write: if request.auth != null && request.auth.uid == userId;
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && request.auth.uid == userId;
     }
     
     // Comments Subcollection
     match /items/{itemId}/comments/{commentId} {
-      allow read: if request.auth != null;
-      allow create: if request.auth != null;
-      allow delete: if request.auth != null && 
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() &&
+                    validCommentCreate() &&
+                    isCommunityVisibleItem(get(/databases/$(database)/documents/items/$(itemId)).data);
+      allow delete: if isSignedIn() && 
                     resource.data.userId == request.auth.uid;
     }
 
     // Journeys Collection (New)
     match /journeys/{journeyId} {
       // Allow any authenticated user to read journeys (needed for "Get Inspired" checks and Invitation discovery)
-      allow read: if request.auth != null;
+      allow read: if isSignedIn();
       
       // Allow authenticated users to create journeys
-      allow create: if request.auth != null;
+      allow create: if isSignedIn() && validJourneyCreate();
       
-      // Allow participants to update (e.g. joining, chat, status)
-      allow update: if request.auth != null && (
-        request.auth.uid in resource.data.participants ||
-        // Allow joining (adding self to participants) - simplified for now, typically needs more strict validation
-        request.resource.data.participants.hasAll(resource.data.participants) 
+      // Owner can manage structure; non-owners can only join/leave self or manage own request entry.
+      allow update: if isSignedIn() && (
+        ownerJourneyUpdate() ||
+        participantJoinOrLeaveSelf() ||
+        participantManageOwnRequest()
       );
       
       // Only owner can delete
-      allow delete: if request.auth != null && resource.data.ownerId == request.auth.uid;
+      allow delete: if isSignedIn() && resource.data.ownerId == request.auth.uid;
     }
 
     // Chats Collection (New)
     match /chats/{chatId} {
       // Allow creating new chats
-      allow create: if request.auth != null;
+      allow create: if isSignedIn() && validChatCreate(chatId);
       
       // Allow reading if:
       // 1. Valid participant
       // 2. Document doesn't exist (so clients can check existence before creating)
-      allow read: if request.auth != null && (
+      allow read: if isSignedIn() && (
         resource == null || 
         request.auth.uid in resource.data.participants
       );
 
       // Allow updates only by participants
-      allow update: if request.auth != null && request.auth.uid in resource.data.participants;
+      allow update: if isSignedIn() && request.auth.uid in resource.data.participants;
 
       // Allow deletion by participants (journey owner deletes chat when deleting journey)
-      allow delete: if request.auth != null && request.auth.uid in resource.data.participants;
+      allow delete: if isSignedIn() && request.auth.uid in resource.data.participants;
     }
 
     // Notifications Collection
     match /notifications/{notifId} {
       // Users can only read their own notifications
-      allow read: if request.auth != null && resource.data.userId == request.auth.uid;
+      allow read: if isSignedIn() && resource.data.userId == request.auth.uid;
 
       // Users can only update the 'read' field on their own notifications
-      allow update: if request.auth != null &&
+      allow update: if isSignedIn() &&
                     resource.data.userId == request.auth.uid &&
                     request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read']);
 
       // Users can delete their own notifications
-      allow delete: if request.auth != null && resource.data.userId == request.auth.uid;
+      allow delete: if isSignedIn() && resource.data.userId == request.auth.uid;
 
       // Only Cloud Functions (Admin SDK) can create notifications
       allow create: if false;
