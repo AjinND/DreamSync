@@ -8,6 +8,7 @@ import { NotificationBell } from '@/src/components/shared';
 import { UserAvatar } from '@/src/components/social/UserAvatar';
 import { NotificationService } from '@/src/services/notifications';
 import { UsersService } from '@/src/services/users';
+import { isEncryptedField } from '@/src/services/encryption';
 import { useBucketStore } from '@/src/store/useBucketStore';
 import { useNotificationStore } from '@/src/store/useNotificationStore';
 import { useChatStore } from '@/src/stores/useChatStore';
@@ -103,9 +104,22 @@ export default function AccountScreen() {
                         <Text style={[styles.displayName, { color: colors.textPrimary }]}>
                             {profile?.displayName || user?.displayName || 'Dreamer'}
                         </Text>
-                        <Text style={[styles.email, { color: colors.textSecondary }]}>
-                            {profile?.bio || user?.email}
-                        </Text>
+                        {/* Only render bio/email if it's a string (not an encrypted object) */}
+                        {(() => {
+                            const bioText = profile?.bio && typeof profile.bio === 'string' && !isEncryptedField(profile.bio)
+                                ? profile.bio
+                                : undefined;
+                            const emailText = user?.email && typeof user.email === 'string' && !isEncryptedField(user.email)
+                                ? user.email
+                                : undefined;
+                            const displayText = bioText || emailText;
+
+                            return displayText ? (
+                                <Text style={[styles.email, { color: colors.textSecondary }]}>
+                                    {displayText}
+                                </Text>
+                            ) : null;
+                        })()}
                     </View>
                     <TouchableOpacity
                         style={styles.editButton}

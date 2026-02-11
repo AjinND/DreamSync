@@ -4,6 +4,7 @@
 
 import { useTheme } from '@/src/theme';
 import { UserProfile } from '@/src/types/social';
+import { isEncryptedField } from '@/src/services/encryption';
 import { CheckCircle, Sparkles, Target } from 'lucide-react-native';
 import {
     StyleSheet,
@@ -33,7 +34,8 @@ export function ProfileHeader({ profile, isOwnProfile }: ProfileHeaderProps) {
                     <Text style={[styles.displayName, { color: colors.textPrimary }]}>
                         {profile.displayName}
                     </Text>
-                    {profile.bio && (
+                    {/* Only render bio if it's a string (not an encrypted object) */}
+                    {profile.bio && typeof profile.bio === 'string' && !isEncryptedField(profile.bio) && (
                         <Text style={[styles.bio, { color: colors.textSecondary }]} numberOfLines={2}>
                             {profile.bio}
                         </Text>

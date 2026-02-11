@@ -3,6 +3,7 @@ import {
     collection,
     deleteDoc,
     doc,
+    getDoc,
     getDocs,
     limit,
     onSnapshot,
@@ -11,12 +12,130 @@ import {
     where
 } from 'firebase/firestore';
 import { auth, db } from '../../firebaseConfig';
+import { Chat } from '../types/chat';
 import { BucketItem, Phase } from '../types/item';
-import { decryptDreamFields, encryptDreamFields, isEncryptedField } from './encryption';
+import { decryptDreamFields, decryptField, decryptGroupKey, encryptDreamFields, isEncryptedField } from './encryption';
 import { KeyManager } from './keyManager';
 import { safeValidate, dreamSchema } from './validation';
+import { decodeBase64 } from 'tweetnacl-util';
 
 const COLLECTION_NAME = 'items';
+
+const JOURNEY_COLLAB_TYPES = new Set(['group', 'open']);
+
+const PUBLIC_RESTRICTED_FIELDS: (keyof BucketItem)[] = [
+    'location',
+    'budget',
+    'progress',
+    'expenses',
+];
+
+const hasPublicRestrictedUpdates = (updates: Partial<BucketItem>): boolean =>
+    PUBLIC_RESTRICTED_FIELDS.some((field) => field in updates);
+
+const shouldProtectByPolicy = (targetIsPublic: boolean, updates: Partial<BucketItem>): boolean => {
+    if (!targetIsPublic) return true;
+    return hasPublicRestrictedUpdates(updates);
+};
+
+const resolveJourneyGroupKeyForDream = async (dreamId: string): Promise<Uint8Array | null> => {
+    const currentUserId = auth.currentUser?.uid;
+    if (!currentUserId) return null;
+
+    const chatKeyPair = await KeyManager.getChatKeyPair();
+    if (!chatKeyPair) return null;
+
+    const journeySnap = await getDocs(
+        query(collection(db, 'journeys'), where('dreamId', '==', dreamId), limit(1))
+    );
+    if (journeySnap.empty) return null;
+
+    const journeyData = journeySnap.docs[0].data() as { chatId?: string };
+    if (!journeyData.chatId) return null;
+
+    const chatSnap = await getDoc(doc(db, 'chats', journeyData.chatId));
+    if (!chatSnap.exists()) return null;
+
+    const chatData = chatSnap.data() as Chat;
+    const encryptedForCurrentUser = chatData.encryptedKeys?.[currentUserId];
+    if (!encryptedForCurrentUser) return null;
+
+    const senderPublicKey = decodeBase64(encryptedForCurrentUser.senderPublicKey);
+    return decryptGroupKey(encryptedForCurrentUser, chatKeyPair.secretKey, senderPublicKey);
+};
+
+const resolveDreamFieldKey = async (
+    item: Partial<BucketItem> & { id: string }
+): Promise<Uint8Array | null> => {
+    const currentUserId = auth.currentUser?.uid;
+    const isJourney = JOURNEY_COLLAB_TYPES.has(item.collaborationType || '');
+
+    if (isJourney) {
+        const groupKey = await resolveJourneyGroupKeyForDream(item.id);
+        if (groupKey) return groupKey;
+
+        // Fallback for owner-only journey before chat/group key exists.
+        if (currentUserId && item.userId === currentUserId) {
+            return KeyManager.getFieldEncryptionKey();
+        }
+        return null;
+    }
+
+    return KeyManager.getFieldEncryptionKey();
+};
+
+const extractProbeEncryptedField = (item: BucketItem): any | null => {
+    if (isEncryptedField((item as any).location)) return (item as any).location;
+    if (isEncryptedField((item as any).budget)) return (item as any).budget;
+
+    const progress = (item as any).progress;
+    if (Array.isArray(progress)) {
+        for (const p of progress) {
+            if (isEncryptedField(p?.title)) return p.title;
+            if (isEncryptedField(p?.description)) return p.description;
+            if (isEncryptedField(p?.imageUrl)) return p.imageUrl;
+        }
+    }
+
+    const expenses = (item as any).expenses;
+    if (Array.isArray(expenses)) {
+        for (const e of expenses) {
+            if (isEncryptedField(e?.title)) return e.title;
+            if (isEncryptedField(e?.amount)) return e.amount;
+            if (isEncryptedField(e?.category)) return e.category;
+        }
+    }
+
+    return null;
+};
+
+const canDecryptWithKey = (item: BucketItem, key: Uint8Array): boolean => {
+    const probe = extractProbeEncryptedField(item);
+    if (!probe) return true;
+    return decryptField(probe, key) !== null;
+};
+
+const stripUndefinedDeep = (value: any): any => {
+    if (Array.isArray(value)) {
+        return value
+            .map((entry) => stripUndefinedDeep(entry))
+            .filter((entry) => entry !== undefined);
+    }
+
+    if (value && typeof value === 'object') {
+        const output: Record<string, any> = {};
+        for (const [k, v] of Object.entries(value)) {
+            if (v === undefined) continue;
+            const cleaned = stripUndefinedDeep(v);
+            if (cleaned !== undefined) {
+                output[k] = cleaned;
+            }
+        }
+        return output;
+    }
+
+    return value;
+};
 
 export const ItemService = {
     // Create
@@ -68,7 +187,7 @@ export const ItemService = {
             };
 
             const fieldKey = await KeyManager.getFieldEncryptionKey();
-            if (fieldKey && itemData.isPublic !== true) {
+            if (fieldKey && shouldProtectByPolicy(itemData.isPublic === true, itemData)) {
                 itemData = encryptDreamFields(itemData, fieldKey) as Record<string, any>;
             }
 
@@ -115,26 +234,51 @@ export const ItemService = {
         const snapshot = await getDocs(q);
         const items = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as BucketItem));
 
-        // Decrypt encrypted fields & lazy-migrate unencrypted private items
-        const fieldKey = await KeyManager.getFieldEncryptionKey();
-        if (fieldKey) {
-            return Promise.all(items.map(async (item) => {
-                if (item.encryptionVersion) {
-                    return decryptDreamFields(item, fieldKey);
+        return Promise.all(items.map(async (item) => {
+            const primaryKey = await resolveDreamFieldKey(item);
+
+            // Decrypt encrypted fields when user has access to the right key.
+            if (item.encryptionVersion && primaryKey) {
+                if (canDecryptWithKey(item, primaryKey)) {
+                    return decryptDreamFields(item, primaryKey);
                 }
-                // Lazy migration: encrypt plaintext private items
-                if (item.isPublic !== true && !item.encryptionVersion) {
-                    const encrypted = encryptDreamFields(item, fieldKey);
-                    // Write encrypted version back (non-blocking)
-                    const docRef = doc(db, COLLECTION_NAME, item.id);
-                    updateDoc(docRef, encrypted as Record<string, any>).catch((err) => {
-                        console.warn('[ItemService] Lazy migration failed for item:', item.id, err);
-                    });
+
+                // Journey fallback: owner might still have legacy owner-key encrypted data.
+                const userId = auth.currentUser?.uid;
+                if (userId && item.userId === userId) {
+                    const ownerKey = await KeyManager.getFieldEncryptionKey();
+                    if (ownerKey && canDecryptWithKey(item, ownerKey)) {
+                        const decryptedWithOwnerKey = decryptDreamFields(item, ownerKey);
+
+                        // If a journey shared key is now available, migrate ciphertext to shared key.
+                        if (
+                            JOURNEY_COLLAB_TYPES.has(item.collaborationType || '') &&
+                            primaryKey !== ownerKey
+                        ) {
+                            const migrated = encryptDreamFields(decryptedWithOwnerKey, primaryKey);
+                            const docRef = doc(db, COLLECTION_NAME, item.id);
+                            updateDoc(docRef, migrated as Record<string, any>).catch((err) => {
+                                console.warn('[ItemService] Journey key migration failed for item:', item.id, err);
+                            });
+                        }
+
+                        return decryptedWithOwnerKey;
+                    }
                 }
-                return item;
-            }));
-        }
-        return items;
+            }
+
+            // Lazy migration for plaintext docs that should be protected by policy.
+            const needsProtection = !item.encryptionVersion && shouldProtectByPolicy(item.isPublic === true, item);
+            if (needsProtection && primaryKey) {
+                const encrypted = encryptDreamFields(item, primaryKey);
+                const docRef = doc(db, COLLECTION_NAME, item.id);
+                updateDoc(docRef, encrypted as Record<string, any>).catch((err) => {
+                    console.warn('[ItemService] Lazy migration failed for item:', item.id, err);
+                });
+            }
+
+            return item;
+        }));
     },
 
     // Update
@@ -143,21 +287,37 @@ export const ItemService = {
 
         let processedUpdates: Record<string, any> = { ...updates };
 
-        // Encrypt sensitive fields for private items (unless caller handled encryption)
-        if (!options?.skipEncryption) {
-            const fieldKey = await KeyManager.getFieldEncryptionKey();
-            if (fieldKey && processedUpdates.isPublic !== true) {
-                processedUpdates = encryptDreamFields(processedUpdates, fieldKey) as Record<string, any>;
+        const currentSnap = await getDoc(docRef);
+        const currentData = currentSnap.exists()
+            ? ({ id, ...currentSnap.data() } as BucketItem)
+            : null;
+
+        const targetIsPublic = processedUpdates.isPublic === undefined
+            ? (currentData?.isPublic === true)
+            : processedUpdates.isPublic === true;
+
+        // Encrypt sensitive fields based on policy unless caller explicitly handled transition.
+        if (!options?.skipEncryption && shouldProtectByPolicy(targetIsPublic, processedUpdates)) {
+            const contextForKey = {
+                ...(currentData || {}),
+                ...processedUpdates,
+                id,
+                isPublic: targetIsPublic,
+            } as Partial<BucketItem> & { id: string };
+
+            const key = await resolveDreamFieldKey(contextForKey);
+            if (!key) {
+                throw new Error('Unable to resolve encryption key for this dream update');
             }
+
+            processedUpdates = encryptDreamFields(
+                { ...processedUpdates, isPublic: targetIsPublic },
+                key
+            ) as Record<string, any>;
         }
 
-        // Sanitize updates to remove undefined values, as Firestore rejects them
-        const sanitizedUpdates = Object.entries(processedUpdates).reduce((acc, [key, value]) => {
-            if (value !== undefined) {
-                (acc as any)[key] = value;
-            }
-            return acc;
-        }, {} as Record<string, any>);
+        // Deep sanitize updates to remove undefined values (including nested objects/arrays).
+        const sanitizedUpdates = stripUndefinedDeep(processedUpdates) as Record<string, any>;
 
         await updateDoc(docRef, sanitizedUpdates);
     },
@@ -188,12 +348,12 @@ export const ItemService = {
             snapshot.forEach(doc => results.push({ id: doc.id, ...doc.data() } as BucketItem));
         }
 
-        // Decrypt encrypted fields
-        const fieldKey = await KeyManager.getFieldEncryptionKey();
-        if (fieldKey) {
-            return results.map(item => item.encryptionVersion ? decryptDreamFields(item, fieldKey) : item);
-        }
-        return results;
+        return Promise.all(results.map(async (item) => {
+            if (!item.encryptionVersion) return item;
+            const key = await resolveDreamFieldKey(item);
+            if (!key || !canDecryptWithKey(item, key)) return item;
+            return decryptDreamFields(item, key);
+        }));
     },
 
     // Stats (Optimized usually via aggregation, but simple counting for MVP)
@@ -217,9 +377,9 @@ export const ItemService = {
 
                     // Decrypt if encrypted
                     if (item.encryptionVersion) {
-                        const fieldKey = await KeyManager.getFieldEncryptionKey();
-                        if (fieldKey) {
-                            item = decryptDreamFields(item, fieldKey);
+                        const key = await resolveDreamFieldKey(item);
+                        if (key && canDecryptWithKey(item, key)) {
+                            item = decryptDreamFields(item, key);
                         }
                     }
 

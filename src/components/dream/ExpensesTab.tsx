@@ -54,7 +54,7 @@ export function ExpensesTab({ item, isOwner, onAddExpense }: ExpensesTabProps) {
                 )}
             </Card>
 
-            {isOwner && (
+            {isOwner && item.phase === 'doing' && (
                 <TouchableOpacity
                     style={[styles.addButton, { borderColor: colors.primary }]}
                     onPress={onAddExpense}

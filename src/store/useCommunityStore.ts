@@ -86,16 +86,17 @@ export const useCommunityStore = create<CommunityState>((set, get) => ({
         const userId = auth.currentUser?.uid;
         if (!userId) return;
 
-        // Optimistic update - update both count AND likes array
+        // Optimistic update based on likes array (source of truth)
         const isCurrentlyLiked = CommunityService.isLikedByUser(dream);
         const currentLikes = dream.likes || [];
+        const nextLikes = isCurrentlyLiked
+            ? currentLikes.filter(id => id !== userId)
+            : [...currentLikes, userId];
 
         const updatedDream = {
             ...dream,
-            likesCount: (dream.likesCount || 0) + (isCurrentlyLiked ? -1 : 1),
-            likes: isCurrentlyLiked
-                ? currentLikes.filter(id => id !== userId)  // Remove user from array
-                : [...currentLikes, userId]                  // Add user to array
+            likes: nextLikes,
+            likesCount: nextLikes.length,
         };
 
         const updatedDreams = [...publicDreams];

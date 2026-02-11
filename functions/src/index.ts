@@ -7,7 +7,7 @@ import * as admin from "firebase-admin";
 admin.initializeApp();
 
 // Chat triggers
-export { onNewChatMessage } from "./triggers/chat";
+export { onNewChatMessage, syncChatParticipants } from "./triggers/chat";
 
 // Journey triggers
 export { onJourneyUpdate } from "./triggers/journeys";

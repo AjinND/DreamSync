@@ -38,6 +38,18 @@ import { encodeBase64, decodeBase64 } from 'tweetnacl-util';
 
 export const ChatService = {
     /**
+     * Touch chat metadata so Cloud Function syncs participants into RTDB.
+     */
+    ensureParticipantIndex: async (chatId: string): Promise<void> => {
+        try {
+            const chatRef = doc(db, 'chats', chatId);
+            await updateDoc(chatRef, { updatedAt: Date.now() });
+        } catch (error) {
+            console.warn('[ChatService] Failed to trigger participant index sync:', error);
+        }
+    },
+
+    /**
      * Create or get existing 1-on-1 Chat
      */
     createDMChat: async (otherUserId: string): Promise<string> => {
@@ -276,12 +288,14 @@ export const ChatService = {
     subscribeToMessages: (chatId: string, callback: (messages: Message[]) => void) => {
         const messagesRef = ref(rtdb, `messages/${chatId}`);
         const q = rtdbQuery(messagesRef, limitToLast(50));
+        let isDisposed = false;
 
         // Cache chat data + keys for decryption
         let cachedChatData: Chat | null = null;
         let cachedGroupKey: Uint8Array | null = null;
+        let unsubscribeValue: (() => void) | null = null;
 
-        const unsubscribe = onValue(q, async (snapshot) => {
+        const subscribe = (hasRetried = false) => onValue(q, async (snapshot) => {
             const data = snapshot.val();
             if (!data) {
                 callback([]);
@@ -418,9 +432,32 @@ export const ChatService = {
             });
 
             callback(messages);
+        }, async (error) => {
+            const errorCode = String((error as any)?.code || '').toLowerCase();
+            console.error('[ChatService] Message subscription error:', error);
+
+            if (!hasRetried && errorCode.includes('permission_denied')) {
+                await ChatService.ensureParticipantIndex(chatId);
+                if (!isDisposed) {
+                    setTimeout(() => {
+                        if (!isDisposed) {
+                            unsubscribeValue = subscribe(true);
+                        }
+                    }, 600);
+                }
+                return;
+            }
+
+            callback([]);
         });
 
-        return () => off(q);
+        unsubscribeValue = subscribe(false);
+
+        return () => {
+            isDisposed = true;
+            if (unsubscribeValue) unsubscribeValue();
+            off(q);
+        };
     },
 
     /**

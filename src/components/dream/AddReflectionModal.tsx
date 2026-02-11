@@ -1,5 +1,6 @@
 import { Input } from '@/src/components/ui';
 import { useTheme } from '@/src/theme';
+import { ReflectionBlock } from '@/src/types/item';
 import { X } from 'lucide-react-native';
 import { useState } from 'react';
 import {
@@ -15,38 +16,42 @@ import {
 interface AddReflectionModalProps {
     visible: boolean;
     onClose: () => void;
-    onSave: (question: string, answer: string) => void;
+    onSave: (blocks: ReflectionBlock[]) => void;
 }
-
-const SAMPLE_QUESTIONS = [
-    "Why did this dream matter to me?",
-    "What did I learn from this experience?",
-    "How has this changed me as a person?",
-    "What would I do differently next time?",
-    "Who helped me achieve this dream?",
-];
 
 export function AddReflectionModal({ visible, onClose, onSave }: AddReflectionModalProps) {
     const { colors } = useTheme();
-    const [question, setQuestion] = useState('');
-    const [answer, setAnswer] = useState('');
+    const [text, setText] = useState('');
+    const [imageUrl, setImageUrl] = useState('');
+    const [linkUrl, setLinkUrl] = useState('');
+    const [linkCaption, setLinkCaption] = useState('');
     const [loading, setLoading] = useState(false);
 
     const handleSave = async () => {
-        if (!question.trim() || !answer.trim()) return;
+        const blocks: ReflectionBlock[] = [];
+        if (text.trim()) blocks.push({ type: 'text', value: text.trim() });
+        if (imageUrl.trim()) blocks.push({ type: 'image', value: imageUrl.trim() });
+        if (linkUrl.trim()) {
+            blocks.push({
+                type: 'link',
+                value: linkUrl.trim(),
+                caption: linkCaption.trim() || undefined,
+            });
+        }
+
+        if (blocks.length === 0) return;
+
         setLoading(true);
         try {
-            await onSave(question.trim(), answer.trim());
-            setQuestion('');
-            setAnswer('');
+            await onSave(blocks);
+            setText('');
+            setImageUrl('');
+            setLinkUrl('');
+            setLinkCaption('');
             onClose();
         } finally {
             setLoading(false);
         }
-    };
-
-    const selectQuestion = (q: string) => {
-        setQuestion(q);
     };
 
     return (
@@ -67,48 +72,39 @@ export function AddReflectionModal({ visible, onClose, onSave }: AddReflectionMo
                             </TouchableOpacity>
                         </View>
 
-                        {/* Sample Questions */}
-                        <Text style={[styles.label, { color: colors.textSecondary }]}>
-                            Pick a question or write your own:
-                        </Text>
-                        <View style={styles.questionsContainer}>
-                            {SAMPLE_QUESTIONS.map((q, i) => (
-                                <TouchableOpacity
-                                    key={i}
-                                    style={[
-                                        styles.questionChip,
-                                        { backgroundColor: question === q ? colors.primary + '20' : colors.surface },
-                                        { borderColor: question === q ? colors.primary : colors.border }
-                                    ]}
-                                    onPress={() => selectQuestion(q)}
-                                >
-                                    <Text style={[
-                                        styles.questionChipText,
-                                        { color: question === q ? colors.primary : colors.textSecondary }
-                                    ]}>
-                                        {q}
-                                    </Text>
-                                </TouchableOpacity>
-                            ))}
-                        </View>
-
-                        {/* Custom Question */}
                         <Input
-                            label="Question"
-                            placeholder="Or type your own question..."
-                            value={question}
-                            onChangeText={setQuestion}
-                        />
-
-                        {/* Answer */}
-                        <Input
-                            label="Your Answer"
-                            placeholder="Write your reflection..."
-                            value={answer}
-                            onChangeText={setAnswer}
+                            label="Reflection Text"
+                            placeholder="What did you learn, feel, or discover?"
+                            value={text}
+                            onChangeText={setText}
                             multiline
                             numberOfLines={4}
                             style={{ minHeight: 100, textAlignVertical: 'top' }}
+                        />
+
+                        <Input
+                            label="Image URL (Optional)"
+                            placeholder="https://example.com/reflection.jpg"
+                            value={imageUrl}
+                            onChangeText={setImageUrl}
+                            autoCapitalize="none"
+                            keyboardType="url"
+                        />
+
+                        <Input
+                            label="Link URL (Optional)"
+                            placeholder="https://example.com/article"
+                            value={linkUrl}
+                            onChangeText={setLinkUrl}
+                            autoCapitalize="none"
+                            keyboardType="url"
+                        />
+
+                        <Input
+                            label="Link Title (Optional)"
+                            placeholder="Add a short title for the link"
+                            value={linkCaption}
+                            onChangeText={setLinkCaption}
                         />
 
                         {/* Actions */}
@@ -125,10 +121,10 @@ export function AddReflectionModal({ visible, onClose, onSave }: AddReflectionMo
                                 style={[
                                     styles.saveButton,
                                     { backgroundColor: colors.primary },
-                                    (!question.trim() || !answer.trim()) && { opacity: 0.5 }
+                                    (!text.trim() && !imageUrl.trim() && !linkUrl.trim()) && { opacity: 0.5 }
                                 ]}
                                 onPress={handleSave}
-                                disabled={!question.trim() || !answer.trim() || loading}
+                                disabled={(!text.trim() && !imageUrl.trim() && !linkUrl.trim()) || loading}
                             >
                                 <Text style={styles.saveText}>
                                     {loading ? 'Saving...' : 'Save Reflection'}
@@ -172,22 +168,7 @@ const styles = StyleSheet.create({
     },
     label: {
         fontSize: 14,
-        marginBottom: 12,
-    },
-    questionsContainer: {
-        flexDirection: 'row',
-        flexWrap: 'wrap',
-        gap: 8,
-        marginBottom: 20,
-    },
-    questionChip: {
-        paddingHorizontal: 12,
-        paddingVertical: 8,
-        borderRadius: 20,
-        borderWidth: 1,
-    },
-    questionChipText: {
-        fontSize: 12,
+        marginBottom: 8,
     },
     actions: {
         flexDirection: 'row',

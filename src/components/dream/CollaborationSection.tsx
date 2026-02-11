@@ -11,7 +11,7 @@ import { Journey, UserProfile } from '@/src/types/social';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Avatar, Badge } from '../ui';
-import { ArrowRight, Check, Lock, LockOpen, Trash2, Users, X } from 'lucide-react-native';
+import { ArrowRight, Check, Globe, Lock, Trash2, Users, X } from 'lucide-react-native';
 
 interface CollaborationSectionProps {
     dreamId: string;
@@ -27,6 +27,7 @@ export function CollaborationSection({ dreamId, isOwner, collaborationType, onSt
     const [isProcessing, setIsProcessing] = useState(false);
     const [userProfiles, setUserProfiles] = useState<Record<string, UserProfile>>({});
     const userId = auth.currentUser?.uid;
+    const normalizedSettings = journey ? JourneysService._normalizeSettings(journey.settings) : null;
 
     useEffect(() => {
         loadJourney();
@@ -84,8 +85,14 @@ export function CollaborationSection({ dreamId, isOwner, collaborationType, onSt
         if (!journey || !userId) return;
         setIsProcessing(true);
         try {
-            await JourneysService.requestToJoin(journey.id, userId);
-            Alert.alert('Request Sent', 'The owner will be notified of your request.');
+            if (normalizedSettings?.joinPolicy === 'open') {
+                await JourneysService.joinJourney(journey.id, userId);
+                Alert.alert('Joined', 'You are now part of this journey.');
+                await loadJourney();
+            } else {
+                await JourneysService.requestToJoin(journey.id, userId);
+                Alert.alert('Request Sent', 'The owner will be notified of your request.');
+            }
         } catch (error) {
             Alert.alert('Error', 'Failed to send request.');
         } finally {
@@ -107,24 +114,51 @@ export function CollaborationSection({ dreamId, isOwner, collaborationType, onSt
         }
     };
 
-    const toggleOpenStatus = async () => {
+    const toggleDiscoverability = async () => {
         if (!journey || !isOwner) return;
         try {
-            const newStatus = !journey.settings?.isOpen;
+            const newStatus = normalizedSettings?.discoverability === 'public' ? 'private' : 'public';
             await JourneysService.updateSettings(journey.id, {
-                isOpen: newStatus,
-                maxParticipants: journey.settings?.maxParticipants || 5,
+                discoverability: newStatus,
+                joinPolicy: normalizedSettings?.joinPolicy || 'request',
+                maxParticipants: normalizedSettings?.maxParticipants || 5,
             });
             setJourney(prev => prev ? {
                 ...prev,
                 settings: {
                     ...prev.settings,
-                    isOpen: newStatus,
-                    maxParticipants: prev.settings?.maxParticipants || 5,
+                    discoverability: newStatus,
+                    joinPolicy: normalizedSettings?.joinPolicy || 'request',
+                    isOpen: newStatus === 'public',
+                    maxParticipants: normalizedSettings?.maxParticipants || 5,
                 },
             } : null);
         } catch (error) {
             Alert.alert('Error', 'Failed to update settings');
+        }
+    };
+
+    const toggleJoinPolicy = async () => {
+        if (!journey || !isOwner) return;
+        try {
+            const newPolicy = normalizedSettings?.joinPolicy === 'open' ? 'request' : 'open';
+            await JourneysService.updateSettings(journey.id, {
+                discoverability: normalizedSettings?.discoverability || 'public',
+                joinPolicy: newPolicy,
+                maxParticipants: normalizedSettings?.maxParticipants || 5,
+            });
+            setJourney(prev => prev ? {
+                ...prev,
+                settings: {
+                    ...prev.settings,
+                    discoverability: normalizedSettings?.discoverability || 'public',
+                    joinPolicy: newPolicy,
+                    isOpen: (normalizedSettings?.discoverability || 'public') === 'public',
+                    maxParticipants: normalizedSettings?.maxParticipants || 5,
+                },
+            } : null);
+        } catch (error) {
+            Alert.alert('Error', 'Failed to update join policy');
         }
     };
 
@@ -134,14 +168,17 @@ export function CollaborationSection({ dreamId, isOwner, collaborationType, onSt
             ...prev,
             settings: {
                 ...prev.settings!,
-                isOpen: prev.settings?.isOpen || false,
+                discoverability: normalizedSettings?.discoverability || 'public',
+                joinPolicy: normalizedSettings?.joinPolicy || 'request',
+                isOpen: (normalizedSettings?.discoverability || 'public') === 'public',
                 maxParticipants: newMax,
             },
         }) : null);
 
         try {
             await JourneysService.updateSettings(journey.id, {
-                isOpen: journey.settings?.isOpen || false,
+                discoverability: normalizedSettings?.discoverability || 'public',
+                joinPolicy: normalizedSettings?.joinPolicy || 'request',
                 maxParticipants: newMax,
             });
         } catch (error) {
@@ -206,11 +243,12 @@ export function CollaborationSection({ dreamId, isOwner, collaborationType, onSt
     // 2. Journey Exists
     const isParticipant = userId && journey.participants.includes(userId);
     const hasPendingRequest = userId && journey.requests?.includes(userId);
-    const isOpen = journey.settings?.isOpen;
+    const isPublicJourney = normalizedSettings?.discoverability === 'public';
+    const joinPolicy = normalizedSettings?.joinPolicy || 'request';
 
     // View for Non-Participants (Seekers)
     if (!isParticipant && !isOwner) {
-        if (!isOpen) return null;
+        if (!isPublicJourney) return null;
 
         return (
             <View style={[styles.container, { backgroundColor: colors.surface }]}>
@@ -219,7 +257,9 @@ export function CollaborationSection({ dreamId, isOwner, collaborationType, onSt
                     <Text style={[styles.title, { color: colors.textPrimary }]}>Join this Journey</Text>
                 </View>
                 <Text style={[styles.description, { color: colors.textSecondary }]}>
-                    This dream is open for collaboration.
+                    {joinPolicy === 'open'
+                        ? 'This journey is open to join instantly.'
+                        : 'This journey accepts join requests.'}
                 </Text>
                 {hasPendingRequest ? (
                     <View style={[styles.button, { backgroundColor: colors.textSecondary + '10' }]}>
@@ -234,7 +274,7 @@ export function CollaborationSection({ dreamId, isOwner, collaborationType, onSt
                         {isProcessing ? (
                             <ActivityIndicator color="#FFF" />
                         ) : (
-                            <Text style={styles.buttonText}>Request to Join</Text>
+                            <Text style={styles.buttonText}>{joinPolicy === 'open' ? 'Join Now' : 'Request to Join'}</Text>
                         )}
                     </TouchableOpacity>
                 )}
@@ -249,8 +289,8 @@ export function CollaborationSection({ dreamId, isOwner, collaborationType, onSt
                 <Users size={20} color={colors.accent} />
                 <Text style={[styles.title, { color: colors.textPrimary }]}>Active Journey</Text>
                 <Badge
-                    label={isOpen ? 'Open' : 'Closed'}
-                    variant={isOpen ? 'success' : 'default'}
+                    label={isPublicJourney ? 'Public' : 'Private'}
+                    variant={isPublicJourney ? 'success' : 'default'}
                 />
             </View>
 
@@ -272,10 +312,10 @@ export function CollaborationSection({ dreamId, isOwner, collaborationType, onSt
                 {/* Owner Controls */}
                 {isOwner && (
                     <View style={styles.ownerControls}>
-                        {isOpen && (
+                        {isPublicJourney && (
                             <View style={[styles.maxParticipantsControl, { borderColor: colors.border, backgroundColor: colors.surface }]}>
                                 <TouchableOpacity
-                                    onPress={() => journey.settings && journey.settings.maxParticipants > 2 && updateMaxParticipants(journey.settings.maxParticipants - 1)}
+                                    onPress={() => normalizedSettings && normalizedSettings.maxParticipants > 2 && updateMaxParticipants(normalizedSettings.maxParticipants - 1)}
                                     style={styles.controlBtn}
                                 >
                                     <Text style={[styles.controlBtnText, { color: colors.textSecondary }]}>-</Text>
@@ -283,11 +323,11 @@ export function CollaborationSection({ dreamId, isOwner, collaborationType, onSt
                                 <View style={styles.countContainer}>
                                     <Users size={12} color={colors.textSecondary} />
                                     <Text style={[styles.controlText, { color: colors.textPrimary }]}>
-                                        {journey.settings?.maxParticipants || 5}
+                                        {normalizedSettings?.maxParticipants || 5}
                                     </Text>
                                 </View>
                                 <TouchableOpacity
-                                    onPress={() => journey.settings && journey.settings.maxParticipants < 50 && updateMaxParticipants(journey.settings.maxParticipants + 1)}
+                                    onPress={() => normalizedSettings && normalizedSettings.maxParticipants < 50 && updateMaxParticipants(normalizedSettings.maxParticipants + 1)}
                                     style={styles.controlBtn}
                                 >
                                     <Text style={[styles.controlBtnText, { color: colors.textSecondary }]}>+</Text>
@@ -295,14 +335,25 @@ export function CollaborationSection({ dreamId, isOwner, collaborationType, onSt
                             </View>
                         )}
                         <TouchableOpacity
-                            onPress={toggleOpenStatus}
+                            onPress={toggleJoinPolicy}
                             style={[
-                                styles.lockButton,
-                                { borderColor: colors.border, backgroundColor: isOpen ? colors.accent + '10' : 'transparent' },
+                                styles.policyButton,
+                                { borderColor: colors.border, backgroundColor: joinPolicy === 'open' ? colors.accent + '10' : 'transparent' },
                             ]}
                         >
-                            {isOpen ? (
-                                <LockOpen size={16} color={colors.accent} />
+                            <Text style={[styles.policyButtonText, { color: joinPolicy === 'open' ? colors.accent : colors.textSecondary }]}>
+                                {joinPolicy === 'open' ? 'Open Join' : 'Request Join'}
+                            </Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                            onPress={toggleDiscoverability}
+                            style={[
+                                styles.lockButton,
+                                { borderColor: colors.border, backgroundColor: isPublicJourney ? colors.accent + '10' : 'transparent' },
+                            ]}
+                        >
+                            {isPublicJourney ? (
+                                <Globe size={16} color={colors.accent} />
                             ) : (
                                 <Lock size={16} color={colors.textSecondary} />
                             )}
@@ -431,6 +482,16 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         marginLeft: 18,
         borderStyle: 'dashed',
+    },
+    policyButton: {
+        borderRadius: 14,
+        borderWidth: 1,
+        paddingHorizontal: 10,
+        paddingVertical: 6,
+    },
+    policyButtonText: {
+        fontSize: 11,
+        fontWeight: '600',
     },
     requestsContainer: {
         marginTop: 16,

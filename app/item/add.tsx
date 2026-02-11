@@ -92,7 +92,8 @@ export default function AddDreamScreen() {
             if (values.imageUri && !values.imageUri.startsWith('https://')) {
                 try {
                     const dreamId = isEditing && typeof id === 'string' ? id : `new-${Date.now()}`;
-                    const imagePath = StoragePaths.dreamCover(userId, dreamId);
+                    // Use public path for public dreams, private path for private dreams
+                    const imagePath = StoragePaths.dreamCover(userId, dreamId, values.isPublic);
                     uploadedImageUrl = await StorageService.uploadOptimizedImage(
                         values.imageUri,
                         imagePath,

@@ -4,10 +4,12 @@
  */
 
 import * as admin from "firebase-admin";
+import { onDocumentWritten } from "firebase-functions/v2/firestore";
 import { onValueCreated } from "firebase-functions/v2/database";
 import { notifyUser } from "../utils/notifications";
 
 const db = admin.firestore();
+const rtdb = admin.database();
 
 /**
  * Trigger: RTDB onCreate on /messages/{chatId}/{messageId}
@@ -25,9 +27,10 @@ export const onNewChatMessage = onValueCreated(
     const chatId = event.params.chatId;
     const message = event.data.val();
 
-    if (!message || !message.userId) return;
+    if (!message) return;
 
-    const senderId: string = message.userId;
+    const senderId: string = message.senderId || message.userId;
+    if (!senderId) return;
     const senderName: string = message.userName || "Someone";
     const messageText: string = message.text || "";
 
@@ -73,5 +76,38 @@ export const onNewChatMessage = onValueCreated(
       });
 
     await Promise.all(notifyPromises);
+  }
+);
+
+/**
+ * Mirrors Firestore chat participants into RTDB chatParticipants/{chatId}
+ * so RTDB message rules can enforce chat membership on reads/writes.
+ */
+export const syncChatParticipants = onDocumentWritten(
+  {
+    document: "chats/{chatId}",
+    region: "asia-southeast1",
+  },
+  async (event) => {
+    const chatId = event.params.chatId;
+    const participantsRef = rtdb.ref(`chatParticipants/${chatId}`);
+    const after = event.data?.after;
+
+    if (!after?.exists) {
+      await participantsRef.remove();
+      return;
+    }
+
+    const chat = after.data();
+    const participants = Array.isArray(chat?.participants) ? chat.participants : [];
+
+    const participantMap: Record<string, true> = {};
+    for (const uid of participants) {
+      if (typeof uid === "string" && uid.length > 0) {
+        participantMap[uid] = true;
+      }
+    }
+
+    await participantsRef.set(participantMap);
   }
 );

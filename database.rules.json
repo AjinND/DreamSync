@@ -2,17 +2,17 @@
   "rules": {
     "messages": {
       "$chatId": {
-        ".read": "auth != null",
-        ".write": "auth != null",
+        ".read": "auth != null && root.child('chatParticipants').child($chatId).child(auth.uid).val() === true",
+        ".write": "auth != null && root.child('chatParticipants').child($chatId).child(auth.uid).val() === true",
         "$messageId": {
-          ".validate": "newData.hasChildren(['senderId', 'text', 'type', 'createdAt']) && newData.child('senderId').val() === auth.uid",
-          ".write": "auth != null && (!data.exists() || data.child('senderId').val() === auth.uid)"
+          ".validate": "newData.hasChildren(['senderId', 'text', 'type', 'createdAt']) && newData.child('senderId').isString() && newData.child('senderId').val() === auth.uid && newData.child('text').isString() && newData.child('type').isString()",
+          ".write": "auth != null && root.child('chatParticipants').child($chatId).child(auth.uid).val() === true && (!data.exists() || data.child('senderId').val() === auth.uid)"
         }
       }
     },
     "chatParticipants": {
       "$chatId": {
-        ".read": "auth != null && data.child(auth.uid).exists()",
+        ".read": "auth != null && data.child(auth.uid).val() === true",
         ".write": false
       }
     }

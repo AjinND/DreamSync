@@ -1,7 +1,6 @@
 import { create } from 'zustand';
-import { decryptDreamFields, encryptDreamFields } from '../services/encryption';
 import { ItemService } from '../services/items';
-import { KeyManager } from '../services/keyManager';
+import { expenseSchema, inspirationSchema, progressSchema, reflectionSchema, safeValidate } from '../services/validation';
 import { BucketItem, Expense, Inspiration, Memory, Phase, ProgressEntry, Reflection } from '../types/item';
 
 interface BucketState {
@@ -17,7 +16,8 @@ interface BucketState {
     // Sub-item helpers
     addInspiration: (itemId: string, inspiration: Omit<Inspiration, 'id'>) => Promise<void>;
     deleteInspiration: (itemId: string, inspirationId: string) => Promise<void>;
-    addMemory: (itemId: string, memory: Omit<Memory, 'id'>) => Promise<void>;
+    addMemory: (itemId: string, memory: Omit<Memory, 'id'> & { id?: string }) => Promise<void>;
+    deleteMemory: (itemId: string, memoryId: string) => Promise<void>;
     addReflection: (itemId: string, reflection: Omit<Reflection, 'id'>) => Promise<void>;
     addProgress: (itemId: string, entry: Omit<ProgressEntry, 'id'>) => Promise<void>;
     addExpense: (itemId: string, expense: Omit<Expense, 'id'>) => Promise<void>;
@@ -161,39 +161,42 @@ export const useBucketStore = create<BucketState>((set, get) => ({
             const wasPublic = oldItem?.isPublic || false;
             const wasDone = oldItem?.phase === 'done';
 
-            // Handle public/private encryption transitions
             let processedUpdates = { ...updates };
             if ('isPublic' in updates && oldItem) {
-                const fieldKey = await KeyManager.getFieldEncryptionKey();
-                if (fieldKey) {
-                    if (wasPublic && updates.isPublic === false) {
-                        // Public -> Private: encrypt the full item's sensitive fields
-                        // ItemService.updateItem handles encryption, but we should
-                        // pass encryptionVersion to signal encrypted state
-                        processedUpdates.encryptionVersion = 1;
-                    } else if (!wasPublic && updates.isPublic === true) {
-                        // Private -> Public: decrypt all fields, store as plaintext
-                        // Re-read the raw item and write back decrypted
-                        if (oldItem.encryptionVersion) {
-                            const decrypted = decryptDreamFields(oldItem, fieldKey);
-                            processedUpdates = {
-                                ...processedUpdates,
-                                ...decrypted,
-                                encryptionVersion: 0, // 0 = not encrypted
-                                isPublic: true,
-                            };
-                            // Remove the id/userId since they aren't update fields
-                            delete (processedUpdates as any).id;
-                            delete (processedUpdates as any).userId;
-                            delete (processedUpdates as any).createdAt;
-                        }
+                // Visibility transition requires rewriting fields so ItemService can
+                // re-encrypt according to policy (public restricted fields vs private full fields).
+                const targetIsPublic = updates.isPublic === true;
+                processedUpdates = {
+                    ...oldItem,
+                    ...updates,
+                    isPublic: targetIsPublic,
+                };
+                delete (processedUpdates as any).id;
+                delete (processedUpdates as any).userId;
+                delete (processedUpdates as any).createdAt;
+
+                // Handle image path migration when visibility changes
+                if (oldItem.mainImage && wasPublic !== updates.isPublic) {
+                    const { StorageService, StoragePaths } = await import('../services/storage');
+                    const userId = oldItem.userId;
+                    const dreamId = oldItem.id;
+
+                    try {
+                        // Determine old and new paths based on visibility transition
+                        const oldPath = StoragePaths.dreamCover(userId, dreamId, wasPublic);
+                        const newPath = StoragePaths.dreamCover(userId, dreamId, updates.isPublic === true);
+
+                        // Migrate image to new path
+                        const newImageUrl = await StorageService.migrateImagePath(oldPath, newPath);
+                        processedUpdates.mainImage = newImageUrl;
+                    } catch (migrationError) {
+                        console.warn('Failed to migrate dream cover image:', migrationError);
+                        // Continue without migrating image - it will still be accessible
                     }
                 }
             }
 
-            // Skip encryption in ItemService when the store already handled the transition
-            const handledTransition = 'isPublic' in updates && oldItem;
-            await ItemService.updateItem(id, processedUpdates, handledTransition ? { skipEncryption: true } : undefined);
+            await ItemService.updateItem(id, processedUpdates);
             await get().fetchItems();
 
             const newItem = get().itemMap[id];
@@ -289,6 +292,10 @@ export const useBucketStore = create<BucketState>((set, get) => ({
     addInspiration: async (itemId, inspiration) => {
         const item = get().itemMap[itemId];
         if (!item) return;
+        const validation = safeValidate(inspirationSchema, inspiration);
+        if (!validation.success) {
+            throw new Error(`Validation failed: ${validation.error}`);
+        }
         const newInsp = cleanForFirestore({ ...inspiration, id: generateId() });
         const updated = [...(item.inspirations || []), newInsp];
         await get().updateItem(itemId, { inspirations: updated });
@@ -304,14 +311,42 @@ export const useBucketStore = create<BucketState>((set, get) => ({
     addMemory: async (itemId, memory) => {
         const item = get().itemMap[itemId];
         if (!item) return;
-        const newMem = cleanForFirestore({ ...memory, id: generateId() });
+        const newMem = cleanForFirestore({ ...memory, id: memory.id || generateId() });
         const updated = [...(item.memories || []), newMem];
         await get().updateItem(itemId, { memories: updated });
+    },
+
+    deleteMemory: async (itemId, memoryId) => {
+        const item = get().itemMap[itemId];
+        if (!item) return;
+
+        const memoryToDelete = (item.memories || []).find((m) => m.id === memoryId);
+        if (!memoryToDelete) return;
+
+        const updated = (item.memories || []).filter((m) => m.id !== memoryId);
+        await get().updateItem(itemId, { memories: updated });
+
+        // Best-effort storage cleanup.
+        const { StoragePaths, StorageService } = await import('../services/storage');
+        const isPublic = item.isPublic === true;
+        const deterministicPath = StoragePaths.dreamMemory(item.userId, item.id, memoryId, isPublic);
+
+        await Promise.allSettled([
+            StorageService.deleteImage(deterministicPath),
+            StorageService.deleteImageByUrl(memoryToDelete.imageUrl),
+        ]);
     },
 
     addReflection: async (itemId, reflection) => {
         const item = get().itemMap[itemId];
         if (!item) return;
+        if (item.phase !== 'done') {
+            throw new Error('Reflections can be added only when dream is completed');
+        }
+        const validation = safeValidate(reflectionSchema, reflection);
+        if (!validation.success) {
+            throw new Error(`Validation failed: ${validation.error}`);
+        }
         const newRef = cleanForFirestore({ ...reflection, id: generateId() });
         const updated = [...(item.reflections || []), newRef];
         await get().updateItem(itemId, { reflections: updated });
@@ -320,6 +355,13 @@ export const useBucketStore = create<BucketState>((set, get) => ({
     addProgress: async (itemId, entry) => {
         const item = get().itemMap[itemId];
         if (!item) return;
+        if (item.phase !== 'doing') {
+            throw new Error('Progress updates can only be added when dream is in Doing phase');
+        }
+        const validation = safeValidate(progressSchema, entry);
+        if (!validation.success) {
+            throw new Error(`Validation failed: ${validation.error}`);
+        }
         const newEntry = cleanForFirestore({ ...entry, id: generateId() });
         const updated = [...(item.progress || []), newEntry];
         await get().updateItem(itemId, { progress: updated });
@@ -328,6 +370,13 @@ export const useBucketStore = create<BucketState>((set, get) => ({
     addExpense: async (itemId, expense) => {
         const item = get().itemMap[itemId];
         if (!item) return;
+        if (item.phase !== 'doing') {
+            throw new Error('Expenses can only be added when dream is in Doing phase');
+        }
+        const validation = safeValidate(expenseSchema, expense);
+        if (!validation.success) {
+            throw new Error(`Validation failed: ${validation.error}`);
+        }
         const newExp = cleanForFirestore({ ...expense, id: generateId() });
         const updated = [...(item.expenses || []), newExp];
         await get().updateItem(itemId, { expenses: updated });

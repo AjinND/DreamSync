@@ -8,6 +8,16 @@ import { decryptGroupKey, encryptGroupKeyForUser, generateGroupKey } from './enc
 import { KeyManager } from './keyManager';
 
 export const JourneysService = {
+    _normalizeSettings: (
+        settings?: Partial<NonNullable<Journey['settings']>>
+    ): Required<NonNullable<Journey['settings']>> => {
+        const discoverability = settings?.discoverability ?? (settings?.isOpen ? 'public' : 'private');
+        const joinPolicy = settings?.joinPolicy ?? 'request';
+        const maxParticipants = settings?.maxParticipants || 5;
+        const isOpen = discoverability === 'public';
+        return { discoverability, joinPolicy, maxParticipants, isOpen };
+    },
+
     /**
      * Create a new journey for a dream
      */
@@ -21,7 +31,9 @@ export const JourneysService = {
                 chatId: '', // Deferred until 2nd participant joins
                 createdAt: Date.now(),
                 settings: {
-                    isOpen: false,
+                    isOpen: true,
+                    discoverability: 'public',
+                    joinPolicy: 'request',
                     maxParticipants: 5
                 },
                 requests: [],
@@ -160,10 +172,32 @@ export const JourneysService = {
     /**
      * Update journey settings (e.g. open status, max participants)
      */
-    updateSettings: async (journeyId: string, settings: { isOpen: boolean; maxParticipants: number }): Promise<void> => {
+    updateSettings: async (
+        journeyId: string,
+        settings: Partial<{
+            isOpen: boolean;
+            discoverability: 'public' | 'private';
+            joinPolicy: 'request' | 'open';
+            maxParticipants: number;
+        }>
+    ): Promise<void> => {
         try {
             const journeyRef = doc(db, 'journeys', journeyId);
-            await updateDoc(journeyRef, { settings });
+            const journey = await JourneysService.getJourneyById(journeyId);
+            const normalized = JourneysService._normalizeSettings({
+                ...journey?.settings,
+                ...settings,
+            });
+
+            await updateDoc(journeyRef, { settings: normalized });
+
+            // Keep linked dream discoverability in sync for community visibility.
+            if (journey?.dreamId && normalized.discoverability) {
+                const dreamRef = doc(db, 'items', journey.dreamId);
+                await updateDoc(dreamRef, {
+                    isPublic: normalized.discoverability === 'public',
+                });
+            }
         } catch (error) {
             console.error('Error updating journey settings:', error);
             throw error;
@@ -241,8 +275,14 @@ export const JourneysService = {
         try {
             // Note: This requires a composite index on settings.isOpen if we sort or complex filter
             // For now, simpler query.
-            const q = query(collection(db, 'journeys'), where('settings.isOpen', '==', true));
-            const querySnapshot = await getDocs(q);
+            let q = query(collection(db, 'journeys'), where('settings.discoverability', '==', 'public'));
+            let querySnapshot = await getDocs(q);
+
+            // Backward compatibility for older journey docs.
+            if (querySnapshot.empty) {
+                q = query(collection(db, 'journeys'), where('settings.isOpen', '==', true));
+                querySnapshot = await getDocs(q);
+            }
 
             return querySnapshot.docs.map(doc => ({
                 id: doc.id,

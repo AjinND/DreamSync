@@ -20,11 +20,12 @@ import {
 interface AddMemoryModalProps {
     visible: boolean;
     dreamId: string;
+    isPublic?: boolean;
     onClose: () => void;
-    onSave: (imageUrl: string, caption: string) => void;
+    onSave: (memoryId: string, imageUrl: string, caption: string) => void;
 }
 
-export function AddMemoryModal({ visible, dreamId, onClose, onSave }: AddMemoryModalProps) {
+export function AddMemoryModal({ visible, dreamId, isPublic = false, onClose, onSave }: AddMemoryModalProps) {
     const { colors } = useTheme();
     const [imageUri, setImageUri] = useState<string | null>(null);
     const [caption, setCaption] = useState('');
@@ -82,7 +83,8 @@ export function AddMemoryModal({ visible, dreamId, onClose, onSave }: AddMemoryM
 
         try {
             const memoryId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-            const path = StoragePaths.dreamMemory(userId, dreamId, memoryId);
+            // Use public path for public dreams, private path for private dreams
+            const path = StoragePaths.dreamMemory(userId, dreamId, memoryId, isPublic);
 
             const downloadUrl = await StorageService.uploadOptimizedImage(
                 imageUri,
@@ -91,7 +93,7 @@ export function AddMemoryModal({ visible, dreamId, onClose, onSave }: AddMemoryM
                 setUploadProgress,
             );
 
-            await onSave(downloadUrl, caption.trim());
+            await onSave(memoryId, downloadUrl, caption.trim());
             setImageUri(null);
             setCaption('');
             setUploadProgress(0);
