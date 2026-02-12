@@ -205,7 +205,7 @@ export function BucketLoaderFull({
                     },
                   ]}
                 >
-                  {isChecked ? <Text style={styles.checkMark}>✓</Text> : null}
+                  {isChecked ? <Text style={styles.checkMark}>v</Text> : null}
                 </Animated.View>
                 <Text
                   style={[

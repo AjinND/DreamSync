@@ -5,7 +5,7 @@
 
 import { CommunityCard, TagChips } from '@/src/components/community';
 import { EmptyState, NotificationBell } from '@/src/components/shared';
-import { BucketLoaderInline } from '@/src/components/loading';
+import { BucketLoaderFull } from '@/src/components/loading';
 import { useCommunityStore } from '@/src/store/useCommunityStore';
 import { useTheme } from '@/src/theme';
 import { useFocusEffect } from 'expo-router';
@@ -77,10 +77,6 @@ export default function CommunityScreen() {
     );
 
     const ListEmpty = () => {
-        if (isLoading) {
-            return <BucketLoaderInline message="Loading dreams..." />;
-        }
-
         return (
             <EmptyState
                 icon={Globe}
@@ -93,6 +89,15 @@ export default function CommunityScreen() {
             />
         );
     };
+
+    if (isLoading && publicDreams.length === 0) {
+        return (
+            <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
+                <StatusBar style={isDark ? 'light' : 'dark'} />
+                <BucketLoaderFull message="Loading dreams..." />
+            </SafeAreaView>
+        );
+    }
 
     return (
         <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>

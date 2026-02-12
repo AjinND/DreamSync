@@ -11,13 +11,14 @@ import {
     getDoc,
     getDocs,
     limit,
+    orderBy,
     query,
     updateDoc,
     where
 } from 'firebase/firestore';
 import { auth, db } from '../../firebaseConfig';
-import { isEncryptedField } from './encryption';
 import { BucketItem } from '../types/item';
+import { isEncryptedField } from './encryption';
 
 const COLLECTION_NAME = 'items';
 
@@ -75,13 +76,14 @@ export const CommunityService = {
         console.log('[CommunityService] Fetching public dreams...');
 
         try {
-            // Simple query without orderBy to avoid composite index requirement
-            // Firestore composite indexes need to be created in console
+            // Note: Requires composite index on (isPublic, phase, createdAt)
+            // See firestore.indexes.json for index definitions
             const q = query(
                 collection(db, COLLECTION_NAME),
                 where('isPublic', '==', true),
                 where('phase', 'in', ['doing', 'done']),
-                limit(maxItems + 10) // Fetch extra to account for client-side filtering
+                orderBy('createdAt', 'desc'),
+                limit(maxItems + 10)
             );
 
             const snapshot = await getDocs(q);
@@ -89,8 +91,8 @@ export const CommunityService = {
 
             let dreams = snapshot.docs.map(doc => sanitizeForPublicView({ id: doc.id, ...doc.data() } as BucketItem));
 
-            // Sort client-side by createdAt (descending) since we removed orderBy
-            dreams.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+            // Client-side sort (remove after enabling orderBy above)
+            // dreams.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
 
             return dreams;
         } catch (error: any) {
@@ -98,7 +100,7 @@ export const CommunityService = {
 
             // Check if it's an index error
             if (error.message?.includes('index')) {
-                console.error('[CommunityService] Firestore index required. Check console for link to create index.');
+                console.error('[CommunityService] Firestore index required. Run: firebase deploy --only firestore:indexes');
             }
 
             throw error;
@@ -112,11 +114,13 @@ export const CommunityService = {
         console.log(`[CommunityService] Fetching dreams by tag: ${tag}`);
 
         try {
+            // Note: Requires composite index on (isPublic, phase, tags, createdAt)
             const q = query(
                 collection(db, COLLECTION_NAME),
                 where('isPublic', '==', true),
                 where('phase', 'in', ['doing', 'done']),
                 where('tags', 'array-contains', tag),
+                orderBy('createdAt', 'desc'),
                 limit(maxItems)
             );
 
@@ -124,7 +128,8 @@ export const CommunityService = {
             console.log(`[CommunityService] Found ${snapshot.size} dreams with tag ${tag}`);
 
             const dreams = snapshot.docs.map(doc => sanitizeForPublicView({ id: doc.id, ...doc.data() } as BucketItem));
-            dreams.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+            // Client-side sort (remove after enabling orderBy above)
+            // dreams.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
 
             return dreams;
         } catch (error: any) {
@@ -140,11 +145,13 @@ export const CommunityService = {
         console.log(`[CommunityService] Fetching dreams by category: ${category}`);
 
         try {
+            // Note: Requires composite index on (isPublic, phase, category, createdAt)
             const q = query(
                 collection(db, COLLECTION_NAME),
                 where('isPublic', '==', true),
                 where('phase', 'in', ['doing', 'done']),
                 where('category', '==', category),
+                orderBy('createdAt', 'desc'),
                 limit(maxItems)
             );
 
@@ -152,7 +159,8 @@ export const CommunityService = {
             console.log(`[CommunityService] Found ${snapshot.size} dreams in category ${category}`);
 
             const dreams = snapshot.docs.map(doc => sanitizeForPublicView({ id: doc.id, ...doc.data() } as BucketItem));
-            dreams.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+            // Client-side sort (remove after enabling orderBy above)
+            // dreams.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
 
             return dreams;
         } catch (error: any) {
@@ -164,7 +172,7 @@ export const CommunityService = {
     /**
      * Toggle like on a dream (like if not liked, unlike if already liked)
      */
-    async toggleLike(dreamId: string): Promise<{ liked: boolean }> {
+    async toggleLike(dreamId: string, currentlyLiked: boolean): Promise<{ liked: boolean }> {
         const user = auth.currentUser;
         if (!user) throw new Error('User not authenticated');
 
@@ -172,33 +180,23 @@ export const CommunityService = {
 
         try {
             const docRef = doc(db, COLLECTION_NAME, dreamId);
-            const docSnap = await getDoc(docRef);
 
-            if (!docSnap.exists()) {
-                throw new Error('Dream not found');
+            if (currentlyLiked) {
+                // Unlike: Remove user from likes array (idempotent)
+                await updateDoc(docRef, {
+                    likes: arrayRemove(user.uid),
+                });
+                console.log(`[CommunityService] Unliked dream: ${dreamId}`);
+                return { liked: false };
+            } else {
+                // Like: Add user to likes array (idempotent)
+                await updateDoc(docRef, {
+                    likes: arrayUnion(user.uid),
+                });
+                console.log(`[CommunityService] Liked dream: ${dreamId}`);
+                return { liked: true };
             }
-
-        const dreamData = docSnap.data() as BucketItem;
-        const currentLikes = dreamData.likes || [];
-        const isLiked = currentLikes.includes(user.uid);
-
-        if (isLiked) {
-            // Unlike: Remove user from likes array
-            await updateDoc(docRef, {
-                likes: arrayRemove(user.uid),
-            });
-            console.log(`[CommunityService] Unliked dream: ${dreamId}`);
-            return { liked: false };
-        } else {
-            // Like: Add user to likes array
-            await updateDoc(docRef, {
-                likes: arrayUnion(user.uid),
-            });
-            console.log(`[CommunityService] Liked dream: ${dreamId}`);
-            return { liked: true };
-        }
         } catch (error: any) {
-            if (error.message === 'Dream not found') throw error;
             if (error.code === 'permission-denied' || error.message?.includes('permission')) {
                 console.error(`[CommunityService] Permission denied for toggling like on dream: ${dreamId}`);
                 throw new Error('You do not have permission to like this dream');

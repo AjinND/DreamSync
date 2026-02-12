@@ -55,7 +55,19 @@ export const useChatStore = create<ChatState>((set, get) => {
             messagesUnsubscribe = ChatService.subscribeToMessages(chatId, (messages) => {
                 clearTimeout(loadingTimeout);
                 const hasDecryptionErrors = messages.some(m => m.text === '[Unable to decrypt]');
-                set({ messages, isLoading: false, decryptionError: hasDecryptionErrors });
+
+                // Remove pending messages that have been confirmed by server
+                set((state) => {
+                    const confirmedIds = new Set(messages.map(m => m.id));
+                    const pendingMessages = state.messages.filter(m => m._pending && !confirmedIds.has(m.id));
+                    const allMessages = [...messages, ...pendingMessages];
+
+                    return {
+                        messages: allMessages,
+                        isLoading: false,
+                        decryptionError: hasDecryptionErrors
+                    };
+                });
             });
         },
 
@@ -80,14 +92,40 @@ export const useChatStore = create<ChatState>((set, get) => {
         },
 
         sendMessage: async (text: string, type = 'text', mediaUrl) => {
-            const { activeChatId } = get();
+            const { activeChatId, messages } = get();
             if (!activeChatId) return;
+
+            const userId = (await import('@/firebaseConfig')).auth.currentUser?.uid;
+            if (!userId) return;
+
+            // Create optimistic pending message
+            const pendingMessage: Message = {
+                id: `pending_${Date.now()}_${Math.random()}`,
+                senderId: userId,
+                text,
+                createdAt: Date.now(),
+                type,
+                mediaUrl,
+                readBy: {},
+                _pending: true,
+            };
+
+            // Add pending message to UI immediately
+            set({ messages: [...messages, pendingMessage] });
 
             try {
                 await ChatService.sendMessage(activeChatId, text, type, mediaUrl);
+                // Real-time listener will replace pending message with server-confirmed one
             } catch (error) {
                 console.error("Failed to send message:", error);
-                // Could verify toast or error state here
+                // Mark message as failed
+                set((state) => ({
+                    messages: state.messages.map(m =>
+                        m.id === pendingMessage.id
+                            ? { ...m, _pending: false, _failed: true }
+                            : m
+                    )
+                }));
             }
         }
     };

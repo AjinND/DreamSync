@@ -8,10 +8,10 @@ import { EmptyState, FilterChips, NotificationBell } from '@/src/components/shar
 import { BucketLoaderFull } from '@/src/components/loading/BucketLoaderFull';
 import { useBucketStore } from '@/src/store/useBucketStore';
 import { useTheme } from '@/src/theme';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { Moon, Plus } from 'lucide-react-native';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { FlatList, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -35,6 +35,16 @@ export default function HomeScreen() {
   useEffect(() => {
     fetchItems();
   }, []);
+
+  // Refresh data when tab regains focus (avoids stale data when navigating back)
+  useFocusEffect(
+    useCallback(() => {
+      // Only refresh if items are already loaded (avoid loading spinner)
+      if (items.length > 0) {
+        fetchItems();
+      }
+    }, [items.length])
+  );
 
   const handleRefresh = async () => {
     setRefreshing(true);

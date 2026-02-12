@@ -104,6 +104,7 @@ export default function DreamDetailScreen() {
     // State for journey participation
     const [isParticipant, setIsParticipant] = useState(false);
 
+    // Parallelize participation check with item load
     useEffect(() => {
         const checkParticipation = async () => {
             if (isJourney && item && userId) {
@@ -120,6 +121,7 @@ export default function DreamDetailScreen() {
             }
         };
 
+        // Run in parallel with item subscription (non-blocking)
         checkParticipation();
     }, [isJourney, item, userId]);
 

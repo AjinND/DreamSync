@@ -10,6 +10,7 @@ import { BucketItem, Category } from '../types/item';
 
 interface CommunityState {
     publicDreams: BucketItem[];
+    allPublicDreams: BucketItem[]; // Unfiltered cache for client-side filtering
     isLoading: boolean;
     error: string | null;
     selectedTag: string | null;
@@ -34,6 +35,7 @@ const CACHE_DURATION = 30 * 1000;
 
 export const useCommunityStore = create<CommunityState>((set, get) => ({
     publicDreams: [],
+    allPublicDreams: [],
     isLoading: false,
     error: null,
     selectedTag: null,
@@ -46,32 +48,79 @@ export const useCommunityStore = create<CommunityState>((set, get) => ({
         try {
             const dreams = await CommunityService.getPublicDreams();
             console.log(`[CommunityStore] Fetched ${dreams.length} public dreams`);
-            set({ publicDreams: dreams, isLoading: false, lastFetchTime: Date.now() });
+            set({
+                publicDreams: dreams,
+                allPublicDreams: dreams,
+                isLoading: false,
+                lastFetchTime: Date.now()
+            });
         } catch (e: any) {
             console.error('[CommunityStore] Error:', e.message);
-            set({ error: e.message, isLoading: false, publicDreams: [] });
+            set({ error: e.message, isLoading: false, publicDreams: [], allPublicDreams: [] });
         }
     },
 
     filterByTag: async (tag: string | null) => {
-        set({ selectedTag: tag, selectedCategory: null, isLoading: true, error: null });
+        const { allPublicDreams, lastFetchTime } = get();
+        const isCacheFresh = lastFetchTime && (Date.now() - lastFetchTime) < CACHE_DURATION;
+
+        set({ selectedTag: tag, selectedCategory: null });
+
+        // Client-side filter when cache is fresh
+        if (isCacheFresh && allPublicDreams.length > 0) {
+            console.log('[CommunityStore] Using cached data for tag filter');
+            const filtered = tag
+                ? allPublicDreams.filter(d => d.tags?.includes(tag))
+                : allPublicDreams;
+            set({ publicDreams: filtered });
+            return;
+        }
+
+        // Fallback to API when cache is stale
+        set({ isLoading: true, error: null });
         try {
             const dreams = tag
                 ? await CommunityService.getDreamsByTag(tag)
                 : await CommunityService.getPublicDreams();
-            set({ publicDreams: dreams, isLoading: false, lastFetchTime: Date.now() });
+            set({
+                publicDreams: dreams,
+                allPublicDreams: tag ? allPublicDreams : dreams,
+                isLoading: false,
+                lastFetchTime: Date.now()
+            });
         } catch (e: any) {
             set({ error: e.message, isLoading: false });
         }
     },
 
     filterByCategory: async (category: Category | null) => {
-        set({ selectedCategory: category, selectedTag: null, isLoading: true, error: null });
+        const { allPublicDreams, lastFetchTime } = get();
+        const isCacheFresh = lastFetchTime && (Date.now() - lastFetchTime) < CACHE_DURATION;
+
+        set({ selectedCategory: category, selectedTag: null });
+
+        // Client-side filter when cache is fresh
+        if (isCacheFresh && allPublicDreams.length > 0) {
+            console.log('[CommunityStore] Using cached data for category filter');
+            const filtered = category
+                ? allPublicDreams.filter(d => d.category === category)
+                : allPublicDreams;
+            set({ publicDreams: filtered });
+            return;
+        }
+
+        // Fallback to API when cache is stale
+        set({ isLoading: true, error: null });
         try {
             const dreams = category
                 ? await CommunityService.getDreamsByCategory(category)
                 : await CommunityService.getPublicDreams();
-            set({ publicDreams: dreams, isLoading: false, lastFetchTime: Date.now() });
+            set({
+                publicDreams: dreams,
+                allPublicDreams: category ? allPublicDreams : dreams,
+                isLoading: false,
+                lastFetchTime: Date.now()
+            });
         } catch (e: any) {
             set({ error: e.message, isLoading: false });
         }
@@ -104,7 +153,7 @@ export const useCommunityStore = create<CommunityState>((set, get) => ({
         set({ publicDreams: updatedDreams });
 
         try {
-            await CommunityService.toggleLike(dreamId);
+            await CommunityService.toggleLike(dreamId, isCurrentlyLiked);
             // ✅ No refresh needed - optimistic update is accurate
             console.log('[CommunityStore] Like synced to server');
         } catch (e: any) {
