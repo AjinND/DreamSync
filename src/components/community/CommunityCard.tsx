@@ -1,20 +1,30 @@
 /**
- * CommunityCard - Card component for public dreams in community feed
+ * CommunityCard - Borderless, edge-to-edge card for modern community feed
  */
 
+import { auth } from '@/firebaseConfig';
 import { CommunityService } from '@/src/services/community';
 import { useTheme } from '@/src/theme';
 import { BucketItem } from '@/src/types/item';
+import { formatTimeAgo } from '@/src/utils/formatTimeAgo';
+import { BottomSheetModal } from '@gorhom/bottom-sheet';
+import * as Haptics from 'expo-haptics';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
-import { Heart, MessageCircle } from 'lucide-react-native';
+import { Heart, MessageCircle, MoreVertical } from 'lucide-react-native';
+import { memo, useRef, useState } from 'react';
 import {
+    Alert,
+    Animated,
     Dimensions,
     Image,
+    Share,
     StyleSheet,
     Text,
     TouchableOpacity,
     View,
 } from 'react-native';
+import { CommunityPostActionMenu } from './CommunityPostActionMenu';
 
 interface CommunityCardProps {
     dream: BucketItem;
@@ -22,7 +32,6 @@ interface CommunityCardProps {
 }
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
-const CARD_WIDTH = SCREEN_WIDTH - 40;
 
 const CATEGORY_EMOJI: Record<string, string> = {
     travel: '✈️',
@@ -35,21 +44,46 @@ const CATEGORY_EMOJI: Record<string, string> = {
     other: '🌟',
 };
 
+const CATEGORY_GRADIENTS: Record<string, [string, string]> = {
+    travel: ['#3B82F6', '#06B6D4'],
+    skill: ['#8B5CF6', '#A855F7'],
+    adventure: ['#059669', '#10B981'],
+    creative: ['#EC4899', '#F43F5E'],
+    career: ['#F59E0B', '#EAB308'],
+    health: ['#EF4444', '#F97316'],
+    personal: ['#6366F1', '#8B5CF6'],
+    other: ['#64748B', '#94A3B8'],
+};
+
 const PHASE_COLORS: Record<string, string> = {
     dream: '#A855F7',
     doing: '#F59E0B',
     done: '#22C55E',
 };
 
-export function CommunityCard({ dream, onLike }: CommunityCardProps) {
-    const { colors } = useTheme();
+const PHASE_LABELS: Record<string, string> = {
+    dream: 'Dream',
+    doing: 'Doing',
+    done: 'Done',
+};
+
+export const CommunityCard = memo(function CommunityCard({ dream, onLike }: CommunityCardProps) {
+    const { colors, isDark } = useTheme();
     const router = useRouter();
+    const actionMenuRef = useRef<BottomSheetModal>(null);
+    const [imageOpacity] = useState(new Animated.Value(0));
+    const [likeScale] = useState(new Animated.Value(1));
 
     const isLiked = CommunityService.isLikedByUser(dream);
     const likesCount = dream.likes?.length ?? dream.likesCount ?? 0;
     const commentsCount = dream.commentsCount || 0;
     const categoryEmoji = CATEGORY_EMOJI[dream.category] || '🌟';
     const phaseColor = PHASE_COLORS[dream.phase];
+    const phaseLabel = PHASE_LABELS[dream.phase];
+    const gradientColors = CATEGORY_GRADIENTS[dream.category] || CATEGORY_GRADIENTS.other;
+
+    // Check if this is the current user's post
+    const isOwnPost = dream.userId === auth.currentUser?.uid;
 
     const handlePress = () => {
         router.push(`/item/${dream.id}`);
@@ -57,216 +91,385 @@ export function CommunityCard({ dream, onLike }: CommunityCardProps) {
 
     const handleLike = (e: any) => {
         e.stopPropagation();
+
+        // Haptic feedback
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+
+        // Scale animation
+        Animated.sequence([
+            Animated.spring(likeScale, {
+                toValue: 1.2,
+                useNativeDriver: true,
+                speed: 50,
+            }),
+            Animated.spring(likeScale, {
+                toValue: 1,
+                useNativeDriver: true,
+                speed: 50,
+            }),
+        ]).start();
+
         onLike(dream.id);
     };
 
     const handleComment = (e: any) => {
         e.stopPropagation();
-        // Navigate to dream and scroll to comments
-        router.push(`/item/${dream.id}`);
+        router.push(`/item/${dream.id}?scrollTo=comments`);
+    };
+
+    const handleUserPress = (e: any) => {
+        e.stopPropagation();
+        router.push(`/profile/${dream.userId}` as any);
+    };
+
+    const handleMorePress = (e: any) => {
+        e.stopPropagation();
+        actionMenuRef.current?.present();
+    };
+
+    const handleShare = async () => {
+        try {
+            const shareUrl = `https://dreamsync.app/dream/${dream.id}`;
+            const message = `Check out this dream: ${dream.title}`;
+
+            await Share.share({
+                message: `${message}\n${shareUrl}`,
+                url: shareUrl,
+            });
+        } catch (error) {
+            console.error('Error sharing:', error);
+        }
+    };
+
+    const handleReport = () => {
+        Alert.alert(
+            'Report Post',
+            'Why are you reporting this post?',
+            [
+                { text: 'Spam', onPress: () => submitReport('spam') },
+                { text: 'Inappropriate Content', onPress: () => submitReport('inappropriate') },
+                { text: 'Harassment', onPress: () => submitReport('harassment') },
+                { text: 'Cancel', style: 'cancel' },
+            ]
+        );
+    };
+
+    const submitReport = async (reason: string) => {
+        try {
+            await CommunityService.reportPost(dream.id, reason);
+            Alert.alert('Thank you', 'Your report has been submitted and will be reviewed.');
+        } catch (error) {
+            console.error('Error submitting report:', error);
+            Alert.alert('Error', 'Failed to submit report. Please try again.');
+        }
+    };
+
+    const handleBlockUser = () => {
+        Alert.alert(
+            'Block User',
+            `Are you sure you want to block ${dream.sharedBy?.displayName || 'this user'}? You won't see their posts anymore.`,
+            [
+                {
+                    text: 'Cancel',
+                    style: 'cancel',
+                },
+                {
+                    text: 'Block',
+                    style: 'destructive',
+                    onPress: async () => {
+                        try {
+                            await CommunityService.blockUser(dream.userId);
+                            Alert.alert(
+                                'User Blocked',
+                                'You will no longer see posts from this user. Refresh the feed to apply changes.'
+                            );
+                        } catch (error) {
+                            console.error('Error blocking user:', error);
+                            Alert.alert('Error', 'Failed to block user. Please try again.');
+                        }
+                    },
+                },
+            ]
+        );
+    };
+
+    const handleImageLoad = () => {
+        Animated.timing(imageOpacity, {
+            toValue: 1,
+            duration: 300,
+            useNativeDriver: true,
+        }).start();
     };
 
     return (
-        <TouchableOpacity
-            style={[styles.card, { backgroundColor: colors.surface }]}
-            onPress={handlePress}
-            activeOpacity={0.7}
-        >
-            <View style={styles.container}>
-                {/* Left: Image */}
-                <View style={styles.imageContainer}>
-                    {dream.mainImage ? (
-                        <Image
-                            source={{ uri: dream.mainImage }}
-                            style={styles.image}
-                            resizeMode="cover"
-                        />
-                    ) : (
-                        <View style={[styles.imagePlaceholder, { backgroundColor: phaseColor + '20' }]}>
-                            <Text style={styles.placeholderEmoji}>{categoryEmoji}</Text>
-                        </View>
-                    )}
+        <View style={styles.container}>
+            {/* Image Section - Full Width */}
+            <TouchableOpacity onPress={handlePress} activeOpacity={0.95} style={styles.imageContainer}>
+                {dream.mainImage ? (
+                    <Animated.Image
+                        source={{ uri: dream.mainImage }}
+                        style={[styles.dreamImage, { opacity: imageOpacity }]}
+                        resizeMode="cover"
+                        onLoad={handleImageLoad}
+                    />
+                ) : (
+                    <LinearGradient
+                        colors={gradientColors}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 1, y: 1 }}
+                        style={styles.dreamImage}
+                    >
+                        <Text style={styles.gradientEmoji}>{categoryEmoji}</Text>
+                    </LinearGradient>
+                )}
 
-                    {/* Tiny Phase Indicator on Image */}
-                    <View style={[styles.phaseDot, { backgroundColor: phaseColor }]} />
-                </View>
-
-                {/* Right: Content */}
-                <View style={styles.content}>
-                    <View style={styles.headerRow}>
-                        <Text style={[styles.title, { color: colors.textPrimary }]} numberOfLines={1}>
-                            {dream.title}
-                        </Text>
-                        {(dream.collaborationType === 'group' || dream.collaborationType === 'open') && (
-                            <View style={[styles.journeyBadge, { backgroundColor: colors.primary + '15' }]}>
-                                <Text style={[styles.journeyBadgeText, { color: colors.primary }]}>
-                                    Journey
-                                </Text>
-                            </View>
-                        )}
-                    </View>
-
-                    {dream.description ? (
-                        <Text style={[styles.description, { color: colors.textSecondary }]} numberOfLines={2}>
-                            {dream.description}
-                        </Text>
-                    ) : (
-                        <View style={{ flex: 1 }} />
-                    )}
-
-                    {/* Footer Actions */}
-                    <View style={styles.footer}>
-                        <View style={styles.actionsRow}>
-                            {/* Like Button */}
-                            <TouchableOpacity
-                                style={styles.actionButton}
-                                onPress={handleLike}
-                                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                            >
-                                <Heart
-                                    size={14}
-                                    color={isLiked ? '#EF4444' : colors.textMuted}
-                                    fill={isLiked ? '#EF4444' : 'transparent'}
+                {/* Floating Header - Overlaid on top */}
+                <LinearGradient
+                    colors={['rgba(0,0,0,0.6)', 'transparent']}
+                    style={styles.topOverlay}
+                >
+                    {/* Avatar & Name (Tappable) */}
+                    <TouchableOpacity
+                        style={styles.authorSection}
+                        onPress={handleUserPress}
+                        activeOpacity={0.7}
+                    >
+                        <View style={styles.avatar}>
+                            {dream.sharedBy?.photoURL ? (
+                                <Image
+                                    source={{ uri: dream.sharedBy.photoURL }}
+                                    style={styles.avatarImage}
                                 />
-                                <Text style={[styles.actionCount, { color: isLiked ? '#EF4444' : colors.textMuted }]}>
-                                    {likesCount}
+                            ) : (
+                                <Text style={styles.avatarText}>
+                                    {dream.sharedBy?.displayName?.charAt(0).toUpperCase() || 'A'}
                                 </Text>
-                            </TouchableOpacity>
-
-                            {/* Comment Button */}
-                            <TouchableOpacity
-                                style={styles.actionButton}
-                                onPress={handleComment}
-                                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                            >
-                                <MessageCircle size={14} color={colors.textMuted} />
-                                <Text style={[styles.actionCount, { color: colors.textMuted }]}>
-                                    {commentsCount}
-                                </Text>
-                            </TouchableOpacity>
+                            )}
                         </View>
 
-                        {/* Tags (Compact) */}
-                        {dream.tags && dream.tags.length > 0 && (
-                            <Text style={[styles.tagText, { color: colors.textMuted }]} numberOfLines={1}>
-                                #{dream.tags[0]}
+                        {/* Name & Time */}
+                        <View style={styles.authorInfo}>
+                            <Text style={styles.authorName}>
+                                {dream.sharedBy?.displayName || 'Anonymous'}
                             </Text>
-                        )}
-                    </View>
+                            <Text style={styles.timeAgo}>
+                                {formatTimeAgo(dream.sharedAt || dream.createdAt)}
+                            </Text>
+                        </View>
+                    </TouchableOpacity>
+
+                    {/* More Button */}
+                    <TouchableOpacity
+                        style={styles.moreButton}
+                        onPress={handleMorePress}
+                        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                        activeOpacity={0.7}
+                    >
+                        <MoreVertical size={20} color="#FFF" />
+                    </TouchableOpacity>
+                </LinearGradient>
+
+                {/* Caption + Gradient Scrim - Overlaid on bottom */}
+                {dream.shareCaption && (
+                    <LinearGradient
+                        colors={['transparent', 'rgba(0,0,0,0.8)']}
+                        style={styles.bottomOverlay}
+                    >
+                        <Text style={styles.caption} numberOfLines={2}>
+                            {dream.shareCaption}
+                        </Text>
+                    </LinearGradient>
+                )}
+            </TouchableOpacity>
+
+            {/* Compact Info Bar - Below Image */}
+            <View style={[styles.infoBar, { backgroundColor: isDark ? '#000' : colors.background }]}>
+                {/* Like Button */}
+                <TouchableOpacity
+                    style={styles.actionButton}
+                    onPress={handleLike}
+                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                >
+                    <Animated.View style={{ transform: [{ scale: likeScale }] }}>
+                        <Heart
+                            size={20}
+                            color={isLiked ? '#EF4444' : colors.textMuted}
+                            fill={isLiked ? '#EF4444' : 'transparent'}
+                            strokeWidth={2}
+                        />
+                    </Animated.View>
+                    <Text style={[styles.actionCount, { color: isLiked ? '#EF4444' : colors.textMuted }]}>
+                        {likesCount}
+                    </Text>
+                </TouchableOpacity>
+
+                {/* Comment Button */}
+                <TouchableOpacity
+                    style={styles.actionButton}
+                    onPress={handleComment}
+                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                >
+                    <MessageCircle
+                        size={20}
+                        color={colors.textMuted}
+                        strokeWidth={2}
+                    />
+                    <Text style={[styles.actionCount, { color: colors.textMuted }]}>
+                        {commentsCount}
+                    </Text>
+                </TouchableOpacity>
+
+                {/* Dream Title */}
+                <Text style={[styles.dreamTitle, { color: colors.textPrimary }]} numberOfLines={1}>
+                    {dream.title}
+                </Text>
+
+                {/* Phase Badge */}
+                <View style={[styles.phaseBadge, { backgroundColor: phaseColor + '10' }]}>
+                    <View style={[styles.phaseDot, { backgroundColor: phaseColor }]} />
+                    <Text style={[styles.phaseLabel, { color: phaseColor }]}>
+                        {phaseLabel}
+                    </Text>
                 </View>
             </View>
-        </TouchableOpacity>
+
+            {/* Action Menu Bottom Sheet */}
+            <CommunityPostActionMenu
+                ref={actionMenuRef}
+                isOwnPost={isOwnPost}
+                onShare={handleShare}
+                onReport={handleReport}
+                onBlockUser={handleBlockUser}
+            />
+        </View>
     );
-}
+});
 
 const styles = StyleSheet.create({
-    card: {
-        width: CARD_WIDTH,
-        borderRadius: 16,
-        marginBottom: 12, // Reduced margin
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.05,
-        shadowRadius: 4,
-        elevation: 2,
-        overflow: 'hidden',
-    },
     container: {
-        flexDirection: 'row',
-        padding: 12,
-        height: 104, // Fixed height for consistency
+        marginBottom: 4, // Minimal gap between posts
     },
     imageContainer: {
-        width: 80,
-        height: 80,
-        borderRadius: 12,
-        overflow: 'hidden',
+        width: SCREEN_WIDTH,
+        height: 280,
         position: 'relative',
     },
-    image: {
-        width: '100%',
-        height: '100%',
-    },
-    imagePlaceholder: {
-        width: '100%',
-        height: '100%',
+    dreamImage: {
+        width: SCREEN_WIDTH,
+        height: 280,
         justifyContent: 'center',
         alignItems: 'center',
     },
-    placeholderEmoji: {
-        fontSize: 32,
+    gradientEmoji: {
+        fontSize: 64,
     },
-    phaseDot: {
+    topOverlay: {
         position: 'absolute',
-        bottom: 6,
-        right: 6,
-        width: 8,
-        height: 8,
-        borderRadius: 4,
-        borderWidth: 1.5,
-        borderColor: '#FFF',
-    },
-    content: {
-        flex: 1,
-        marginLeft: 12,
-        justifyContent: 'space-between',
-        paddingVertical: 2,
-    },
-    headerRow: {
+        top: 0,
+        left: 0,
+        right: 0,
+        height: 80,
+        paddingHorizontal: 16,
+        paddingTop: 12,
         flexDirection: 'row',
-        justifyContent: 'space-between',
         alignItems: 'center',
+        gap: 10,
     },
-    title: {
-        fontSize: 16,
-        fontWeight: '600',
+    authorSection: {
         flex: 1,
-        marginRight: 8,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 10,
     },
-    journeyBadge: {
-        borderRadius: 10,
-        paddingHorizontal: 8,
-        paddingVertical: 2,
+    avatar: {
+        width: 32,
+        height: 32,
+        borderRadius: 16,
+        overflow: 'hidden',
+        justifyContent: 'center',
+        alignItems: 'center',
+        backgroundColor: 'rgba(255,255,255,0.2)',
     },
-    journeyBadgeText: {
-        fontSize: 10,
-        fontWeight: '700',
-        textTransform: 'uppercase',
-        letterSpacing: 0.4,
+    avatarImage: {
+        width: '100%',
+        height: '100%',
     },
-    categoryEmoji: {
+    avatarText: {
         fontSize: 14,
+        fontWeight: '600',
+        color: '#FFF',
     },
-    description: {
-        fontSize: 13,
-        lineHeight: 18,
+    authorInfo: {
+        flex: 1,
+        gap: 2,
     },
-    footer: {
+    authorName: {
+        fontSize: 14,
+        fontWeight: '600',
+        color: '#FFF',
+    },
+    timeAgo: {
+        fontSize: 12,
+        color: 'rgba(255,255,255,0.8)',
+    },
+    moreButton: {
+        width: 32,
+        height: 32,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    bottomOverlay: {
+        position: 'absolute',
+        bottom: 0,
+        left: 0,
+        right: 0,
+        paddingHorizontal: 16,
+        paddingBottom: 12,
+        paddingTop: 40, // Gradient transition
+    },
+    caption: {
+        fontSize: 14,
+        lineHeight: 20,
+        color: '#FFF',
+    },
+    infoBar: {
         flexDirection: 'row',
         alignItems: 'center',
-        justifyContent: 'space-between',
-        marginTop: 4,
-    },
-    actionsRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 8,
+        paddingHorizontal: 16,
+        paddingVertical: 10,
+        gap: 12,
     },
     actionButton: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: 4,
-        paddingHorizontal: 8,
-        paddingVertical: 4,
-        borderRadius: 12,
-        backgroundColor: 'rgba(0,0,0,0.03)',
+        gap: 6,
     },
     actionCount: {
-        fontSize: 12,
+        fontSize: 14,
         fontWeight: '600',
     },
-    tagText: {
-        fontSize: 12,
-        maxWidth: 80,
+    dreamTitle: {
+        flex: 1,
+        fontSize: 15,
+        fontWeight: '600',
+    },
+    phaseBadge: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 8,
+        paddingVertical: 4,
+        borderRadius: 10,
+        gap: 4,
+    },
+    phaseDot: {
+        width: 5,
+        height: 5,
+        borderRadius: 2.5,
+    },
+    phaseLabel: {
+        fontSize: 11,
+        fontWeight: '700',
+        textTransform: 'uppercase',
+        letterSpacing: 0.5,
     },
 });

@@ -16,6 +16,9 @@ export interface Message {
     encryptionVersion?: number;
     encryptedMediaUrl?: string;
     mediaUrlNonce?: string;
+    // Optimistic UI fields
+    _pending?: boolean;
+    _failed?: boolean;
 }
 
 export interface Chat {

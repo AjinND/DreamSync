@@ -1,17 +1,17 @@
 /**
  * DreamSync - Community Tab
- * Public feed with dream discovery and social interactions
+ * Modern borderless feed with smooth animations
  */
 
-import { CommunityCard, TagChips } from '@/src/components/community';
+import { CategoryTabs, CommunityCard } from '@/src/components/community';
+import { BucketLoaderFull } from '@/src/components/loading';
 import { EmptyState, NotificationBell } from '@/src/components/shared';
-import { BucketLoaderInline } from '@/src/components/loading';
 import { useCommunityStore } from '@/src/store/useCommunityStore';
 import { useTheme } from '@/src/theme';
 import { useFocusEffect } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { Globe } from 'lucide-react-native';
-import { useCallback, useEffect } from 'react';
+import { memo, useCallback, useEffect } from 'react';
 import {
     FlatList,
     RefreshControl,
@@ -24,13 +24,14 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 export default function CommunityScreen() {
     const { colors, isDark } = useTheme();
     const {
-        publicDreams,
+        shuffledDreams,
         isLoading,
         selectedCategory,
         fetchPublicDreams,
         filterByCategory,
         toggleLike,
         refreshFeed,
+        reshuffleFeed,
     } = useCommunityStore();
 
     // Initial fetch on mount
@@ -49,7 +50,8 @@ export default function CommunityScreen() {
 
     const handleRefresh = useCallback(() => {
         refreshFeed(true); // Force fresh data on pull-to-refresh
-    }, [refreshFeed]);
+        reshuffleFeed(); // Also reshuffle the feed
+    }, [refreshFeed, reshuffleFeed]);
 
     const renderItem = useCallback(
         ({ item }: { item: any }) => (
@@ -58,76 +60,92 @@ export default function CommunityScreen() {
         [toggleLike]
     );
 
-    const ListHeader = () => (
-        <View style={styles.headerContent}>
-            <View style={styles.titleRow}>
-                <Globe size={28} color={colors.primary} />
-                <Text style={[styles.titleFlex, { color: colors.textPrimary }]}>Community</Text>
-                <NotificationBell />
-            </View>
-            <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
-                Where dreamers share their dreams
-            </Text>
+    return (
+        <SafeAreaView style={[styles.container, { backgroundColor: isDark ? '#000' : colors.background }]} edges={['top']}>
+            <StatusBar style={isDark ? 'light' : 'dark'} />
 
-            <TagChips
+            {/* Fixed Header */}
+            <View style={styles.headerContent}>
+                <View style={styles.titleRow}>
+                    <Globe size={28} color={colors.primary} />
+                    <Text style={[styles.titleFlex, { color: colors.textPrimary }]}>Community</Text>
+                    <NotificationBell />
+                </View>
+                <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
+                    Dream. Explore. Inspire.
+                </Text>
+            </View>
+
+            {/* Category tabs - full width, outside padded header */}
+            <CategoryTabs
                 selectedCategory={selectedCategory}
                 onSelectCategory={filterByCategory}
             />
-        </View>
-    );
 
-    const ListEmpty = () => {
-        if (isLoading) {
-            return <BucketLoaderInline message="Loading dreams..." />;
-        }
-
-        return (
-            <EmptyState
-                icon={Globe}
-                title="No public dreams yet"
-                description="Be the first to share your dream with the community!"
-                action={{
-                    label: 'Refresh',
-                    onPress: handleRefresh,
-                }}
-            />
-        );
-    };
-
-    return (
-        <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
-            <StatusBar style={isDark ? 'light' : 'dark'} />
-
-            <FlatList
-                data={publicDreams}
-                renderItem={renderItem}
-                keyExtractor={(item) => item.id}
-                contentContainerStyle={styles.listContent}
-                ListHeaderComponent={ListHeader}
-                ListEmptyComponent={ListEmpty}
-                showsVerticalScrollIndicator={false}
-                refreshControl={
-                    <RefreshControl
-                        refreshing={isLoading && publicDreams.length > 0}
-                        onRefresh={handleRefresh}
-                        colors={[colors.primary]}
-                        tintColor={colors.primary}
-                    />
-                }
-            />
+            {/* Loading State */}
+            {isLoading && shuffledDreams.length === 0 ? (
+                <BucketLoaderFull message="Loading dreams..." />
+            ) : (
+                <FlatList
+                    data={shuffledDreams}
+                    renderItem={renderItem}
+                    keyExtractor={(item) => item.id}
+                    contentContainerStyle={styles.listContent}
+                    ListEmptyComponent={MemoizedEmptyState}
+                    showsVerticalScrollIndicator={false}
+                    refreshControl={
+                        <RefreshControl
+                            refreshing={isLoading && shuffledDreams.length > 0}
+                            onRefresh={handleRefresh}
+                            colors={[colors.primary]}
+                            tintColor={colors.primary}
+                        />
+                    }
+                    // Performance optimizations
+                    removeClippedSubviews={true}
+                    maxToRenderPerBatch={5}
+                    updateCellsBatchingPeriod={50}
+                    initialNumToRender={5}
+                    windowSize={7}
+                />
+            )}
         </SafeAreaView>
     );
 }
+
+// Memoized components
+const MemoizedEmptyState = memo(() => {
+    const { refreshFeed, reshuffleFeed } = useCommunityStore();
+
+    const handleRefresh = () => {
+        refreshFeed(true);
+        reshuffleFeed();
+    };
+
+    return (
+        <EmptyState
+            icon={Globe}
+            title="You're All Caught Up!"
+            description="There’s nothing new right now. Check back soon for more dreams."
+            action={{
+                label: 'Refresh',
+                onPress: handleRefresh,
+            }}
+        />
+    );
+});
+
 
 const styles = StyleSheet.create({
     container: {
         flex: 1,
     },
     listContent: {
-        paddingHorizontal: 20,
+        paddingHorizontal: 0, // Edge-to-edge content
         paddingBottom: 100,
     },
     headerContent: {
+        paddingHorizontal: 16, // Only header has horizontal padding
         paddingTop: 16,
         paddingBottom: 8,
     },
@@ -137,10 +155,6 @@ const styles = StyleSheet.create({
         gap: 10,
         marginBottom: 4,
     },
-    title: {
-        fontSize: 32,
-        fontWeight: '700',
-    },
     titleFlex: {
         flex: 1,
         fontSize: 32,
@@ -149,13 +163,5 @@ const styles = StyleSheet.create({
     subtitle: {
         fontSize: 16,
         marginBottom: 20,
-    },
-    loadingContainer: {
-        paddingVertical: 60,
-        alignItems: 'center',
-    },
-    loadingText: {
-        marginTop: 12,
-        fontSize: 14,
     },
 });

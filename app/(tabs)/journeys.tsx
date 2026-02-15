@@ -5,8 +5,8 @@
 
 import { auth } from '@/firebaseConfig'; // Added import
 import { DreamCard } from '@/src/components/dream/DreamCard';
-import { EmptyState, NotificationBell } from '@/src/components/shared';
 import { BucketLoaderInline } from '@/src/components/loading';
+import { EmptyState, NotificationBell } from '@/src/components/shared';
 import { JourneysService } from '@/src/services/journeys';
 import { useBucketStore } from '@/src/store/useBucketStore';
 import { useTheme } from '@/src/theme';
@@ -152,7 +152,7 @@ export default function JourneysScreen() {
                     <NotificationBell />
                 </View>
                 <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
-                    Dreams you're achieving together
+                    Chasing Dreams Together
                 </Text>
             </View>
 

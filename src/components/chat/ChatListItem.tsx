@@ -1,6 +1,6 @@
 import { useTheme } from '@/src/theme';
-import { formatDistanceToNow } from 'date-fns';
 import { useRouter } from 'expo-router';
+import { formatChatListTime } from '../../utils/formatChatTimestamp';
 import React from 'react';
 import { Pressable, Text, View } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
@@ -37,7 +37,7 @@ export const ChatListItem: React.FC<ChatListItemProps> = ({ chat }) => {
     const title = chat.name || (isDM ? "Direct Message" : "Journey Chat");
     const lastMsg = chat.lastMessage?.text || "No messages yet";
     const time = chat.lastMessage?.timestamp
-        ? formatDistanceToNow(chat.lastMessage.timestamp, { addSuffix: true })
+        ? formatChatListTime(chat.lastMessage.timestamp)
         : "";
     const unreadCount = (chat.unreadCounts && currentUserId) ? chat.unreadCounts[currentUserId] : 0;
     const avatarUri = chat.photoUrl || undefined;

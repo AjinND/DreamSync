@@ -7,9 +7,12 @@ import { create } from 'zustand';
 import { auth } from '../../firebaseConfig';
 import { CommunityService } from '../services/community';
 import { BucketItem, Category } from '../types/item';
+import { shuffleFeed } from '../utils/feedShuffle';
 
 interface CommunityState {
     publicDreams: BucketItem[];
+    shuffledDreams: BucketItem[]; // Shuffled feed with own-post deprioritization
+    allPublicDreams: BucketItem[]; // Unfiltered cache for client-side filtering
     isLoading: boolean;
     error: string | null;
     selectedTag: string | null;
@@ -26,14 +29,26 @@ interface CommunityState {
     updateDreamMetadata: (dreamId: string, updates: Partial<BucketItem>) => void; // Update specific dream fields
     removeDream: (dreamId: string) => void; // Remove dream from community feed
     upsertDream: (dream: BucketItem) => void; // Add or update dream in feed
+    reshuffleFeed: () => void; // Manually reshuffle the feed
 }
 
 // Cache duration: 30 seconds
 // This ensures fresh data for comments/likes while preventing rapid re-fetches
 const CACHE_DURATION = 30 * 1000;
 
+/**
+ * Helper to apply shuffle to dreams
+ */
+const applyShuffleToState = (dreams: BucketItem[]) => {
+    const currentUserId = auth.currentUser?.uid || null;
+    const shuffled = shuffleFeed(dreams, currentUserId);
+    return { publicDreams: dreams, shuffledDreams: shuffled };
+};
+
 export const useCommunityStore = create<CommunityState>((set, get) => ({
     publicDreams: [],
+    shuffledDreams: [],
+    allPublicDreams: [],
     isLoading: false,
     error: null,
     selectedTag: null,
@@ -46,39 +61,94 @@ export const useCommunityStore = create<CommunityState>((set, get) => ({
         try {
             const dreams = await CommunityService.getPublicDreams();
             console.log(`[CommunityStore] Fetched ${dreams.length} public dreams`);
-            set({ publicDreams: dreams, isLoading: false, lastFetchTime: Date.now() });
+            const { publicDreams, shuffledDreams } = applyShuffleToState(dreams);
+            set({
+                publicDreams,
+                shuffledDreams,
+                allPublicDreams: dreams,
+                isLoading: false,
+                lastFetchTime: Date.now()
+            });
         } catch (e: any) {
             console.error('[CommunityStore] Error:', e.message);
-            set({ error: e.message, isLoading: false, publicDreams: [] });
+            set({ error: e.message, isLoading: false, publicDreams: [], shuffledDreams: [], allPublicDreams: [] });
         }
     },
 
     filterByTag: async (tag: string | null) => {
-        set({ selectedTag: tag, selectedCategory: null, isLoading: true, error: null });
+        const { allPublicDreams, lastFetchTime } = get();
+        const isCacheFresh = lastFetchTime && (Date.now() - lastFetchTime) < CACHE_DURATION;
+
+        set({ selectedTag: tag, selectedCategory: null });
+
+        // Client-side filter when cache is fresh
+        if (isCacheFresh && allPublicDreams.length > 0) {
+            console.log('[CommunityStore] Using cached data for tag filter');
+            const filtered = tag
+                ? allPublicDreams.filter(d => d.tags?.includes(tag))
+                : allPublicDreams;
+            const { publicDreams, shuffledDreams } = applyShuffleToState(filtered);
+            set({ publicDreams, shuffledDreams });
+            return;
+        }
+
+        // Fallback to API when cache is stale
+        set({ isLoading: true, error: null });
         try {
             const dreams = tag
                 ? await CommunityService.getDreamsByTag(tag)
                 : await CommunityService.getPublicDreams();
-            set({ publicDreams: dreams, isLoading: false, lastFetchTime: Date.now() });
+            const { publicDreams, shuffledDreams } = applyShuffleToState(dreams);
+            set({
+                publicDreams,
+                shuffledDreams,
+                allPublicDreams: tag ? allPublicDreams : dreams,
+                isLoading: false,
+                lastFetchTime: Date.now()
+            });
         } catch (e: any) {
             set({ error: e.message, isLoading: false });
         }
     },
 
     filterByCategory: async (category: Category | null) => {
-        set({ selectedCategory: category, selectedTag: null, isLoading: true, error: null });
+        const { allPublicDreams, lastFetchTime } = get();
+        const isCacheFresh = lastFetchTime && (Date.now() - lastFetchTime) < CACHE_DURATION;
+
+        set({ selectedCategory: category, selectedTag: null });
+
+        // Client-side filter when cache is fresh
+        if (isCacheFresh && allPublicDreams.length > 0) {
+            console.log('[CommunityStore] Using cached data for category filter');
+            const filtered = category
+                ? allPublicDreams.filter(d => d.category === category)
+                : allPublicDreams;
+            const { publicDreams, shuffledDreams } = applyShuffleToState(filtered);
+            set({ publicDreams, shuffledDreams });
+            return;
+        }
+
+        // Fallback to API when cache is stale
+        set({ isLoading: true, error: null });
         try {
             const dreams = category
                 ? await CommunityService.getDreamsByCategory(category)
                 : await CommunityService.getPublicDreams();
-            set({ publicDreams: dreams, isLoading: false, lastFetchTime: Date.now() });
+            const { publicDreams, shuffledDreams } = applyShuffleToState(dreams);
+            set({
+                publicDreams,
+                shuffledDreams,
+                allPublicDreams: category ? allPublicDreams : dreams,
+                isLoading: false,
+                lastFetchTime: Date.now()
+            });
         } catch (e: any) {
             set({ error: e.message, isLoading: false });
         }
     },
 
     toggleLike: async (dreamId: string) => {
-        const { publicDreams } = get();
+        const { publicDreams, shuffledDreams } = get();
         const dreamIndex = publicDreams.findIndex(d => d.id === dreamId);
         if (dreamIndex === -1) return;
 
@@ -99,18 +169,24 @@ export const useCommunityStore = create<CommunityState>((set, get) => ({
             likesCount: nextLikes.length,
         };
 
-        const updatedDreams = [...publicDreams];
-        updatedDreams[dreamIndex] = updatedDream;
-        set({ publicDreams: updatedDreams });
+        // Update in both arrays
+        const updatedPublicDreams = [...publicDreams];
+        updatedPublicDreams[dreamIndex] = updatedDream;
+
+        const updatedShuffledDreams = shuffledDreams.map(d =>
+            d.id === dreamId ? updatedDream : d
+        );
+
+        set({ publicDreams: updatedPublicDreams, shuffledDreams: updatedShuffledDreams });
 
         try {
-            await CommunityService.toggleLike(dreamId);
+            await CommunityService.toggleLike(dreamId, isCurrentlyLiked);
             // ✅ No refresh needed - optimistic update is accurate
             console.log('[CommunityStore] Like synced to server');
         } catch (e: any) {
             // Revert on error
             console.error('[CommunityStore] Like failed, reverting:', e.message);
-            set({ publicDreams, error: e.message });
+            set({ publicDreams, shuffledDreams, error: e.message });
         }
     },
 
@@ -159,7 +235,8 @@ export const useCommunityStore = create<CommunityState>((set, get) => ({
                     : await CommunityService.getPublicDreams();
 
             console.log(`[CommunityStore] Background refresh complete: ${dreams.length} dreams`);
-            set({ publicDreams: dreams, lastFetchTime: Date.now() });
+            const { publicDreams, shuffledDreams } = applyShuffleToState(dreams);
+            set({ publicDreams, shuffledDreams, lastFetchTime: Date.now() });
         } catch (e: any) {
             console.error('[CommunityStore] Background refresh failed:', e.message);
             // Keep showing cached data on error
@@ -172,21 +249,27 @@ export const useCommunityStore = create<CommunityState>((set, get) => ({
     },
 
     updateDreamMetadata: (dreamId: string, updates: Partial<BucketItem>) => {
-        const { publicDreams } = get();
+        const { publicDreams, shuffledDreams } = get();
         const dreamIndex = publicDreams.findIndex(d => d.id === dreamId);
 
         if (dreamIndex !== -1) {
-            const updatedDreams = [...publicDreams];
-            updatedDreams[dreamIndex] = { ...updatedDreams[dreamIndex], ...updates };
-            set({ publicDreams: updatedDreams });
+            const updatedPublicDreams = [...publicDreams];
+            updatedPublicDreams[dreamIndex] = { ...updatedPublicDreams[dreamIndex], ...updates };
+
+            const updatedShuffledDreams = shuffledDreams.map(d =>
+                d.id === dreamId ? { ...d, ...updates } : d
+            );
+
+            set({ publicDreams: updatedPublicDreams, shuffledDreams: updatedShuffledDreams });
             console.log(`[CommunityStore] Updated dream ${dreamId} metadata:`, updates);
         }
     },
 
     removeDream: (dreamId: string) => {
-        const { publicDreams } = get();
-        const filteredDreams = publicDreams.filter(d => d.id !== dreamId);
-        set({ publicDreams: filteredDreams });
+        const { publicDreams, shuffledDreams } = get();
+        const filteredPublicDreams = publicDreams.filter(d => d.id !== dreamId);
+        const filteredShuffledDreams = shuffledDreams.filter(d => d.id !== dreamId);
+        set({ publicDreams: filteredPublicDreams, shuffledDreams: filteredShuffledDreams });
         console.log(`[CommunityStore] Removed dream ${dreamId} from community feed`);
     },
 
@@ -194,15 +277,24 @@ export const useCommunityStore = create<CommunityState>((set, get) => ({
         const { publicDreams } = get();
         const dreamIndex = publicDreams.findIndex(d => d.id === dream.id);
 
-        let updatedDreams;
+        let updatedPublicDreams;
         if (dreamIndex !== -1) {
-            updatedDreams = [...publicDreams];
-            updatedDreams[dreamIndex] = { ...updatedDreams[dreamIndex], ...dream };
+            updatedPublicDreams = [...publicDreams];
+            updatedPublicDreams[dreamIndex] = { ...updatedPublicDreams[dreamIndex], ...dream };
         } else {
-            updatedDreams = [dream, ...publicDreams].sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+            updatedPublicDreams = [dream, ...publicDreams].sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
         }
 
-        set({ publicDreams: updatedDreams });
+        // Re-shuffle after upsert
+        const { shuffledDreams } = applyShuffleToState(updatedPublicDreams);
+        set({ publicDreams: updatedPublicDreams, shuffledDreams });
         console.log(`[CommunityStore] Upserted dream ${dream.id} in community feed`);
+    },
+
+    reshuffleFeed: () => {
+        const { publicDreams } = get();
+        const { shuffledDreams } = applyShuffleToState(publicDreams);
+        set({ shuffledDreams });
+        console.log('[CommunityStore] Feed reshuffled manually');
     },
 }));

@@ -1,9 +1,9 @@
-import { format } from 'date-fns';
 import React from 'react';
 import { Image, Text, View } from 'react-native';
 import { auth } from '../../../firebaseConfig';
 import { useTheme } from '../../theme';
 import { Message } from '../../types/chat';
+import { formatMessageTime } from '../../utils/formatChatTimestamp';
 
 interface MessageBubbleProps {
     message: Message;
@@ -98,7 +98,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ message, senderNam
                         fontSize: 11,
                         color: isOwn ? 'rgba(255,255,255,0.7)' : colors.textMuted
                     }}>
-                        {format(message.createdAt, 'h:mm a')}
+                        {formatMessageTime(message.createdAt)}
                     </Text>
                 </View>
             </View>

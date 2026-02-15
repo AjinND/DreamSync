@@ -47,20 +47,22 @@ export const JourneysService = {
                 }
             };
 
-            const docRef = await addDoc(collection(db, 'journeys'), journeyData);
-
-            // Chat is deferred until a 2nd participant joins (see ensureJourneyChat)
-
-            // Update dream with journey collaboration settings
+            // Batch write: create journey + update dream atomically
+            const batch = writeBatch(db);
+            const journeyRef = doc(collection(db, 'journeys'));
             const dreamRef = doc(db, 'items', dreamId);
-            await updateDoc(dreamRef, {
+
+            batch.set(journeyRef, journeyData);
+            batch.update(dreamRef, {
                 isPublic: true, // Journey dreams are publicly viewable for discoverability
                 collaborationType: 'group',
                 journeyParticipants: [ownerId] // Initialize with owner
             });
-            console.log('[JourneysService] Dream updated with journeyParticipants:', [ownerId]);
 
-            return docRef.id;
+            await batch.commit();
+            console.log('[JourneysService] Journey created and dream updated with journeyParticipants:', [ownerId]);
+
+            return journeyRef.id;
         } catch (error) {
             console.error('Error creating journey:', error);
             throw error;
@@ -137,22 +139,22 @@ export const JourneysService = {
             const journey = await JourneysService.getJourneyById(journeyId);
             if (!journey) throw new Error('Journey not found');
 
-            // Update journey participants
+            // Batch write: journey participants + dream participants
+            const batch = writeBatch(db);
             const journeyRef = doc(db, 'journeys', journeyId);
-            await updateDoc(journeyRef, {
-                participants: arrayUnion(userId)
-            });
-
-            // Update dream's journeyParticipants to grant read access
             const dreamRef = doc(db, 'items', journey.dreamId);
-            await updateDoc(dreamRef, {
-                journeyParticipants: arrayUnion(userId)
-            });
-            console.log('[JourneysService] Added user to journeyParticipants:', userId);
 
-            // Re-fetch journey to get latest participants (avoids race condition)
-            const updatedJourney = await JourneysService.getJourneyById(journeyId);
-            if (!updatedJourney) throw new Error('Journey not found after update');
+            batch.update(journeyRef, { participants: arrayUnion(userId) });
+            batch.update(dreamRef, { journeyParticipants: arrayUnion(userId) });
+
+            await batch.commit();
+            console.log('[JourneysService] Added user to journey and dream participants:', userId);
+
+            // Build updated journey locally (avoid re-fetch)
+            const updatedJourney = {
+                ...journey,
+                participants: [...journey.participants, userId]
+            };
 
             // Ensure chat exists (creates on first 2nd participant) and add user
             const chatId = await JourneysService.ensureJourneyChat(updatedJourney);
@@ -243,9 +245,12 @@ export const JourneysService = {
                     journeyParticipants: arrayUnion(userId)
                 });
 
-                // Re-fetch journey to get latest participants (avoids race condition)
-                const updatedJourney = await JourneysService.getJourneyById(journeyId);
-                if (!updatedJourney) throw new Error('Journey not found after update');
+                // Build updated journey locally (avoid re-fetch)
+                const updatedJourney = {
+                    ...journey,
+                    participants: [...journey.participants, userId],
+                    requests: (journey.requests || []).filter(id => id !== userId)
+                };
 
                 // Ensure chat exists (creates on first 2nd participant) and add user
                 const chatId = await JourneysService.ensureJourneyChat(updatedJourney);
@@ -424,8 +429,15 @@ export const JourneysService = {
                 (uid: string) => uid !== departedUserId,
             );
 
-            for (const participantId of remainingParticipants) {
-                const pubKey = await KeyManager.getPublicKey(participantId);
+            // Parallelize public key fetches
+            const publicKeys = await Promise.all(
+                remainingParticipants.map(async (participantId: string) => ({
+                    participantId,
+                    pubKey: await KeyManager.getPublicKey(participantId)
+                }))
+            );
+
+            publicKeys.forEach(({ participantId, pubKey }) => {
                 if (pubKey) {
                     newEncryptedKeys[participantId] = encryptGroupKeyForUser(
                         newGroupKey,
@@ -434,7 +446,7 @@ export const JourneysService = {
                         chatKeyPair.publicKey,
                     );
                 }
-            }
+            });
 
             if (Object.keys(newEncryptedKeys).length > 0) {
                 await updateDoc(chatDocRef, { encryptedKeys: newEncryptedKeys });

@@ -47,18 +47,20 @@ export const useBucketStore = create<BucketState>((set, get) => ({
     fetchItems: async () => {
         set({ loading: true, error: null });
         try {
-            // 1. Fetch Owned Items
-            const ownedItems = await ItemService.getUserItems();
-
-            // 2. Fetch Joined Journeys to find shared items
-            const { auth } = await import('../../firebaseConfig'); // Lazy import to avoid cycle if any
+            // Lazy imports before parallel fetch
+            const { auth } = await import('../../firebaseConfig');
             const { JourneysService } = await import('../services/journeys');
-
-            let sharedItems: BucketItem[] = [];
             const userId = auth.currentUser?.uid;
 
-            if (userId) {
-                const myJourneys = await JourneysService.getUserJourneys(userId);
+            // 1 & 2. Parallelize Owned Items + Joined Journeys queries
+            const [ownedItems, myJourneys] = await Promise.all([
+                ItemService.getUserItems(),
+                userId ? JourneysService.getUserJourneys(userId) : Promise.resolve([]),
+            ]);
+
+            // 3. Fetch shared dream items from joined journeys
+            let sharedItems: BucketItem[] = [];
+            if (userId && myJourneys.length > 0) {
                 // Filter journeys I don't own (since my owned items are already fetched above)
                 const joinedJourneys = myJourneys.filter(j => j.ownerId !== userId);
 
@@ -162,6 +164,8 @@ export const useBucketStore = create<BucketState>((set, get) => ({
             const wasDone = oldItem?.phase === 'done';
 
             let processedUpdates = { ...updates };
+            const isVisibilityChange = 'isPublic' in updates && oldItem && updates.isPublic !== oldItem.isPublic;
+
             if ('isPublic' in updates && oldItem) {
                 // Visibility transition requires rewriting fields so ItemService can
                 // re-encrypt according to policy (public restricted fields vs private full fields).
@@ -196,8 +200,19 @@ export const useBucketStore = create<BucketState>((set, get) => ({
                 }
             }
 
-            await ItemService.updateItem(id, processedUpdates);
-            await get().fetchItems();
+            await ItemService.updateItem(id, processedUpdates, { currentIsPublic: oldItem?.isPublic ?? false });
+
+            // Only do full re-fetch on visibility transitions (encryption state changes)
+            // Otherwise, merge updates locally for instant UI update
+            if (isVisibilityChange) {
+                await get().fetchItems();
+            } else {
+                const mergedItem = { ...oldItem, ...processedUpdates };
+                set((state) => ({
+                    items: state.items.map(i => i.id === id ? mergedItem : i),
+                    itemMap: { ...state.itemMap, [id]: mergedItem },
+                }));
+            }
 
             const newItem = get().itemMap[id];
             const isNowPublic = newItem?.isPublic || false;

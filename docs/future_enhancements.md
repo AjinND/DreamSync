@@ -52,3 +52,11 @@ When a dream is public, encryption applied to progress n expense tabs.
 23. Even though i add multiple inspirations to the dream, it is not showing up in the dream details page. Only the 1st inspiration is visible. But in DB they are getting saved. -- completed
 
 24. Second thought on the loading screen - instead of having this bucket icon to load as the loading screen, lets have some animation of a checklist where some random dreams are being crossed over. Each time when loading it will show different items, random items being crossed over. -- completed
+
+25. Currently CRUD operations on a dream is taking some time. Need to optimize it. -- completed
+
+26. The community tab should be like a social media feed. Its not necessary that we should see our dreams in the community tab. We should see the dreams of other users. Also i would like to add a feature where users can add a post before sharing the dream to community, in that way it feels more like a social media feed -- completed
+
+27. Currently if i want to share a dream to community, i want to go into edit and then toggle. I want you to think a more feasiable and user friendly way to implement this in a better way. Maybe like a share button in the dream details page. -- completed
+
+28. CommunityPostActionMenu - Report and Block User commented out - will implement full functionality later.

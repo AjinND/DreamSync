@@ -162,22 +162,6 @@ export const ItemService = {
             throw new Error(`Validation failed: ${validation.error}`);
         }
 
-        // Test Connectivity / DB Existence
-        try {
-            console.log("[ItemService] Testing DB connectivity...");
-            const testTimeout = new Promise((_, reject) => setTimeout(() => reject(new Error("DB_TIMEOUT")), 15000));
-            // Try to read a dummy doc to see if it responds (Project either exists or doesn't)
-            // Query for OUR OWN items so it passes security rules
-            await Promise.race([getDocs(query(collection(db, 'items'), where('userId', '==', user.uid), limit(1))), testTimeout]);
-            console.log("[ItemService] DB Connection Confirmed (Read success)");
-        } catch (e: any) {
-            if (e.message === 'DB_TIMEOUT') {
-                console.error("[ItemService] DB Connection Timed Out. Likely 'Firestore Datebase' is NOT created in Console.");
-                throw new Error("Could not connect to Database. Did you create 'Firestore Database' in Firebase Console?");
-            }
-            console.log("[ItemService] DB Responded (even if error, it exists):", e.message);
-        }
-
         try {
             // Encrypt sensitive fields for private items
             let itemData: Record<string, any> = {
@@ -234,8 +218,97 @@ export const ItemService = {
         const snapshot = await getDocs(q);
         const items = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as BucketItem));
 
+        // Batch-resolve journey group keys for all journey-linked items (N+1 fix)
+        const journeyItems = items.filter(item => JOURNEY_COLLAB_TYPES.has(item.collaborationType || ''));
+        const groupKeyCache = new Map<string, Uint8Array>();
+
+        if (journeyItems.length > 0) {
+            const chatKeyPair = await KeyManager.getChatKeyPair();
+            const currentUserId = auth.currentUser?.uid;
+
+            if (chatKeyPair && currentUserId) {
+                // Batch-fetch all journey docs
+                const dreamIds = journeyItems.map(item => item.id);
+                const journeyChunks: string[][] = [];
+                for (let i = 0; i < dreamIds.length; i += 10) {
+                    journeyChunks.push(dreamIds.slice(i, i + 10));
+                }
+
+                const journeySnapshots = await Promise.all(
+                    journeyChunks.map(chunk =>
+                        getDocs(query(collection(db, 'journeys'), where('dreamId', 'in', chunk)))
+                    )
+                );
+
+                const journeyDocs = journeySnapshots.flatMap(snap => snap.docs);
+                const chatIds = journeyDocs
+                    .map(doc => (doc.data() as any).chatId)
+                    .filter(Boolean);
+
+                // Batch-fetch all chat docs
+                const chatChunks: string[][] = [];
+                for (let i = 0; i < chatIds.length; i += 10) {
+                    chatChunks.push(chatIds.slice(i, i + 10));
+                }
+
+                const chatSnapshots = await Promise.all(
+                    chatChunks.map(chunk =>
+                        getDocs(query(collection(db, 'chats'), where('__name__', 'in', chunk)))
+                    )
+                );
+
+                // Build dreamId -> chatDoc map
+                const dreamIdToChatDoc = new Map<string, any>();
+                journeyDocs.forEach(journeyDoc => {
+                    const journeyData = journeyDoc.data();
+                    const dreamId = journeyData.dreamId;
+                    const chatId = journeyData.chatId;
+                    if (chatId) {
+                        const chatDoc = chatSnapshots
+                            .flatMap(snap => snap.docs)
+                            .find(doc => doc.id === chatId);
+                        if (chatDoc) {
+                            dreamIdToChatDoc.set(dreamId, chatDoc.data());
+                        }
+                    }
+                });
+
+                // Decrypt group keys for all journey items
+                journeyItems.forEach(item => {
+                    const chatData = dreamIdToChatDoc.get(item.id);
+                    if (chatData) {
+                        const encryptedForCurrentUser = chatData.encryptedKeys?.[currentUserId];
+                        if (encryptedForCurrentUser) {
+                            const senderPublicKey = decodeBase64(encryptedForCurrentUser.senderPublicKey);
+                            const groupKey = decryptGroupKey(
+                                encryptedForCurrentUser,
+                                chatKeyPair.secretKey,
+                                senderPublicKey
+                            );
+                            if (groupKey) {
+                                groupKeyCache.set(item.id, groupKey);
+                            }
+                        }
+                    }
+                });
+            }
+        }
+
         return Promise.all(items.map(async (item) => {
-            const primaryKey = await resolveDreamFieldKey(item);
+            // Use cached group key for journey items
+            let primaryKey: Uint8Array | null = null;
+            if (JOURNEY_COLLAB_TYPES.has(item.collaborationType || '')) {
+                primaryKey = groupKeyCache.get(item.id) || null;
+                // Fallback for owner-only journey before chat/group key exists
+                if (!primaryKey) {
+                    const currentUserId = auth.currentUser?.uid;
+                    if (currentUserId && item.userId === currentUserId) {
+                        primaryKey = await KeyManager.getFieldEncryptionKey();
+                    }
+                }
+            } else {
+                primaryKey = await KeyManager.getFieldEncryptionKey();
+            }
 
             // Decrypt encrypted fields when user has access to the right key.
             if (item.encryptionVersion && primaryKey) {
@@ -282,18 +355,22 @@ export const ItemService = {
     },
 
     // Update
-    async updateItem(id: string, updates: Partial<BucketItem>, options?: { skipEncryption?: boolean }) {
+    async updateItem(id: string, updates: Partial<BucketItem>, options?: { skipEncryption?: boolean; currentIsPublic?: boolean }) {
         const docRef = doc(db, COLLECTION_NAME, id);
 
         let processedUpdates: Record<string, any> = { ...updates };
 
-        const currentSnap = await getDoc(docRef);
-        const currentData = currentSnap.exists()
-            ? ({ id, ...currentSnap.data() } as BucketItem)
-            : null;
+        // Use provided currentIsPublic if available, otherwise fetch document
+        let currentData: BucketItem | null = null;
+        if (options?.currentIsPublic === undefined) {
+            const currentSnap = await getDoc(docRef);
+            currentData = currentSnap.exists()
+                ? ({ id, ...currentSnap.data() } as BucketItem)
+                : null;
+        }
 
         const targetIsPublic = processedUpdates.isPublic === undefined
-            ? (currentData?.isPublic === true)
+            ? (options?.currentIsPublic ?? currentData?.isPublic === true)
             : processedUpdates.isPublic === true;
 
         // Encrypt sensitive fields based on policy unless caller explicitly handled transition.
@@ -338,15 +415,19 @@ export const ItemService = {
             chunks.push(ids.slice(i, i + 10));
         }
 
-        const results: BucketItem[] = [];
-        for (const chunk of chunks) {
-            const q = query(
-                collection(db, COLLECTION_NAME),
-                where('__name__', 'in', chunk) // __name__ refers to document ID
-            );
-            const snapshot = await getDocs(q);
-            snapshot.forEach(doc => results.push({ id: doc.id, ...doc.data() } as BucketItem));
-        }
+        // Parallelize chunk queries for faster batch fetch
+        const snapshots = await Promise.all(
+            chunks.map(chunk =>
+                getDocs(query(
+                    collection(db, COLLECTION_NAME),
+                    where('__name__', 'in', chunk) // __name__ refers to document ID
+                ))
+            )
+        );
+
+        const results: BucketItem[] = snapshots.flatMap(snapshot =>
+            snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as BucketItem))
+        );
 
         return Promise.all(results.map(async (item) => {
             if (!item.encryptionVersion) return item;
