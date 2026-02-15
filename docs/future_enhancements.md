@@ -55,6 +55,8 @@ When a dream is public, encryption applied to progress n expense tabs.
 
 25. Currently CRUD operations on a dream is taking some time. Need to optimize it. -- completed
 
-26. The community tab should be like a social media feed. Its not necessary that we should see our dreams in the community tab. We should see the dreams of other users. Also i would like to add a feature where users can add a post before sharing the dream to community, in that way it feels more like a social media feed.
+26. The community tab should be like a social media feed. Its not necessary that we should see our dreams in the community tab. We should see the dreams of other users. Also i would like to add a feature where users can add a post before sharing the dream to community, in that way it feels more like a social media feed -- completed
 
-27. Currently if i want to share a dream to community, i want to go into edit and then toggle. I want you to think a more feasiable and user friendly way to implement this in a better way. Maybe like a share button in the dream details page.
+27. Currently if i want to share a dream to community, i want to go into edit and then toggle. I want you to think a more feasiable and user friendly way to implement this in a better way. Maybe like a share button in the dream details page. -- completed
+
+28. CommunityPostActionMenu - Report and Block User commented out - will implement full functionality later.

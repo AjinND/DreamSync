@@ -35,6 +35,9 @@ export const StoragePaths = {
 
     profileAvatar: (userId: string) =>
         `avatars/${userId}/avatar.jpg`,
+
+    chatGroupPhoto: (chatId: string) =>
+        `chats/${chatId}/group.jpg`,
 };
 
 export const StorageService = {

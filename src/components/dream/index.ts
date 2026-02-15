@@ -4,12 +4,16 @@ export * from './AddMemoryModal';
 export * from './AddProgressModal';
 export * from './AddReflectionModal';
 export * from './CollaborationSection';
+export * from './DreamActionMenu';
 export * from './DreamCard';
 export * from './DreamDetailHero';
 export * from './DreamForm';
 export * from './ExpensesTab';
 export * from './InspirationBoard';
 export * from './MemoryCapsule';
+export * from './PrivacyBadge';
 export * from './ProgressTab';
 export * from './Reflections';
+export * from './ShareButton';
+export * from './ShareDreamModal';
 

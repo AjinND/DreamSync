@@ -9,8 +9,8 @@ import { useRouter } from 'expo-router';
 import {
     Briefcase,
     ChevronLeft,
-    Edit3,
     Heart,
+    MoreVertical,
     Mountain,
     Palette,
     Plane,
@@ -27,6 +27,8 @@ import {
     View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { PrivacyBadge } from './PrivacyBadge';
+import { ShareButton } from './ShareButton';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -44,11 +46,12 @@ const CATEGORY_ICONS: Record<string, { icon: any; label: string }> = {
 interface DreamDetailHeroProps {
     item: BucketItem;
     isOwner: boolean;
-    onEdit: () => void;
+    onActionMenuPress?: () => void;
     onGetInspired?: () => void;
+    onSharePress?: () => void;
 }
 
-export function DreamDetailHero({ item, isOwner, onEdit, onGetInspired }: DreamDetailHeroProps) {
+export function DreamDetailHero({ item, isOwner, onActionMenuPress, onGetInspired, onSharePress }: DreamDetailHeroProps) {
     const { colors } = useTheme();
     const router = useRouter();
     const categoryInfo = CATEGORY_ICONS[item.category] || CATEGORY_ICONS.other;
@@ -80,27 +83,42 @@ export function DreamDetailHero({ item, isOwner, onEdit, onGetInspired }: DreamD
                     <ChevronLeft size={20} color="#FFF" />
                 </TouchableOpacity>
 
-                {isOwner ? (
-                    <TouchableOpacity style={styles.headerButton} onPress={onEdit}>
-                        <Edit3 size={20} color="#FFF" />
-                    </TouchableOpacity>
-                ) : onGetInspired ? (
-                    <TouchableOpacity
-                        style={[styles.headerButton, { backgroundColor: colors.accent }]}
-                        onPress={onGetInspired}
-                    >
-                        <Sparkles size={20} color="#FFF" />
-                    </TouchableOpacity>
-                ) : null}
+                <View style={styles.headerRight}>
+                    {/* Share Button - Only for owner */}
+                    {isOwner && onSharePress && (
+                        <ShareButton
+                            item={item}
+                            onPress={onSharePress}
+                            disabled={false}
+                        />
+                    )}
+
+                    {/* Action Menu / Get Inspired Button */}
+                    {isOwner ? (
+                        <TouchableOpacity style={styles.headerButton} onPress={onActionMenuPress}>
+                            <MoreVertical size={20} color="#FFF" />
+                        </TouchableOpacity>
+                    ) : onGetInspired ? (
+                        <TouchableOpacity
+                            style={[styles.headerButton, { backgroundColor: colors.accent }]}
+                            onPress={onGetInspired}
+                        >
+                            <Sparkles size={20} color="#FFF" />
+                        </TouchableOpacity>
+                    ) : null}
+                </View>
             </SafeAreaView>
 
             {/* Hero Content */}
             <View style={styles.heroContent}>
-                <View style={styles.categoryPill}>
-                    <CategoryIcon size={14} color="#FFF" />
-                    <Text style={styles.categoryPillText}>{categoryInfo.label}</Text>
+                <View style={styles.heroContentTop}>
+                    <View style={styles.categoryPill}>
+                        <CategoryIcon size={14} color="#FFF" />
+                        <Text style={styles.categoryPillText}>{categoryInfo.label}</Text>
+                    </View>
                 </View>
                 <Text style={styles.heroTitle} numberOfLines={2}>{item.title}</Text>
+                <PrivacyBadge isPublic={item.isPublic || false} size="small" />
             </View>
         </View>
     );
@@ -136,6 +154,11 @@ const styles = StyleSheet.create({
         paddingTop: 8,
         zIndex: 10,
     },
+    headerRight: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+    },
     headerButton: {
         width: 40,
         height: 40,
@@ -151,6 +174,12 @@ const styles = StyleSheet.create({
         right: 0,
         padding: 20,
         paddingBottom: 24,
+    },
+    heroContentTop: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 8,
     },
     categoryPill: {
         flexDirection: 'row',

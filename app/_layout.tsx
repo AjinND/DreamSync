@@ -2,6 +2,8 @@ import { Stack, useRouter, useSegments } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { onAuthStateChanged, User } from "firebase/auth";
 import { useEffect, useRef, useState } from "react";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
+import { BottomSheetModalProvider } from "@gorhom/bottom-sheet";
 import { auth } from "../firebaseConfig";
 import { BucketLoaderFull } from "../src/components/loading";
 import { useNotificationHandler } from "../hooks/useNotificationHandler";
@@ -135,34 +137,42 @@ export default function RootLayout() {
   }, [user, initializing, segments, needsReauth]);
 
   if (initializing) {
-    return <BucketLoaderFull message="Preparing your workspace..." />;
+    return (
+      <GestureHandlerRootView style={{ flex: 1 }}>
+        <BottomSheetModalProvider>
+          <BucketLoaderFull message="Preparing your workspace..." />
+        </BottomSheetModalProvider>
+      </GestureHandlerRootView>
+    );
   }
 
   return (
-    <>
-      <Stack>
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen name="(auth)" options={{ headerShown: false }} />
-        <Stack.Screen
-          name="item/add"
-          options={{ headerShown: false, presentation: "modal" }}
-        />
-        <Stack.Screen
-          name="item/[id]"
-          options={{ headerShown: false, presentation: "modal" }}
-        />
-        <Stack.Screen
-          name="category/[id]"
-          options={{ headerShown: false }}
-        />
-        <Stack.Screen
-          name="notifications"
-          options={{ headerShown: false }}
-        />
-        <Stack.Screen name="+not-found" />
-      </Stack>
-      <OfflineBanner />
-      <StatusBar style="auto" />
-    </>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <BottomSheetModalProvider>
+        <Stack>
+          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+          <Stack.Screen name="(auth)" options={{ headerShown: false }} />
+          <Stack.Screen
+            name="item/add"
+            options={{ headerShown: false, presentation: "modal" }}
+          />
+          <Stack.Screen
+            name="item/[id]"
+            options={{ headerShown: false, presentation: "modal" }}
+          />
+          <Stack.Screen
+            name="category/[id]"
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name="notifications"
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen name="+not-found" />
+        </Stack>
+        <OfflineBanner />
+        <StatusBar style="auto" />
+      </BottomSheetModalProvider>
+    </GestureHandlerRootView>
   );
 }

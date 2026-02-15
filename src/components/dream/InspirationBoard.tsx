@@ -3,7 +3,6 @@
  * No Ken Burns, no pulsing, no emojis. Just a smooth FlatList.
  */
 
-import { EmptyState } from '@/src/components/shared';
 import { Card } from '@/src/components/ui';
 import { useTheme } from '@/src/theme';
 import { Inspiration } from '@/src/types/item';
@@ -117,12 +116,19 @@ export function InspirationBoard({ inspirations = [], isOwner, onAdd, onDelete }
                     )}
                 </>
             ) : (
-                <EmptyState
-                    icon={Sparkles}
-                    title="What inspired this dream?"
-                    description="Add a quote, image, or link"
-                    action={onAdd ? { label: 'Add Inspiration', onPress: onAdd } : undefined}
-                />
+                <TouchableOpacity
+                    style={[styles.emptyState, { borderColor: colors.border }]}
+                    onPress={onAdd}
+                    disabled={!onAdd}
+                >
+                    <Sparkles size={32} color={colors.textMuted} />
+                    <Text style={[styles.emptyTitle, { color: colors.textSecondary }]}>
+                        {onAdd ? 'What inspired this dream?' : 'No inspirations yet'}
+                    </Text>
+                    <Text style={[styles.emptySubtitle, { color: colors.textMuted }]}>
+                        {onAdd ? 'Add a quote, image, or link' : 'This dream has no inspirations shared yet'}
+                    </Text>
+                </TouchableOpacity>
             )}
         </View>
     );
@@ -336,5 +342,24 @@ const styles = StyleSheet.create({
         width: 6,
         height: 6,
         borderRadius: 3,
+    },
+    emptyState: {
+        borderWidth: 2,
+        borderStyle: 'dashed',
+        borderRadius: 16,
+        padding: 32,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    emptyTitle: {
+        fontSize: 16,
+        fontWeight: '600',
+        marginTop: 12,
+        marginBottom: 4,
+        textAlign: 'center',
+    },
+    emptySubtitle: {
+        fontSize: 14,
+        textAlign: 'center',
     },
 });

@@ -205,7 +205,7 @@ export const ChatService = {
                         messageData.mediaUrl = null; // Clear plaintext
                     }
 
-                    lastMessageText = '[Encrypted message]';
+                    lastMessageText = type === 'image' ? '📷 Image' : text;
                 } else {
                     // Fallback: send unencrypted if recipient has no public key
                     messageData = ChatService._buildPlaintextMessage(newMessageRef.key!, currentUserId, text, type, mediaUrl);
@@ -241,7 +241,7 @@ export const ChatService = {
                         messageData.mediaUrl = null;
                     }
 
-                    lastMessageText = '[Encrypted message]';
+                    lastMessageText = type === 'image' ? '📷 Image' : text;
                 } else {
                     messageData = ChatService._buildPlaintextMessage(newMessageRef.key!, currentUserId, text, type, mediaUrl);
                     lastMessageText = type === 'image' ? '📷 Image' : text;
@@ -482,6 +482,39 @@ export const ChatService = {
             console.error("[ChatService] Error subscribing to chats:", error);
             // If index is missing, it will log here
         });
+    },
+
+    /**
+     * Update journey chat metadata (name/photo).
+     */
+    updateJourneyChatDetails: async (
+        chatId: string,
+        updates: { name?: string; photoUrl?: string | null },
+    ): Promise<void> => {
+        const currentUserId = auth.currentUser?.uid;
+        if (!currentUserId) throw new Error('Not authenticated');
+
+        const chatDocRef = doc(db, 'chats', chatId);
+        const chatDoc = await getDoc(chatDocRef);
+        if (!chatDoc.exists()) throw new Error('Chat not found');
+
+        const chat = chatDoc.data() as Chat;
+        if (chat.type !== 'journey') throw new Error('Only journey chats can be edited');
+        if (!chat.participants?.includes(currentUserId)) throw new Error('Not a participant');
+
+        const payload: Record<string, any> = { updatedAt: Date.now() };
+
+        if (typeof updates.name === 'string') {
+            const trimmed = updates.name.trim();
+            if (!trimmed) throw new Error('Group name cannot be empty');
+            payload.name = trimmed;
+        }
+
+        if (Object.prototype.hasOwnProperty.call(updates, 'photoUrl')) {
+            payload.photoUrl = updates.photoUrl ?? null;
+        }
+
+        await updateDoc(chatDocRef, payload);
     },
 
     /**

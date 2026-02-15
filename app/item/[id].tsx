@@ -11,14 +11,18 @@ import {
     AddProgressModal,
     AddReflectionModal,
     CollaborationSection,
+    DreamActionMenu,
     DreamDetailHero,
     ExpensesTab,
     InspirationBoard,
     MemoryCapsule,
     ProgressTab,
     Reflections,
+    ShareDreamModal,
 } from '@/src/components/dream';
+import BottomSheet from '@gorhom/bottom-sheet';
 import { ConfettiExplosion } from '@/src/components/animations/ConfettiExplosion';
+import { BucketLoaderFull } from '@/src/components/loading';
 import { EmptyState, Header } from '@/src/components/shared';
 import { CommentSection } from '@/src/components/social';
 import { Button, Card, IconButton } from '@/src/components/ui';
@@ -28,7 +32,9 @@ import { useBucketStore } from '@/src/store/useBucketStore';
 import { useCommunityStore } from '@/src/store/useCommunityStore';
 import { useTheme } from '@/src/theme';
 import { BucketItem, Expense, Phase, ReflectionBlock } from '@/src/types/item';
+import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
+import * as Linking from 'expo-linking';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import {
@@ -42,7 +48,7 @@ import {
     TrendingUp,
     Trophy,
 } from 'lucide-react-native';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
     Alert,
     ScrollView,
@@ -68,9 +74,11 @@ const TABS: { id: TabId; label: string; icon: any }[] = [
 ];
 
 export default function DreamDetailScreen() {
-    const { id } = useLocalSearchParams();
+    const { id, scrollTo } = useLocalSearchParams();
     const router = useRouter();
     const { colors, isDark } = useTheme();
+    const scrollViewRef = useRef<ScrollView>(null);
+    const commentsRef = useRef<View>(null);
     const {
         items,
         addItem,
@@ -90,7 +98,7 @@ export default function DreamDetailScreen() {
     const { updateDreamMetadata } = useCommunityStore();
 
     const [item, setItem] = useState<BucketItem | undefined>(items.find((i) => i.id === id));
-    const [isLoading, setIsLoading] = useState(false);
+    const [isLoading, setIsLoading] = useState(!items.find((i) => i.id === id)); // Start loading if not in local cache
     const [activeTab, setActiveTab] = useState<TabId>('story');
     const [isDeleting, setIsDeleting] = useState(false);
     const [chatId, setChatId] = useState<string | null>(null);
@@ -134,6 +142,27 @@ export default function DreamDetailScreen() {
     const [showReflectionModal, setShowReflectionModal] = useState(false);
     const [showProgressModal, setShowProgressModal] = useState(false);
     const [showExpenseModal, setShowExpenseModal] = useState(false);
+    const [showShareModal, setShowShareModal] = useState(false);
+    const [isSharing, setIsSharing] = useState(false);
+
+    // Action menu ref
+    const actionMenuRef = useRef<BottomSheet>(null);
+
+    // Auto-scroll to comments if scrollTo param is present
+    useEffect(() => {
+        if (scrollTo === 'comments' && commentsRef.current) {
+            // Wait for layout to complete before scrolling
+            setTimeout(() => {
+                commentsRef.current?.measureLayout(
+                    scrollViewRef.current as any,
+                    (x, y) => {
+                        scrollViewRef.current?.scrollTo({ y: y - 80, animated: true });
+                    },
+                    () => { }
+                );
+            }, 500);
+        }
+    }, [scrollTo, item]);
 
     useEffect(() => {
         if (!id || typeof id !== 'string' || isDeleting) return;
@@ -186,6 +215,24 @@ export default function DreamDetailScreen() {
     const handleEdit = () => {
         if (!canEdit) return;
         router.push(`/item/add?id=${id}`);
+    };
+
+    const handleActionMenu = () => {
+        actionMenuRef.current?.snapToIndex(0);
+    };
+
+    const handleCopyShareLink = async () => {
+        if (!item) return;
+
+        try {
+            const link = Linking.createURL(`item/${item.id}`);
+            await Clipboard.setStringAsync(link);
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            Alert.alert('Link Copied!', 'Share this link with others to show your dream.', [{ text: 'OK' }]);
+        } catch (error) {
+            console.error('Copy link failed:', error);
+            Alert.alert('Error', 'Failed to copy link.');
+        }
     };
 
     const handleGetInspired = async () => {
@@ -247,6 +294,66 @@ export default function DreamDetailScreen() {
         } finally {
             setIsLoading(false);
         }
+    };
+
+    const handleShare = async (caption?: string) => {
+        if (!item) return;
+        const user = auth.currentUser;
+        if (!user) return;
+
+        setIsSharing(true);
+        try {
+            await updateItem(item.id, {
+                isPublic: true,
+                shareCaption: caption,
+                sharedAt: Date.now(),
+                sharedBy: {
+                    userId: user.uid,
+                    displayName: user.displayName || 'Anonymous',
+                    photoURL: user.photoURL || undefined,
+                },
+            });
+
+            // Success feedback
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            Alert.alert('Dream is now public!', 'Anyone can view and comment on your dream. Use "Copy Share Link" from the menu to share it.', [{ text: 'OK' }]);
+
+            setShowShareModal(false);
+        } catch (error) {
+            console.error('Share failed:', error);
+            Alert.alert('Error', 'Failed to share dream. Please try again.');
+        } finally {
+            setIsSharing(false);
+        }
+    };
+
+    const handleUnshare = async () => {
+        if (!item) return;
+
+        Alert.alert(
+            'Make Private?',
+            'This will hide your dream from the community and disable comments.',
+            [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                    text: 'Make Private',
+                    style: 'destructive',
+                    onPress: async () => {
+                        setIsSharing(true);
+                        try {
+                            await updateItem(item.id, { isPublic: false });
+                            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                            setShowShareModal(false);
+                        } catch (error) {
+                            console.error('Unshare failed:', error);
+                            Alert.alert('Error', 'Failed to update privacy. Please try again.');
+                        } finally {
+                            setIsSharing(false);
+                        }
+                    },
+                },
+            ]
+        );
     };
 
     const handleDelete = () => {
@@ -321,7 +428,17 @@ export default function DreamDetailScreen() {
         await addExpense(item.id, { title, amount, category, date: Date.now() });
     };
 
-    // Not Found State
+    // Loading State - show loader while fetching
+    if (isLoading) {
+        return (
+            <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
+                <StatusBar style={isDark ? 'light' : 'dark'} />
+                <BucketLoaderFull message="Loading dream..." />
+            </SafeAreaView>
+        );
+    }
+
+    // Not Found State - only after loading completes
     if (!item) {
         return (
             <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
@@ -358,6 +475,7 @@ export default function DreamDetailScreen() {
             <ConfettiExplosion trigger={showConfetti} />
 
             <ScrollView
+                ref={scrollViewRef}
                 style={styles.scrollView}
                 contentContainerStyle={styles.scrollContent}
                 showsVerticalScrollIndicator={false}
@@ -366,8 +484,9 @@ export default function DreamDetailScreen() {
                 <DreamDetailHero
                     item={item}
                     isOwner={canEdit}
-                    onEdit={handleEdit}
+                    onActionMenuPress={canEdit ? handleActionMenu : undefined}
                     onGetInspired={canEdit ? undefined : handleGetInspired}
+                    onSharePress={isOwner ? () => setShowShareModal(true) : undefined}
                 />
 
                 {/* Collaboration Section */}
@@ -500,7 +619,7 @@ export default function DreamDetailScreen() {
                                 {item.isPublic && (
                                     <>
                                         <View style={styles.divider} />
-                                        <View style={[styles.sectionHeader, { marginBottom: 12 }]}>
+                                        <View ref={commentsRef} style={[styles.sectionHeader, { marginBottom: 12 }]}>
                                             <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>
                                                 Comments {item.commentsCount ? `(${item.commentsCount})` : ''}
                                             </Text>
@@ -582,6 +701,20 @@ export default function DreamDetailScreen() {
                 visible={showExpenseModal}
                 onClose={() => setShowExpenseModal(false)}
                 onSave={handleAddExpense}
+            />
+            <ShareDreamModal
+                visible={showShareModal}
+                onClose={() => setShowShareModal(false)}
+                item={item}
+                onShare={handleShare}
+                onUnshare={item.isPublic ? handleUnshare : undefined}
+            />
+            <DreamActionMenu
+                ref={actionMenuRef}
+                onEdit={handleEdit}
+                onShareLink={item.isPublic ? handleCopyShareLink : undefined}
+                onDelete={handleDelete}
+                canDelete={isOwner}
             />
         </View>
     );

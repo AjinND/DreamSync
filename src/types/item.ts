@@ -70,6 +70,14 @@ export interface BucketItem {
     commentsCount?: number; // Denormalized comment count
     tags?: string[];        // Interest tags for discovery
     basedOnTemplateId?: string;
+    // Social/Share fields (populated when dream is shared to community)
+    shareCaption?: string;          // User-written caption at share time
+    sharedAt?: number;              // Timestamp when first shared publicly
+    sharedBy?: {                    // Denormalized author info (avoids N+1 profile lookups)
+        userId: string;
+        displayName: string;
+        photoURL?: string;
+    };
     collaborationType?: 'solo' | 'open' | 'group';
     journeyParticipants?: string[]; // User IDs who have access via journey participation
     // Content

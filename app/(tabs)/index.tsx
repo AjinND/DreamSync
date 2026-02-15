@@ -4,10 +4,12 @@
  */
 
 import { DreamCard } from '@/src/components/dream';
-import { EmptyState, FilterChips, NotificationBell } from '@/src/components/shared';
 import { BucketLoaderFull } from '@/src/components/loading/BucketLoaderFull';
+import { EmptyState, FilterChips, NotificationBell } from '@/src/components/shared';
+import { UsersService } from '@/src/services/users';
 import { useBucketStore } from '@/src/store/useBucketStore';
 import { useTheme } from '@/src/theme';
+import { UserProfile } from '@/src/types/social';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { Moon, Plus } from 'lucide-react-native';
@@ -31,9 +33,13 @@ export default function HomeScreen() {
 
   const [selectedFilter, setSelectedFilter] = useState<Status>('all');
   const [refreshing, setRefreshing] = useState(false);
+  const [user, setUser] = useState<UserProfile | null>(null);
 
   useEffect(() => {
     fetchItems();
+    UsersService.ensureUserProfile()
+      .then(setUser)
+      .catch(err => console.error('Failed to load user profile:', err));
   }, []);
 
   // Refresh data when tab regains focus (avoids stale data when navigating back)
@@ -88,7 +94,7 @@ export default function HomeScreen() {
         <View style={styles.greetingRow}>
           <View style={styles.greetingTextCol}>
             <Text style={[styles.greeting, { color: colors.textSecondary }]}>
-              Hello, Dreamer ✨
+              Hello, {user?.displayName || 'Dreamer'}
             </Text>
             <Text style={[styles.title, { color: colors.textPrimary }]}>
               My Dreams
