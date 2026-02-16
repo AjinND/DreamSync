@@ -53,10 +53,7 @@ export default function AccountScreen() {
                     onPress: async () => {
                         try {
                             // Remove push token before signing out
-                            const token = await NotificationService.registerForPushNotifications();
-                            if (token) {
-                                await NotificationService.removePushToken(token).catch(() => {});
-                            }
+                            await NotificationService.removeStoredPushTokenFromServer().catch(() => {});
                             useNotificationStore.getState().clear();
                             useChatStore.getState().clear();
                             // Cleanup real-time subscriptions

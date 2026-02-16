@@ -5,13 +5,12 @@
 
 import { useTheme } from '@/src/theme';
 import { BucketItem } from '@/src/types/item';
-import BottomSheet, { BottomSheetBackdrop, BottomSheetTextInput, BottomSheetView } from '@gorhom/bottom-sheet';
+import { BottomSheetBackdrop, BottomSheetModal, BottomSheetTextInput, BottomSheetView } from '@gorhom/bottom-sheet';
 import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
 import * as Linking from 'expo-linking';
 import {
     AlertCircle,
-    Check,
     Copy,
     Eye,
     EyeOff,
@@ -19,18 +18,16 @@ import {
     Globe,
     Link as LinkIcon,
     Lock,
-    Share2,
+    Share2
 } from 'lucide-react-native';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-    ActivityIndicator,
     Alert,
     ScrollView,
     StyleSheet,
     Text,
-    TextInput,
     TouchableOpacity,
-    View,
+    View
 } from 'react-native';
 import { Button } from '../ui';
 
@@ -40,6 +37,7 @@ interface ShareDreamModalProps {
     item: BucketItem;
     onShare: (caption?: string) => Promise<void>;
     onUnshare?: () => Promise<void>;
+    onChangeToDoing?: () => Promise<void>;
 }
 
 export function ShareDreamModal({
@@ -48,9 +46,10 @@ export function ShareDreamModal({
     item,
     onShare,
     onUnshare,
+    onChangeToDoing,
 }: ShareDreamModalProps) {
     const { colors, isDark } = useTheme();
-    const bottomSheetRef = useRef<BottomSheet>(null);
+    const bottomSheetRef = useRef<BottomSheetModal>(null);
     const [isLoading, setIsLoading] = useState(false);
     const [showPreview, setShowPreview] = useState(false);
     const [shareLink, setShareLink] = useState<string | null>(null);
@@ -78,16 +77,15 @@ export function ShareDreamModal({
     useEffect(() => {
         if (visible) {
             setCaption(''); // Reset caption when modal opens
-            bottomSheetRef.current?.expand();
+            bottomSheetRef.current?.present();
         } else {
-            bottomSheetRef.current?.close();
+            bottomSheetRef.current?.dismiss();
         }
     }, [visible]);
 
     const handleClose = useCallback(() => {
-        bottomSheetRef.current?.close();
-        onClose();
-    }, [onClose]);
+        bottomSheetRef.current?.dismiss();
+    }, []);
 
     const renderBackdrop = useCallback(
         (props: any) => (
@@ -103,7 +101,6 @@ export function ShareDreamModal({
 
     const handleChangePhase = async () => {
         handleClose();
-        // The parent screen will handle phase update via updateItem
         await new Promise((resolve) => setTimeout(resolve, 300));
         Alert.alert(
             'Change to Doing?',
@@ -112,9 +109,18 @@ export function ShareDreamModal({
                 { text: 'Cancel', style: 'cancel' },
                 {
                     text: 'Change to Doing',
-                    onPress: () => {
-                        // This will be handled by parent via onShare with phase update
-                        // For now, we just close the modal
+                    onPress: async () => {
+                        if (!onChangeToDoing) return;
+                        try {
+                            setIsLoading(true);
+                            await onChangeToDoing();
+                            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                        } catch (error) {
+                            console.error('Failed to change phase:', error);
+                            Alert.alert('Error', 'Failed to change dream status. Please try again.');
+                        } finally {
+                            setIsLoading(false);
+                        }
                     },
                 },
             ]
@@ -157,19 +163,20 @@ export function ShareDreamModal({
     };
 
     // Private fields that remain encrypted
-    const privateFields = ['Expenses', 'Reflections', 'Memories', 'Budget', 'Location'];
-    const publicFields = ['Title', 'Description', 'Category', 'Phase', 'Main Image', 'Inspirations', 'Progress'];
+    const privateFields = ['Expenses', 'Progress'];
+    const publicFields = ['Title', 'Description', 'Category', 'Phase', 'Main Image', 'Inspirations', 'Reflections', 'Memories'];
 
     return (
-        <BottomSheet
+        <BottomSheetModal
             ref={bottomSheetRef}
-            index={-1}
+            index={0}
             snapPoints={snapPoints}
             enablePanDownToClose
-            onClose={handleClose}
+            onDismiss={onClose}
             backdropComponent={renderBackdrop}
             backgroundStyle={{ backgroundColor: colors.surface }}
             handleIndicatorStyle={{ backgroundColor: colors.border }}
+            enableDismissOnClose
         >
             <BottomSheetView style={styles.container}>
                 <ScrollView
@@ -187,7 +194,7 @@ export function ShareDreamModal({
                                 Start Your Journey First
                             </Text>
                             <Text style={[styles.description, { color: colors.textSecondary }]}>
-                                Dreams can be shared once you begin working on them. Change the status to 'Doing' to share with the community.
+                                Dreams can be shared once you begin working on them. Change the status to &apos;Doing&apos; to share with the community.
                             </Text>
                             <View style={styles.actions}>
                                 <Button
@@ -276,7 +283,7 @@ export function ShareDreamModal({
                             <View style={[styles.privacyNote, { backgroundColor: colors.primary + '10', borderColor: colors.primary + '30' }]}>
                                 <Lock size={16} color={colors.primary} />
                                 <Text style={[styles.privacyNoteText, { color: colors.textSecondary }]}>
-                                    Private details (expenses, reflections, memories) will remain encrypted
+                                    Private details (expenses and progress) will remain hidden for other users
                                 </Text>
                             </View>
 
@@ -364,7 +371,7 @@ export function ShareDreamModal({
                     )}
                 </ScrollView>
             </BottomSheetView>
-        </BottomSheet>
+        </BottomSheetModal>
     );
 }
 

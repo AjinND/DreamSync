@@ -12,6 +12,7 @@ import { KeyManager } from "../src/services/keyManager";
 import { NotificationService } from "../src/services/notifications";
 import { UsersService } from "../src/services/users";
 import { useNotificationStore } from "../src/store/useNotificationStore";
+import { ThemeProvider } from "../src/theme";
 
 export default function RootLayout() {
   const [user, setUser] = useState<User | null>(null);
@@ -33,18 +34,22 @@ export default function RootLayout() {
   useEffect(() => {
     // Handle user state changes
     function onAuthStateChangedHandler(user: User | null) {
+      const isFirstAuthCallback = isInitialAuthCheckRef.current;
+      if (isInitialAuthCheckRef.current) {
+        isInitialAuthCheckRef.current = false;
+      }
+
       setUser(user);
       if (user) {
         // Ensure user profile exists in Firestore
-        UsersService.ensureUserProfile().catch(err =>
-          console.error('Failed to ensure user profile:', err)
-        );
+        const userProfilePromise = UsersService.ensureUserProfile().catch(err => {
+          console.error('Failed to ensure user profile:', err);
+          return null;
+        });
 
         // Only check key availability on FIRST auth check (cold start)
         // For fresh login/signup, keys are initialized by login.tsx/signup.tsx BEFORE this fires
-        if (isInitialAuthCheckRef.current) {
-          isInitialAuthCheckRef.current = false;
-
+        if (isFirstAuthCallback) {
           // Check encryption key availability (cold start after reinstall/data clear)
           KeyManager.isKeyInitialized()
             .then(initialized => {
@@ -76,12 +81,21 @@ export default function RootLayout() {
         }
 
         // Register for push notifications and subscribe to unread count
-        NotificationService.registerForPushNotifications()
-          .then(token => {
-            if (token) {
-              pushTokenRef.current = token;
-              return NotificationService.storePushToken(token);
+        userProfilePromise
+          .then(profile => {
+            const pushEnabled = profile?.settings?.notifications?.pushEnabled !== false;
+            if (!pushEnabled) {
+              return NotificationService.removeStoredPushTokenFromServer().catch(err =>
+                console.error('Push token cleanup failed:', err)
+              );
             }
+
+            return NotificationService.ensureRegisteredPushToken().then(token => {
+              if (token) {
+                pushTokenRef.current = token;
+                return NotificationService.storePushToken(token);
+              }
+            });
           })
           .catch(err => console.error('Push registration failed:', err));
 
@@ -138,41 +152,45 @@ export default function RootLayout() {
 
   if (initializing) {
     return (
-      <GestureHandlerRootView style={{ flex: 1 }}>
-        <BottomSheetModalProvider>
-          <BucketLoaderFull message="Preparing your workspace..." />
-        </BottomSheetModalProvider>
-      </GestureHandlerRootView>
+      <ThemeProvider>
+        <GestureHandlerRootView style={{ flex: 1 }}>
+          <BottomSheetModalProvider>
+            <BucketLoaderFull message="Preparing your workspace..." />
+          </BottomSheetModalProvider>
+        </GestureHandlerRootView>
+      </ThemeProvider>
     );
   }
 
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
-      <BottomSheetModalProvider>
-        <Stack>
-          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-          <Stack.Screen name="(auth)" options={{ headerShown: false }} />
-          <Stack.Screen
-            name="item/add"
-            options={{ headerShown: false, presentation: "modal" }}
-          />
-          <Stack.Screen
-            name="item/[id]"
-            options={{ headerShown: false, presentation: "modal" }}
-          />
-          <Stack.Screen
-            name="category/[id]"
-            options={{ headerShown: false }}
-          />
-          <Stack.Screen
-            name="notifications"
-            options={{ headerShown: false }}
-          />
-          <Stack.Screen name="+not-found" />
-        </Stack>
-        <OfflineBanner />
-        <StatusBar style="auto" />
-      </BottomSheetModalProvider>
-    </GestureHandlerRootView>
+    <ThemeProvider>
+      <GestureHandlerRootView style={{ flex: 1 }}>
+        <BottomSheetModalProvider>
+          <Stack>
+            <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+            <Stack.Screen name="(auth)" options={{ headerShown: false }} />
+            <Stack.Screen
+              name="item/add"
+              options={{ headerShown: false, presentation: "modal" }}
+            />
+            <Stack.Screen
+              name="item/[id]"
+              options={{ headerShown: false, presentation: "modal" }}
+            />
+            <Stack.Screen
+              name="category/[id]"
+              options={{ headerShown: false }}
+            />
+            <Stack.Screen
+              name="notifications"
+              options={{ headerShown: false }}
+            />
+            <Stack.Screen name="+not-found" />
+          </Stack>
+          <OfflineBanner />
+          <StatusBar style="auto" />
+        </BottomSheetModalProvider>
+      </GestureHandlerRootView>
+    </ThemeProvider>
   );
 }

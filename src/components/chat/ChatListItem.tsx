@@ -35,7 +35,12 @@ export const ChatListItem: React.FC<ChatListItemProps> = ({ chat }) => {
 
     const isDM = chat.type === 'dm';
     const title = chat.name || (isDM ? "Direct Message" : "Journey Chat");
-    const lastMsg = chat.lastMessage?.text || "No messages yet";
+    const rawLastMessage = chat.lastMessage?.text || "No messages yet";
+    const normalizedLastMessage = ['[encrypted message]', '[encrypted]', 'encrypted message'].includes(
+        rawLastMessage.trim().toLowerCase()
+    )
+        ? 'New message'
+        : rawLastMessage;
     const time = chat.lastMessage?.timestamp
         ? formatChatListTime(chat.lastMessage.timestamp)
         : "";
@@ -92,7 +97,7 @@ export const ChatListItem: React.FC<ChatListItemProps> = ({ chat }) => {
                         }}
                         numberOfLines={1}
                     >
-                        {chat.lastMessage?.senderId === currentUserId ? "You: " : ""}{lastMsg}
+                        {chat.lastMessage?.senderId === currentUserId ? "You: " : ""}{normalizedLastMessage}
                     </Text>
 
                     {unreadCount > 0 && (

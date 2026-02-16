@@ -11,6 +11,7 @@ export const IMAGE_PRESETS = {
     avatar: { maxWidth: 400, maxHeight: 400, compress: 0.7 },
     memoryImage: { maxWidth: 1000, maxHeight: 750, compress: 0.75 },
     progressImage: { maxWidth: 1000, maxHeight: 563, compress: 0.7 },
+    chatMessage: { maxWidth: 1280, maxHeight: 1280, compress: 0.78 },
 } as const satisfies Record<string, ImagePreset>;
 
 export type PresetName = keyof typeof IMAGE_PRESETS;

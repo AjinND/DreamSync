@@ -1,6 +1,6 @@
 /**
  * Journey update triggers
- * Detects request accepted/rejected, participant joined
+ * Detects request accepted/rejected, participant joined, and journey metadata updates.
  */
 
 import * as admin from "firebase-admin";
@@ -9,12 +9,30 @@ import { notifyUser } from "../utils/notifications";
 
 const db = admin.firestore();
 
+const RECENT_NOTIFICATION_WINDOW_MS = 30_000;
+
+function hasMeaningfulJourneyUpdate(before: any, after: any): boolean {
+  const beforeSettings = JSON.stringify(before?.settings ?? null);
+  const afterSettings = JSON.stringify(after?.settings ?? null);
+  if (beforeSettings !== afterSettings) return true;
+
+  const beforePreview = JSON.stringify(before?.preview ?? null);
+  const afterPreview = JSON.stringify(after?.preview ?? null);
+  if (beforePreview !== afterPreview) return true;
+
+  if ((before?.status ?? null) !== (after?.status ?? null)) return true;
+
+  return false;
+}
+
 /**
  * Trigger: Firestore onUpdate on journeys/{journeyId}
  * Detects:
  * - Request accepted: userId removed from requests[] AND added to participants[]
  * - Request rejected: userId removed from requests[] but NOT added to participants[]
  * - New participant joined (direct): new entry in participants[] not from requests
+ * - Chat added: participant was added to journey and should get a chat_added notification
+ * - Journey metadata changed: notify other participants with journey_updated
  */
 export const onJourneyUpdate = onDocumentUpdated(
   "journeys/{journeyId}",
@@ -32,6 +50,7 @@ export const onJourneyUpdate = onDocumentUpdated(
 
     const dreamTitle = after.preview?.title || "a journey";
     const dreamId = after.dreamId;
+    const chatId = typeof after.chatId === "string" ? after.chatId : "";
 
     // Find users removed from requests
     const removedFromRequests = beforeRequests.filter(
@@ -44,6 +63,36 @@ export const onJourneyUpdate = onDocumentUpdated(
     );
 
     const promises: Promise<void>[] = [];
+
+    // Notify newly added participants that they were added to the journey chat (deduped).
+    const thirtySecondsAgo = Date.now() - RECENT_NOTIFICATION_WINDOW_MS;
+    for (const newUserId of addedToParticipants) {
+      const recentQuery = await db
+        .collection("notifications")
+        .where("userId", "==", newUserId)
+        .where("type", "==", "chat_added")
+        .where("createdAt", ">", thirtySecondsAgo)
+        .limit(5)
+        .get();
+
+      const hasRecentJourneyChatAdded = recentQuery.docs.some((doc) => {
+        const data = doc.data()?.data;
+        return data?.journeyId === journeyId;
+      });
+
+      if (!hasRecentJourneyChatAdded) {
+        const data: Record<string, string> = { journeyId, dreamId };
+        if (chatId) data.chatId = chatId;
+
+        promises.push(
+          notifyUser(newUserId, "chat_added", {
+            title: "Added to Journey Chat",
+            body: `You were added to the chat for "${dreamTitle}"`,
+            data,
+          })
+        );
+      }
+    }
 
     for (const userId of removedFromRequests) {
       if (addedToParticipants.includes(userId)) {
@@ -62,6 +111,26 @@ export const onJourneyUpdate = onDocumentUpdated(
             title: "Request Update",
             body: `Your request to join "${dreamTitle}" was not accepted.`,
             data: { journeyId, dreamId },
+          })
+        );
+      }
+    }
+
+    const updatedBy = typeof after.updatedBy === "string" ? after.updatedBy : "";
+    if (updatedBy && hasMeaningfulJourneyUpdate(before, after)) {
+      const actorDoc = await db.collection("users").doc(updatedBy).get();
+      const actorName = actorDoc.data()?.displayName || "Someone";
+
+      for (const participantId of afterParticipants) {
+        if (participantId === updatedBy) continue;
+
+        promises.push(
+          notifyUser(participantId, "journey_updated", {
+            title: "Journey Updated",
+            body: `${actorName} updated "${dreamTitle}"`,
+            data: { journeyId, dreamId },
+            actorId: updatedBy,
+            actorName,
           })
         );
       }

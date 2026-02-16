@@ -3,7 +3,7 @@
  * Modern three-dot menu with Edit, Share Link, Delete options
  */
 
-import BottomSheet, { BottomSheetBackdrop, BottomSheetView } from '@gorhom/bottom-sheet';
+import { BottomSheetBackdrop, BottomSheetModal, BottomSheetView } from '@gorhom/bottom-sheet';
 import { useTheme } from '@/src/theme';
 import { Copy, Edit3, Trash2, Link as LinkIcon } from 'lucide-react-native';
 import { forwardRef, useCallback, useMemo } from 'react';
@@ -17,7 +17,7 @@ export interface DreamActionMenuProps {
     canDelete?: boolean;
 }
 
-export const DreamActionMenu = forwardRef<BottomSheet, DreamActionMenuProps>(
+export const DreamActionMenu = forwardRef<BottomSheetModal, DreamActionMenuProps>(
     ({ onEdit, onShareLink, onDelete, canDelete = false }, ref) => {
         const { colors, isDark } = useTheme();
         const snapPoints = useMemo(() => [canDelete ? 240 : 180], [canDelete]);
@@ -37,18 +37,19 @@ export const DreamActionMenu = forwardRef<BottomSheet, DreamActionMenuProps>(
         const handleAction = (action: () => void) => {
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
             action();
-            (ref as any)?.current?.close();
+            (ref as any)?.current?.dismiss();
         };
 
         return (
-            <BottomSheet
+            <BottomSheetModal
                 ref={ref}
-                index={-1}
+                index={0}
                 snapPoints={snapPoints}
                 enablePanDownToClose
                 backdropComponent={renderBackdrop}
                 backgroundStyle={{ backgroundColor: colors.surface }}
                 handleIndicatorStyle={{ backgroundColor: colors.textMuted }}
+                enableDismissOnClose
             >
                 <BottomSheetView style={styles.container}>
                     <Text style={[styles.title, { color: colors.textPrimary }]}>Actions</Text>
@@ -105,7 +106,7 @@ export const DreamActionMenu = forwardRef<BottomSheet, DreamActionMenuProps>(
                         </TouchableOpacity>
                     )}
                 </BottomSheetView>
-            </BottomSheet>
+            </BottomSheetModal>
         );
     }
 );

@@ -1,4 +1,5 @@
 import {
+    get,
     limitToLast,
     off,
     onValue,
@@ -14,6 +15,7 @@ import {
     deleteDoc,
     doc,
     getDoc,
+    increment,
     onSnapshot,
     orderBy,
     query,
@@ -36,6 +38,15 @@ import { KeyManager } from './keyManager';
 import { validate, messageSchema } from './validation';
 import { encodeBase64, decodeBase64 } from 'tweetnacl-util';
 
+const IMAGE_PREVIEW_TEXT = '[Image]';
+const LEGACY_PREVIEW_PLACEHOLDERS = new Set([
+    '[encrypted message]',
+    'encrypted message',
+    '[encrypted]',
+]);
+const legacyRepairInFlight = new Set<string>();
+const legacyRepairCompleted = new Set<string>();
+
 export const ChatService = {
     /**
      * Touch chat metadata so Cloud Function syncs participants into RTDB.
@@ -46,6 +57,77 @@ export const ChatService = {
             await updateDoc(chatRef, { updatedAt: Date.now() });
         } catch (error) {
             console.warn('[ChatService] Failed to trigger participant index sync:', error);
+        }
+    },
+
+    markChatAsRead: async (chatId: string): Promise<void> => {
+        const currentUserId = auth.currentUser?.uid;
+        if (!currentUserId) return;
+        try {
+            await updateDoc(doc(db, 'chats', chatId), {
+                [`unreadCounts.${currentUserId}`]: 0,
+            });
+        } catch (error) {
+            console.warn('[ChatService] Failed to mark chat as read:', error);
+        }
+    },
+
+    _isLegacyPreviewPlaceholder: (value?: string | null): boolean => {
+        if (!value || typeof value !== 'string') return false;
+        return LEGACY_PREVIEW_PLACEHOLDERS.has(value.trim().toLowerCase());
+    },
+
+    _normalizeLastMessageText: (text: string, type: 'text' | 'image'): string => {
+        if (type === 'image') return IMAGE_PREVIEW_TEXT;
+        const trimmed = (text || '').trim();
+        if (!trimmed) return 'New message';
+        if (ChatService._isLegacyPreviewPlaceholder(trimmed)) return 'New message';
+        return trimmed;
+    },
+
+    _derivePreviewFromRawMessage: (msg: any): string => {
+        const type = msg?.type === 'image' ? 'image' : 'text';
+        if (type === 'image') return IMAGE_PREVIEW_TEXT;
+        const text = typeof msg?.text === 'string' ? msg.text : '';
+        const trimmed = text.trim();
+        if (trimmed && !ChatService._isLegacyPreviewPlaceholder(trimmed)) return trimmed;
+        return 'New message';
+    },
+
+    _repairLegacyChatPreview: async (chat: Chat): Promise<void> => {
+        if (!chat?.id || legacyRepairInFlight.has(chat.id) || legacyRepairCompleted.has(chat.id)) {
+            return;
+        }
+
+        const preview = chat.lastMessage?.text;
+        if (!ChatService._isLegacyPreviewPlaceholder(preview)) return;
+
+        legacyRepairInFlight.add(chat.id);
+
+        try {
+            const messagesRef = ref(rtdb, `messages/${chat.id}`);
+            const latestQuery = rtdbQuery(messagesRef, limitToLast(1));
+            const snapshot = await get(latestQuery);
+            const val = snapshot.val();
+            const latestRawMessage = val ? (Object.values(val)[0] as any) : null;
+
+            const nextText = latestRawMessage
+                ? ChatService._derivePreviewFromRawMessage(latestRawMessage)
+                : 'New message';
+
+            await updateDoc(doc(db, 'chats', chat.id), {
+                lastMessage: {
+                    text: nextText,
+                    senderId: latestRawMessage?.senderId || chat.lastMessage?.senderId || '',
+                    timestamp: Number(latestRawMessage?.createdAt) || chat.lastMessage?.timestamp || Date.now(),
+                },
+            });
+
+            legacyRepairCompleted.add(chat.id);
+        } catch (error) {
+            console.warn('[ChatService] Legacy preview repair failed:', error);
+        } finally {
+            legacyRepairInFlight.delete(chat.id);
         }
     },
 
@@ -61,8 +143,6 @@ export const ChatService = {
         // For now, we will just create a new one or return existing if we find one (simple query)
 
         // This is a simplified check. Optimize in production.
-        const chatsRef = collection(db, 'chats');
-        const q = query(chatsRef, where('participants', 'array-contains', currentUserId), where('type', '==', 'dm'));
         // Note: Firestore array-contains only handles one value. We need to filter client side or use a different structure ID.
         // Better approach for DMs: ID = sort([uid1, uid2]).join('_')
 
@@ -151,14 +231,23 @@ export const ChatService = {
     /**
      * Send Message (RTDB + Firestore Metadata)
      */
-    sendMessage: async (chatId: string, text: string, type: 'text' | 'image' = 'text', mediaUrl?: string) => {
+    sendMessage: async (
+        chatId: string,
+        text: string,
+        type: 'text' | 'image' = 'text',
+        mediaUrl?: string,
+        clientId?: string,
+    ) => {
         const currentUserId = auth.currentUser?.uid;
         if (!currentUserId) throw new Error("Not authenticated");
 
         // Validate message input
-        validate(messageSchema, { text, type });
+        validate(messageSchema, { text, type, mediaUrl });
 
         const chatKeyPair = await KeyManager.getChatKeyPair();
+        const chatDocRef = doc(db, 'chats', chatId);
+        const chatDoc = await getDoc(chatDocRef);
+        const chatData = chatDoc.exists() ? chatDoc.data() as Chat : null;
 
         // 1. Determine encryption method and encrypt
         let messageData: Record<string, any>;
@@ -168,11 +257,6 @@ export const ChatService = {
         const newMessageRef = push(messagesRef);
 
         if (chatKeyPair) {
-            // Fetch chat doc to determine DM vs group encryption
-            const chatDocRef = doc(db, 'chats', chatId);
-            const chatDoc = await getDoc(chatDocRef);
-            const chatData = chatDoc.exists() ? chatDoc.data() as Chat : null;
-
             if (chatData?.type === 'dm') {
                 // DM: Asymmetric encryption (nacl.box)
                 const otherUserId = chatData.participants.find(uid => uid !== currentUserId);
@@ -184,6 +268,7 @@ export const ChatService = {
                     const payload = encryptForRecipient(text, chatKeyPair.secretKey, recipientPublicKey, chatKeyPair.publicKey);
                     messageData = {
                         id: newMessageRef.key,
+                        clientId: clientId || null,
                         senderId: currentUserId,
                         text: '', // Cleared for encrypted messages
                         type,
@@ -205,11 +290,11 @@ export const ChatService = {
                         messageData.mediaUrl = null; // Clear plaintext
                     }
 
-                    lastMessageText = type === 'image' ? '📷 Image' : text;
+                    lastMessageText = ChatService._normalizeLastMessageText(text, type);
                 } else {
                     // Fallback: send unencrypted if recipient has no public key
-                    messageData = ChatService._buildPlaintextMessage(newMessageRef.key!, currentUserId, text, type, mediaUrl);
-                    lastMessageText = type === 'image' ? '📷 Image' : text;
+                    messageData = ChatService._buildPlaintextMessage(newMessageRef.key!, currentUserId, text, type, mediaUrl, clientId);
+                    lastMessageText = ChatService._normalizeLastMessageText(text, type);
                 }
             } else if (chatData?.encryptedKeys?.[currentUserId]) {
                 // Group: Symmetric encryption with group key
@@ -221,6 +306,7 @@ export const ChatService = {
                     const encrypted = encryptField(text, groupKey);
                     messageData = {
                         id: newMessageRef.key,
+                        clientId: clientId || null,
                         senderId: currentUserId,
                         text: '', // Cleared
                         type,
@@ -241,39 +327,53 @@ export const ChatService = {
                         messageData.mediaUrl = null;
                     }
 
-                    lastMessageText = type === 'image' ? '📷 Image' : text;
+                    lastMessageText = ChatService._normalizeLastMessageText(text, type);
                 } else {
-                    messageData = ChatService._buildPlaintextMessage(newMessageRef.key!, currentUserId, text, type, mediaUrl);
-                    lastMessageText = type === 'image' ? '📷 Image' : text;
+                    messageData = ChatService._buildPlaintextMessage(newMessageRef.key!, currentUserId, text, type, mediaUrl, clientId);
+                    lastMessageText = ChatService._normalizeLastMessageText(text, type);
                 }
             } else {
                 // No encryption keys available for this chat
-                messageData = ChatService._buildPlaintextMessage(newMessageRef.key!, currentUserId, text, type, mediaUrl);
-                lastMessageText = type === 'image' ? '📷 Image' : text;
+                messageData = ChatService._buildPlaintextMessage(newMessageRef.key!, currentUserId, text, type, mediaUrl, clientId);
+                lastMessageText = ChatService._normalizeLastMessageText(text, type);
             }
         } else {
             // No key pair — send unencrypted
-            messageData = ChatService._buildPlaintextMessage(newMessageRef.key!, currentUserId, text, type, mediaUrl);
-            lastMessageText = type === 'image' ? '📷 Image' : text;
+            messageData = ChatService._buildPlaintextMessage(newMessageRef.key!, currentUserId, text, type, mediaUrl, clientId);
+            lastMessageText = ChatService._normalizeLastMessageText(text, type);
         }
 
         await set(newMessageRef, messageData);
 
+        const participants = chatData?.participants || [];
+        const unreadUpdates: Record<string, any> = {};
+        for (const uid of participants) {
+            unreadUpdates[`unreadCounts.${uid}`] = uid === currentUserId ? 0 : increment(1);
+        }
+
         // 2. Update Firestore Chat Metadata
-        const chatRef = doc(db, 'chats', chatId);
-        await updateDoc(chatRef, {
+        await updateDoc(chatDocRef, {
             lastMessage: {
                 text: lastMessageText,
                 senderId: currentUserId,
                 timestamp: Date.now()
             },
+            ...unreadUpdates,
             updatedAt: Date.now()
         });
     },
 
     /** Build a plaintext message object (no encryption). */
-    _buildPlaintextMessage: (id: string, senderId: string, text: string, type: string, mediaUrl?: string) => ({
+    _buildPlaintextMessage: (
+        id: string,
+        senderId: string,
+        text: string,
+        type: 'text' | 'image',
+        mediaUrl?: string,
+        clientId?: string,
+    ) => ({
         id,
+        clientId: clientId || null,
         senderId,
         text,
         type,
@@ -330,6 +430,7 @@ export const ChatService = {
                 rawMessages.map(async (msg: any) => {
                     const base: Message = {
                         id: msg.id,
+                        clientId: msg.clientId,
                         senderId: msg.senderId,
                         text: msg.text || '',
                         createdAt: msg.createdAt,
@@ -476,7 +577,17 @@ export const ChatService = {
 
         return onSnapshot(q, (snapshot) => {
             console.log(`[ChatService] Fetched ${snapshot.docs.length} chats`);
-            const chats = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Chat));
+            const chats = snapshot.docs.map(doc => {
+                const chat = { id: doc.id, ...doc.data() } as Chat;
+                if (ChatService._isLegacyPreviewPlaceholder(chat.lastMessage?.text)) {
+                    chat.lastMessage = {
+                        ...chat.lastMessage,
+                        text: 'New message',
+                    } as Chat['lastMessage'];
+                    void ChatService._repairLegacyChatPreview(chat);
+                }
+                return chat;
+            });
             callback(chats);
         }, (error) => {
             console.error("[ChatService] Error subscribing to chats:", error);

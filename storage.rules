@@ -2,6 +2,15 @@ rules_version = '2';
 
 service firebase.storage {
   match /b/{bucket}/o {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isChatParticipant(chatId) {
+      return isSignedIn()
+             && firestore.exists(/databases/(default)/documents/chats/$(chatId))
+             && firestore.get(/databases/(default)/documents/chats/$(chatId)).data.participants.hasAny([request.auth.uid]);
+    }
 
     // Profile avatars: public read, only owner can write
     // Moved to /avatars/ path for public discoverability
@@ -51,6 +60,32 @@ service firebase.storage {
                      request.resource == null ||
                      (
                        request.resource.size < 10 * 1024 * 1024 &&
+                       request.resource.contentType.matches('image/.*')
+                     )
+                   );
+    }
+
+    // Chat assets (group photo + message media): participant read, scoped write.
+    match /chats/{chatId}/group.jpg {
+      allow read: if isChatParticipant(chatId);
+      allow write: if isChatParticipant(chatId)
+                   && (
+                     request.resource == null ||
+                     (
+                       request.resource.size < 5 * 1024 * 1024 &&
+                       request.resource.contentType.matches('image/.*')
+                     )
+                   );
+    }
+
+    match /chats/{chatId}/messages/{userId}/{fileName} {
+      allow read: if isChatParticipant(chatId);
+      allow write: if isChatParticipant(chatId)
+                   && request.auth.uid == userId
+                   && (
+                     request.resource == null ||
+                     (
+                       request.resource.size < 5 * 1024 * 1024 &&
                        request.resource.contentType.matches('image/.*')
                      )
                    );

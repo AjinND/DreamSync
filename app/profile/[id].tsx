@@ -41,10 +41,11 @@ export default function ProfileScreen() {
         if (!id) return;
 
         setIsLoading(true);
+        let userProfile: UserProfile | null = null;
 
         // 1. Fetch Profile
         try {
-            const userProfile = await UsersService.getUserProfile(id);
+            userProfile = await UsersService.getUserProfile(id);
             setProfile(userProfile);
         } catch (error) {
             console.error('[ProfileScreen] Failed to load profile doc:', error);
@@ -54,6 +55,16 @@ export default function ProfileScreen() {
         try {
             const userDreams = await UsersService.getUserPublicDreams(id);
             setDreams(userDreams as BucketItem[]);
+
+            // Keep visible counters aligned with actual public dreams shown on this screen.
+            if (userProfile) {
+                const completedCount = (userDreams as BucketItem[]).filter(d => d.phase === 'done').length;
+                setProfile({
+                    ...userProfile,
+                    publicDreamsCount: userDreams.length,
+                    completedDreamsCount: completedCount,
+                });
+            }
         } catch (error) {
             console.error('[ProfileScreen] Failed to load user dreams:', error);
         } finally {

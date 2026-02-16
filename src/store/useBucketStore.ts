@@ -133,10 +133,13 @@ export const useBucketStore = create<BucketState>((set, get) => ({
                 await ItemService.updateItem(id, { completedAt: Date.now() });
             }
 
-            // Update completed count if transitioning to done
+            // Update completed count when transitioning into or out of done
             if (!wasDone && phase === 'done') {
                 const { UsersService } = await import('../services/users');
                 await UsersService.incrementCompletedDreamsCount(1);
+            } else if (wasDone && phase !== 'done') {
+                const { UsersService } = await import('../services/users');
+                await UsersService.incrementCompletedDreamsCount(-1);
             }
 
             // Sync to community store if item is public
@@ -232,6 +235,8 @@ export const useBucketStore = create<BucketState>((set, get) => ({
             // Completed dreams count
             if (!wasDone && isNowDone) {
                 statUpdates.completedDreamsCount = 1;
+            } else if (wasDone && !isNowDone) {
+                statUpdates.completedDreamsCount = -1;
             }
 
             // Update stats if needed

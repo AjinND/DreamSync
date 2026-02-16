@@ -20,7 +20,7 @@ import {
     Reflections,
     ShareDreamModal,
 } from '@/src/components/dream';
-import BottomSheet from '@gorhom/bottom-sheet';
+import { BottomSheetModal } from '@gorhom/bottom-sheet';
 import { ConfettiExplosion } from '@/src/components/animations/ConfettiExplosion';
 import { BucketLoaderFull } from '@/src/components/loading';
 import { EmptyState, Header } from '@/src/components/shared';
@@ -146,7 +146,7 @@ export default function DreamDetailScreen() {
     const [isSharing, setIsSharing] = useState(false);
 
     // Action menu ref
-    const actionMenuRef = useRef<BottomSheet>(null);
+    const actionMenuRef = useRef<BottomSheetModal>(null);
 
     // Auto-scroll to comments if scrollTo param is present
     useEffect(() => {
@@ -218,7 +218,7 @@ export default function DreamDetailScreen() {
     };
 
     const handleActionMenu = () => {
-        actionMenuRef.current?.snapToIndex(0);
+        actionMenuRef.current?.present();
     };
 
     const handleCopyShareLink = async () => {
@@ -325,6 +325,13 @@ export default function DreamDetailScreen() {
         } finally {
             setIsSharing(false);
         }
+    };
+
+    const handleChangeToDoingFromShare = async () => {
+        if (!item || !canEdit || item.phase !== 'dream') return;
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        setItem(prev => prev ? { ...prev, phase: 'doing' } : prev);
+        await updateItem(item.id, { phase: 'doing' });
     };
 
     const handleUnshare = async () => {
@@ -708,6 +715,7 @@ export default function DreamDetailScreen() {
                 item={item}
                 onShare={handleShare}
                 onUnshare={item.isPublic ? handleUnshare : undefined}
+                onChangeToDoing={handleChangeToDoingFromShare}
             />
             <DreamActionMenu
                 ref={actionMenuRef}

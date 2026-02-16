@@ -5,7 +5,7 @@
         ".read": "auth != null && root.child('chatParticipants').child($chatId).child(auth.uid).val() === true",
         ".write": "auth != null && root.child('chatParticipants').child($chatId).child(auth.uid).val() === true",
         "$messageId": {
-          ".validate": "newData.hasChildren(['senderId', 'text', 'type', 'createdAt']) && newData.child('senderId').isString() && newData.child('senderId').val() === auth.uid && newData.child('text').isString() && newData.child('type').isString()",
+          ".validate": "newData.hasChildren(['senderId', 'type', 'createdAt']) && newData.child('senderId').isString() && newData.child('senderId').val() === auth.uid && newData.child('type').isString() && newData.child('createdAt').exists() && ((newData.child('type').val() === 'text' && newData.child('text').isString() && (newData.child('text').val().length > 0 || newData.child('encrypted').val() === true) && (!newData.child('mediaUrl').exists() || newData.child('mediaUrl').isString())) || (newData.child('type').val() === 'image' && newData.child('mediaUrl').isString() && (!newData.child('text').exists() || newData.child('text').isString())))",
           ".write": "auth != null && root.child('chatParticipants').child($chatId).child(auth.uid).val() === true && (!data.exists() || data.child('senderId').val() === auth.uid)"
         }
       }

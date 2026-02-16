@@ -46,11 +46,28 @@ export const dreamSchema = z.object({
 // ---------------------------------------------------------------------------
 
 export const messageSchema = z.object({
-    text: z
-        .string()
-        .min(1, 'Message cannot be empty')
-        .max(5000, 'Message is too long (max 5000 characters)'),
+    text: z.string().max(5000, 'Message is too long (max 5000 characters)').optional(),
+    mediaUrl: z.string().url('Please provide a valid media URL').optional(),
     type: z.enum(['text', 'image', 'video', 'system']).optional(),
+}).superRefine((data, ctx) => {
+    const type = data.type ?? 'text';
+    const trimmed = (data.text ?? '').trim();
+
+    if (type === 'text' && trimmed.length === 0) {
+        ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['text'],
+            message: 'Message cannot be empty',
+        });
+    }
+
+    if (type === 'image' && (!data.mediaUrl || data.mediaUrl.trim().length === 0)) {
+        ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['mediaUrl'],
+            message: 'Image message must include media URL',
+        });
+    }
 });
 
 // ---------------------------------------------------------------------------

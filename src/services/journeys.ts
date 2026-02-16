@@ -1,4 +1,4 @@
-import { db } from '@/firebaseConfig';
+import { auth, db } from '@/firebaseConfig';
 import { Journey } from '@/src/types/social';
 import { Chat } from '@/src/types/chat';
 import { addDoc, arrayRemove, arrayUnion, collection, deleteField, doc, getDoc, getDocs, query, updateDoc, where, writeBatch } from 'firebase/firestore';
@@ -184,6 +184,7 @@ export const JourneysService = {
         }>
     ): Promise<void> => {
         try {
+            const currentUserId = auth.currentUser?.uid;
             const journeyRef = doc(db, 'journeys', journeyId);
             const journey = await JourneysService.getJourneyById(journeyId);
             const normalized = JourneysService._normalizeSettings({
@@ -191,7 +192,11 @@ export const JourneysService = {
                 ...settings,
             });
 
-            await updateDoc(journeyRef, { settings: normalized });
+            await updateDoc(journeyRef, {
+                settings: normalized,
+                updatedAt: Date.now(),
+                ...(currentUserId ? { updatedBy: currentUserId } : {}),
+            });
 
             // Keep linked dream discoverability in sync for community visibility.
             if (journey?.dreamId && normalized.discoverability) {

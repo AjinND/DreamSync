@@ -38,6 +38,9 @@ export const StoragePaths = {
 
     chatGroupPhoto: (chatId: string) =>
         `chats/${chatId}/group.jpg`,
+
+    chatMessage: (chatId: string, userId: string, messageId: string) =>
+        `chats/${chatId}/messages/${userId}/${messageId}.jpg`,
 };
 
 export const StorageService = {

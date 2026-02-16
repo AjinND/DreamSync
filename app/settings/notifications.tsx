@@ -74,7 +74,7 @@ export default function NotificationsScreen() {
         // When enabling push, ensure we have a token
         if (key === 'pushEnabled' && newValue) {
             try {
-                const token = await NotificationService.registerForPushNotifications();
+                const token = await NotificationService.ensureRegisteredPushToken();
                 if (token) {
                     await NotificationService.storePushToken(token);
                 }
@@ -86,10 +86,7 @@ export default function NotificationsScreen() {
         // When disabling push, remove token
         if (key === 'pushEnabled' && !newValue) {
             try {
-                const token = await NotificationService.registerForPushNotifications();
-                if (token) {
-                    await NotificationService.removePushToken(token);
-                }
+                await NotificationService.removeStoredPushTokenFromServer();
             } catch (err) {
                 console.error('Failed to remove push token:', err);
             }
