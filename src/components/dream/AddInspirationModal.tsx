@@ -6,12 +6,13 @@ import { useState } from 'react';
 import {
     KeyboardAvoidingView,
     Modal,
-    Platform,
+    ScrollView,
     StyleSheet,
     Text,
     TouchableOpacity,
     View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 interface AddInspirationModalProps {
     visible: boolean;
@@ -27,6 +28,7 @@ const TYPES: { id: Inspiration['type']; label: string; icon: any }[] = [
 
 export function AddInspirationModal({ visible, onClose, onSave }: AddInspirationModalProps) {
     const { colors } = useTheme();
+    const insets = useSafeAreaInsets();
     const [type, setType] = useState<Inspiration['type']>('quote');
     const [content, setContent] = useState('');
     const [caption, setCaption] = useState('');
@@ -63,14 +65,21 @@ export function AddInspirationModal({ visible, onClose, onSave }: AddInspiration
     };
 
     return (
-        <Modal visible={visible} animationType="slide" transparent>
+        <Modal
+            visible={visible}
+            animationType="slide"
+            transparent
+            presentationStyle="overFullScreen"
+            statusBarTranslucent
+            onRequestClose={onClose}
+        >
             <View style={styles.overlay}>
                 <KeyboardAvoidingView
-                    behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                    behavior="padding"
                     style={styles.keyboardView}
                 >
-                    <View style={[styles.container, { backgroundColor: colors.background }]}>
-                        {/* Header */}
+                    <View style={[styles.container, { backgroundColor: colors.background, paddingBottom: Math.max(24, insets.bottom + 12) }]}>
+                        {/* Header — always visible */}
                         <View style={styles.header}>
                             <Text style={[styles.title, { color: colors.textPrimary }]}>
                                 Add Inspiration
@@ -80,53 +89,60 @@ export function AddInspirationModal({ visible, onClose, onSave }: AddInspiration
                             </TouchableOpacity>
                         </View>
 
-                        {/* Type Selector */}
-                        <Text style={[styles.label, { color: colors.textSecondary }]}>
-                            Type of inspiration:
-                        </Text>
-                        <View style={styles.typeContainer}>
-                            {TYPES.map((t) => (
-                                <TouchableOpacity
-                                    key={t.id}
-                                    style={[
-                                        styles.typeButton,
-                                        { backgroundColor: type === t.id ? colors.primary + '20' : colors.surface },
-                                        { borderColor: type === t.id ? colors.primary : colors.border }
-                                    ]}
-                                    onPress={() => setType(t.id)}
-                                >
-                                    <t.icon size={18} color={type === t.id ? colors.primary : colors.textMuted} />
-                                    <Text style={[
-                                        styles.typeText,
-                                        { color: type === t.id ? colors.primary : colors.textSecondary }
-                                    ]}>
-                                        {t.label}
-                                    </Text>
-                                </TouchableOpacity>
-                            ))}
-                        </View>
+                        {/* Scrollable form body — prevents buttons being clipped by keyboard */}
+                        <ScrollView
+                            keyboardShouldPersistTaps="handled"
+                            showsVerticalScrollIndicator={false}
+                            contentContainerStyle={styles.scrollContent}
+                        >
+                            {/* Type Selector */}
+                            <Text style={[styles.label, { color: colors.textSecondary }]}>
+                                Type of inspiration:
+                            </Text>
+                            <View style={styles.typeContainer}>
+                                {TYPES.map((t) => (
+                                    <TouchableOpacity
+                                        key={t.id}
+                                        style={[
+                                            styles.typeButton,
+                                            { backgroundColor: type === t.id ? colors.primary + '20' : colors.surface },
+                                            { borderColor: type === t.id ? colors.primary : colors.border }
+                                        ]}
+                                        onPress={() => setType(t.id)}
+                                    >
+                                        <t.icon size={18} color={type === t.id ? colors.primary : colors.textMuted} />
+                                        <Text style={[
+                                            styles.typeText,
+                                            { color: type === t.id ? colors.primary : colors.textSecondary }
+                                        ]}>
+                                            {t.label}
+                                        </Text>
+                                    </TouchableOpacity>
+                                ))}
+                            </View>
 
-                        {/* Content */}
-                        <Input
-                            label={type === 'quote' ? 'Quote' : type === 'image' ? 'Image URL' : 'Link URL'}
-                            placeholder={getPlaceholder()}
-                            value={content}
-                            onChangeText={setContent}
-                            multiline={type === 'quote'}
-                            numberOfLines={type === 'quote' ? 3 : 1}
-                            autoCapitalize={type === 'quote' ? 'sentences' : 'none'}
-                            keyboardType={type !== 'quote' ? 'url' : 'default'}
-                        />
+                            {/* Content */}
+                            <Input
+                                label={type === 'quote' ? 'Quote' : type === 'image' ? 'Image URL' : 'Link URL'}
+                                placeholder={getPlaceholder()}
+                                value={content}
+                                onChangeText={setContent}
+                                multiline={type === 'quote'}
+                                numberOfLines={type === 'quote' ? 3 : 1}
+                                autoCapitalize={type === 'quote' ? 'sentences' : 'none'}
+                                keyboardType={type !== 'quote' ? 'url' : 'default'}
+                            />
 
-                        {/* Caption */}
-                        <Input
-                            label={getCaptionLabel()}
-                            placeholder="Optional..."
-                            value={caption}
-                            onChangeText={setCaption}
-                        />
+                            {/* Caption */}
+                            <Input
+                                label={getCaptionLabel()}
+                                placeholder="Optional..."
+                                value={caption}
+                                onChangeText={setCaption}
+                            />
+                        </ScrollView>
 
-                        {/* Actions */}
+                        {/* Actions — always visible at bottom, outside scroll */}
                         <View style={styles.actions}>
                             <TouchableOpacity
                                 style={[styles.cancelButton, { borderColor: colors.border }]}
@@ -164,7 +180,9 @@ const styles = StyleSheet.create({
         justifyContent: 'flex-end',
     },
     keyboardView: {
+        flex: 1,
         width: '100%',
+        justifyContent: 'flex-end',
     },
     container: {
         borderTopLeftRadius: 24,
@@ -208,10 +226,13 @@ const styles = StyleSheet.create({
         fontSize: 13,
         fontWeight: '500',
     },
+    scrollContent: {
+        paddingBottom: 4,
+    },
     actions: {
         flexDirection: 'row',
         gap: 12,
-        marginTop: 24,
+        marginTop: 16,
     },
     cancelButton: {
         flex: 1,

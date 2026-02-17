@@ -22,10 +22,11 @@ import { UserAvatar } from './UserAvatar';
 interface CommentSectionProps {
     dreamId: string;
     commentsCount?: number;
+    isDreamOwner?: boolean;
     onCountChange?: (count: number) => void;
 }
 
-export function CommentSection({ dreamId, commentsCount = 0, onCountChange }: CommentSectionProps) {
+export function CommentSection({ dreamId, commentsCount = 0, isDreamOwner = false, onCountChange }: CommentSectionProps) {
     const { colors } = useTheme();
     const [comments, setComments] = useState<Comment[]>([]);
     const [isLoading, setIsLoading] = useState(true);
@@ -173,7 +174,7 @@ export function CommentSection({ dreamId, commentsCount = 0, onCountChange }: Co
                                     {comment.text}
                                 </Text>
                             </View>
-                            {comment.userId === currentUserId && (
+                            {(comment.userId === currentUserId || isDreamOwner) && (
                                 <TouchableOpacity
                                     onPress={() => handleDelete(comment.id)}
                                     style={styles.deleteButton}

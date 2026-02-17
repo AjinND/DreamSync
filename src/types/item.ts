@@ -67,6 +67,7 @@ export interface BucketItem {
     isPublic?: boolean;
     likes?: string[];       // User IDs who liked
     likesCount?: number;    // Denormalized count for performance
+    userLiked?: boolean;    // Client-side resolved flag for current user
     commentsCount?: number; // Denormalized comment count
     tags?: string[];        // Interest tags for discovery
     basedOnTemplateId?: string;

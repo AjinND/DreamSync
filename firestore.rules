@@ -12,7 +12,8 @@ service cloud.firestore {
     function canToggleOwnLikeOnly() {
       let oldLikes = likesFrom(resource.data);
       let newLikes = likesFrom(request.resource.data);
-      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likes']) &&
+      // Allow both 'likes' array and 'likesCount' to change together (normalized + legacy compat).
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likes', 'likesCount']) &&
         (
           (newLikes.hasAll(oldLikes) &&
            newLikes.size() == oldLikes.size() + 1 &&
@@ -169,6 +170,54 @@ service cloud.firestore {
           )
         );
     }
+
+    function isJourneyOwnerForChat() {
+      return resource.data.type == 'journey' &&
+        ('journeyId' in resource.data) &&
+        exists(/databases/$(database)/documents/journeys/$(resource.data.journeyId)) &&
+        get(/databases/$(database)/documents/journeys/$(resource.data.journeyId)).data.ownerId == request.auth.uid;
+    }
+
+    function participantChatMetadataUpdate() {
+      return request.auth.uid in resource.data.participants &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'lastMessage',
+          'lastMessageAt',
+          'updatedAt',
+          'name',
+          'unreadCounts'
+        ]);
+    }
+
+    function canReadItemForSubcollections(itemId) {
+      let item = get(/databases/$(database)/documents/items/$(itemId)).data;
+      return item.userId == request.auth.uid ||
+        isCommunityVisibleItem(item) ||
+        item.collaborationType == 'group' ||
+        item.collaborationType == 'open' ||
+        ('journeyParticipants' in item && request.auth.uid in item.journeyParticipants);
+    }
+
+    function canWriteItemSubcollections(itemId) {
+      let item = get(/databases/$(database)/documents/items/$(itemId)).data;
+      return item.userId == request.auth.uid ||
+        ('journeyParticipants' in item && request.auth.uid in item.journeyParticipants);
+    }
+
+    function ownerChatMembershipUpdate() {
+      return request.auth.uid in resource.data.participants &&
+        isJourneyOwnerForChat() &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'participants',
+          'encryptedKeys',
+          'updatedAt',
+          'photoUrl',
+          'unreadCounts',
+          'name',
+          'lastMessage',
+          'lastMessageAt'
+        ]);
+    }
     
     // Items (Dreams) Collection
     match /items/{itemId} {
@@ -205,12 +254,76 @@ service cloud.firestore {
          participantAllowedItemFieldsOnly() &&
          canBePublicByPhase(request.resource.data))
       );
+
+      match /inspirations/{inspirationId} {
+        allow read: if isSignedIn() && canReadItemForSubcollections(itemId);
+        allow create, update, delete: if isSignedIn() && canWriteItemSubcollections(itemId);
+      }
+
+      match /memories/{memoryId} {
+        allow read: if isSignedIn() && canReadItemForSubcollections(itemId);
+        allow create, update, delete: if isSignedIn() && canWriteItemSubcollections(itemId);
+      }
+
+      match /reflections/{reflectionId} {
+        allow read: if isSignedIn() && canReadItemForSubcollections(itemId);
+        allow create, update, delete: if isSignedIn() && canWriteItemSubcollections(itemId);
+      }
+
+      match /progress/{progressId} {
+        allow read, create, update, delete: if isSignedIn() && canWriteItemSubcollections(itemId);
+      }
+
+      match /expenses/{expenseId} {
+        allow read, create, update, delete: if isSignedIn() && canWriteItemSubcollections(itemId);
+      }
+
+      // Normalized likes: each user manages only their own like document.
+      match /likes/{likeUserId} {
+        allow read: if isSignedIn() && canReadItemForSubcollections(itemId);
+        allow create, update: if isSignedIn() && request.auth.uid == likeUserId
+                              && canReadItemForSubcollections(itemId);
+        allow delete: if isSignedIn() && request.auth.uid == likeUserId;
+      }
     }
     
     // Users Collection
     match /users/{userId} {
       allow read: if isSignedIn();
-      allow write: if isSignedIn() && request.auth.uid == userId;
+      allow create: if isSignedIn() &&
+                    request.auth.uid == userId &&
+                    request.resource.data.keys().hasOnly([
+                      'displayName',
+                      'avatar',
+                      'bio',
+                      'publicKey',
+                      'chatPublicKey',
+                      'publicDreamsCount',
+                      'completedDreamsCount',
+                      'createdAt',
+                      'keyVersion',
+                      'keyDerivationVersion'
+                    ]);
+      allow update: if isSignedIn() &&
+                    request.auth.uid == userId &&
+                    request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+                      'displayName',
+                      'avatar',
+                      'bio',
+                      'publicKey',
+                      'chatPublicKey',
+                      'publicDreamsCount',
+                      'completedDreamsCount',
+                      'createdAt',
+                      'keyVersion',
+                      'keyDerivationVersion'
+                    ]);
+      allow delete: if isSignedIn() && request.auth.uid == userId;
+    }
+
+    // Sensitive user data (owner only)
+    match /users/{userId}/private/{docId} {
+      allow read, write: if isSignedIn() && request.auth.uid == userId;
     }
     
     // Comments Subcollection
@@ -220,7 +333,10 @@ service cloud.firestore {
                     validCommentCreate() &&
                     isCommunityVisibleItem(get(/databases/$(database)/documents/items/$(itemId)).data);
       allow delete: if isSignedIn() && 
-                    resource.data.userId == request.auth.uid;
+                    (
+                      resource.data.userId == request.auth.uid ||
+                      get(/databases/$(database)/documents/items/$(itemId)).data.userId == request.auth.uid
+                    );
     }
 
     // Journeys Collection (New)
@@ -255,8 +371,11 @@ service cloud.firestore {
         request.auth.uid in resource.data.participants
       );
 
-      // Allow updates only by participants
-      allow update: if isSignedIn() && request.auth.uid in resource.data.participants;
+      // Allow updates by participants with strict field-level constraints.
+      allow update: if isSignedIn() && (
+        participantChatMetadataUpdate() ||
+        ownerChatMembershipUpdate()
+      );
 
       // Allow deletion by participants (journey owner deletes chat when deleting journey)
       allow delete: if isSignedIn() && request.auth.uid in resource.data.participants;

@@ -11,35 +11,71 @@ import { UsersService } from '@/src/services/users';
 import { isEncryptedField } from '@/src/services/encryption';
 import { useBucketStore } from '@/src/store/useBucketStore';
 import { useNotificationStore } from '@/src/store/useNotificationStore';
-import { useChatStore } from '@/src/stores/useChatStore';
+import { useChatStore } from '@/src/store/useChatStore';
 import { useTheme } from '@/src/theme';
 import { UserProfile } from '@/src/types/social';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { signOut } from 'firebase/auth';
+import { sendEmailVerification, signOut } from 'firebase/auth';
 import { useCallback, useState } from 'react';
 import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 export default function AccountScreen() {
-    const { colors, isDark } = useTheme();
+    const { colors } = useTheme();
     const router = useRouter();
     const user = auth.currentUser;
     const { items, fetchItems } = useBucketStore();
     const [profile, setProfile] = useState<UserProfile | null>(null);
+    const [emailVerified, setEmailVerified] = useState<boolean>(user?.emailVerified ?? false);
+    const [sendingVerification, setSendingVerification] = useState(false);
 
     useFocusEffect(
         useCallback(() => {
             fetchItems();
-            if (user?.uid) {
-                UsersService.getUserProfile(user.uid).then(setProfile);
-            }
-        }, [user?.uid])
+            const refresh = async () => {
+                const currentUser = auth.currentUser;
+                if (!currentUser?.uid) return;
+
+                try {
+                    await currentUser.reload();
+                } catch {
+                    // best effort
+                }
+
+                setEmailVerified(auth.currentUser?.emailVerified ?? false);
+                UsersService.getUserProfile(currentUser.uid).then(setProfile);
+            };
+
+            refresh();
+        }, [fetchItems])
     );
 
     const dreamsCount = items.filter(i => i.phase === 'dream').length;
     const doingCount = items.filter(i => i.phase === 'doing').length;
     const doneCount = items.filter(i => i.phase === 'done').length;
+    const statusIcon = emailVerified ? 'checkmark-circle' : 'alert-circle';
+    const statusColor = emailVerified ? '#22C55E' : '#F59E0B';
+
+    const handleResendVerification = async () => {
+        const currentUser = auth.currentUser;
+        if (!currentUser || currentUser.emailVerified) return;
+
+        try {
+            setSendingVerification(true);
+            await sendEmailVerification(currentUser);
+            Alert.alert('Verification Sent', 'Check your inbox for the verification link.');
+        } catch (error: any) {
+            Alert.alert('Failed', error?.message || 'Could not resend verification email.');
+        } finally {
+            setSendingVerification(false);
+        }
+    };
+
+    const handleOpenVerification = () => {
+        if (emailVerified) return;
+        router.push('/(auth)/verify-email' as any);
+    };
 
     const handleSignOut = async () => {
         Alert.alert(
@@ -76,6 +112,7 @@ export default function AccountScreen() {
         { icon: 'moon-outline', label: 'Appearance', route: '/settings/appearance' },
         { icon: 'help-circle-outline', label: 'Help & Support', route: '/settings/support' },
         { icon: 'information-circle-outline', label: 'About', route: '/settings/about' },
+        { icon: 'trash-outline', label: 'Delete Account', route: '/settings/delete-account' },
     ];
 
     return (
@@ -124,6 +161,40 @@ export default function AccountScreen() {
                     >
                         <Ionicons name="pencil" size={20} color={colors.primary} />
                     </TouchableOpacity>
+                </View>
+
+                {/* Email Verification */}
+                <View style={[styles.verificationCard, { backgroundColor: colors.surface }]}>
+                    <View style={styles.verificationHeader}>
+                        <View style={styles.verificationTitleRow}>
+                            <Ionicons name={statusIcon as any} size={20} color={statusColor} />
+                            <Text style={[styles.verificationTitle, { color: colors.textPrimary }]}>
+                                Email Verification
+                            </Text>
+                        </View>
+                        <Text style={[styles.verificationStatus, { color: statusColor }]}>
+                            {emailVerified ? 'Verified' : 'Not verified'}
+                        </Text>
+                    </View>
+                    {!emailVerified && (
+                        <View style={styles.verificationActions}>
+                            <TouchableOpacity
+                                style={[styles.verificationBtn, { backgroundColor: colors.primary }]}
+                                onPress={handleOpenVerification}
+                            >
+                                <Text style={styles.verificationBtnText}>Open</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                                style={[styles.verificationGhostBtn, { borderColor: colors.border }]}
+                                onPress={handleResendVerification}
+                                disabled={sendingVerification}
+                            >
+                                <Text style={[styles.verificationGhostBtnText, { color: colors.textPrimary }]}>
+                                    {sendingVerification ? 'Sending...' : 'Resend'}
+                                </Text>
+                            </TouchableOpacity>
+                        </View>
+                    )}
                 </View>
 
                 {/* Stats */}
@@ -230,6 +301,55 @@ const styles = StyleSheet.create({
     },
     editButton: {
         padding: 8,
+    },
+    verificationCard: {
+        marginHorizontal: 16,
+        borderRadius: 16,
+        padding: 16,
+        marginBottom: 16,
+    },
+    verificationHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+    },
+    verificationTitleRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    verificationTitle: {
+        fontSize: 16,
+        fontWeight: '600',
+        marginLeft: 8,
+    },
+    verificationStatus: {
+        fontSize: 14,
+        fontWeight: '700',
+    },
+    verificationActions: {
+        flexDirection: 'row',
+        marginTop: 12,
+        gap: 10,
+    },
+    verificationBtn: {
+        paddingVertical: 10,
+        paddingHorizontal: 14,
+        borderRadius: 10,
+    },
+    verificationBtnText: {
+        color: '#FFFFFF',
+        fontSize: 14,
+        fontWeight: '700',
+    },
+    verificationGhostBtn: {
+        paddingVertical: 10,
+        paddingHorizontal: 14,
+        borderRadius: 10,
+        borderWidth: 1,
+    },
+    verificationGhostBtnText: {
+        fontSize: 14,
+        fontWeight: '600',
     },
     statsContainer: {
         flexDirection: 'row',

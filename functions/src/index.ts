@@ -17,3 +17,6 @@ export { onNewComment, onDreamLiked } from "./triggers/community";
 
 // Scheduled reminders
 export { checkDueDateReminders } from "./triggers/reminders";
+
+// Migration + account cleanup triggers
+export { migrateSubItems, migrateLikes, onUserDeletedCleanup } from "./triggers/migrations";

@@ -10,7 +10,7 @@ import { ChatListSkeleton } from '../../src/components/chat/ChatListSkeleton';
 import { EmptyState } from '../../src/components/shared/EmptyState';
 import { Header } from '../../src/components/shared/Header';
 import { IconButton } from '../../src/components/ui/IconButton';
-import { useChatStore } from '../../src/stores/useChatStore';
+import { useChatStore } from '../../src/store/useChatStore';
 import { useTheme } from '../../src/theme';
 import { Chat } from '../../src/types/chat';
 

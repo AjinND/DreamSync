@@ -15,7 +15,7 @@ import { Journey } from '@/src/types/social';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { MessageCircle, Search, Users } from 'lucide-react-native';
 import { useCallback, useMemo, useState } from 'react';
-import { RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, FlatList, RefreshControl, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 export default function JourneysScreen() {
@@ -26,6 +26,9 @@ export default function JourneysScreen() {
     const [openJourneys, setOpenJourneys] = useState<Journey[]>([]);
     const [joinedJourneys, setJoinedJourneys] = useState<Journey[]>([]);
     const [isLoadingExplore, setIsLoadingExplore] = useState(false);
+    const [isFetchingMoreExplore, setIsFetchingMoreExplore] = useState(false);
+    const [hasMoreExplore, setHasMoreExplore] = useState(true);
+    const [openJourneysCursor, setOpenJourneysCursor] = useState<any>(null);
     const [isLoadingMyJourneys, setIsLoadingMyJourneys] = useState(false);
     const [refreshing, setRefreshing] = useState(false);
 
@@ -71,17 +74,7 @@ export default function JourneysScreen() {
     }, [myOwnedJourneys, joinedJourneys]);
 
 
-    useFocusEffect(
-        useCallback(() => {
-            if (activeTab === 'my-journeys') {
-                fetchJoinedJourneys();
-            } else {
-                fetchOpenJourneys();
-            }
-        }, [activeTab])
-    );
-
-    const fetchJoinedJourneys = async () => {
+    const fetchJoinedJourneys = useCallback(async () => {
         const userId = auth.currentUser?.uid;
         if (!userId) return;
 
@@ -101,28 +94,54 @@ export default function JourneysScreen() {
             setIsLoadingMyJourneys(false);
             setRefreshing(false);
         }
-    };
+    }, [myOwnedJourneys.length]);
 
-    const fetchOpenJourneys = async () => {
-        setIsLoadingExplore(true);
+    const fetchOpenJourneys = useCallback(async (loadMore: boolean = false) => {
+        if (loadMore) {
+            if (isFetchingMoreExplore || !hasMoreExplore) return;
+            setIsFetchingMoreExplore(true);
+        } else {
+            setIsLoadingExplore(true);
+        }
+
         try {
-            const results = await JourneysService.getOpenJourneys();
+            const page = await JourneysService.getOpenJourneysPaginated(
+                12,
+                loadMore ? openJourneysCursor : null
+            );
             const currentUserId = auth.currentUser?.uid;
 
             // Filter out my own dreams OR dreams I'm already participating in
-            const filtered = results.filter(j =>
+            const filtered = page.journeys.filter(j =>
                 j.ownerId !== currentUserId &&
                 !j.participants.includes(currentUserId || '')
             );
 
-            setOpenJourneys(filtered);
+            setOpenJourneys(prev =>
+                loadMore
+                    ? [...prev, ...filtered.filter(next => !prev.some(existing => existing.id === next.id))]
+                    : filtered
+            );
+            setOpenJourneysCursor(page.lastDoc);
+            setHasMoreExplore(page.hasMore);
         } catch (error) {
             console.error('Failed to fetch open journeys', error);
         } finally {
             setIsLoadingExplore(false);
+            setIsFetchingMoreExplore(false);
             setRefreshing(false);
         }
-    };
+    }, [hasMoreExplore, isFetchingMoreExplore, openJourneysCursor]);
+
+    useFocusEffect(
+        useCallback(() => {
+            if (activeTab === 'my-journeys') {
+                fetchJoinedJourneys();
+            } else {
+                fetchOpenJourneys();
+            }
+        }, [activeTab, fetchJoinedJourneys, fetchOpenJourneys])
+    );
 
     const onRefresh = () => {
         setRefreshing(true);
@@ -140,6 +159,88 @@ export default function JourneysScreen() {
 
     const handlePressJourney = (journey: Journey) => {
         router.push(`/item/${journey.dreamId}`);
+    };
+
+    const data = activeTab === 'my-journeys' ? allMyJourneys : openJourneys;
+
+    const renderJourneyItem = ({ item }: { item: BucketItem | Journey }) => {
+        if (activeTab === 'my-journeys') {
+            const dreamItem = item as BucketItem;
+            const linkedJourney = joinedJourneys.find(j => j.dreamId === dreamItem.id);
+            const cardUser = linkedJourney ? {
+                id: linkedJourney.ownerId,
+                displayName: linkedJourney.preview?.authorName || 'Unknown',
+                avatar: linkedJourney.preview?.authorAvatar || '',
+                email: '', bio: '', publicDreamsCount: 0, completedDreamsCount: 0, createdAt: 0
+            } : undefined;
+
+            return (
+                <DreamCard
+                    item={dreamItem}
+                    onPress={() => dreamItem.userId === auth.currentUser?.uid ? handlePress(dreamItem.id) : handlePressJourney(linkedJourney as Journey)}
+                    user={cardUser}
+                    showUser={!!cardUser}
+                />
+            );
+        }
+
+        const journey = item as Journey;
+        return (
+            <DreamCard
+                item={journeyToItem(journey)}
+                onPress={() => handlePressJourney(journey)}
+                user={{
+                    displayName: journey.preview?.authorName || 'User',
+                    avatar: journey.preview?.authorAvatar || '',
+                    id: journey.ownerId,
+                    email: '',
+                    bio: '',
+                    publicDreamsCount: 0,
+                    completedDreamsCount: 0,
+                    createdAt: 0
+                }}
+                showUser={true}
+            />
+        );
+    };
+
+    const renderEmpty = () => {
+        if (activeTab === 'my-journeys') {
+            if (isLoadingMyJourneys) return <BucketLoaderInline message="Loading your journeys..." />;
+            return (
+                <View style={styles.emptyContainer}>
+                    <EmptyState
+                        icon={Users}
+                        title="No Journeys Yet"
+                        description="Start a journey by inviting friends to your dreams, or join an open dream."
+                        action={{
+                            label: "Create a Dream",
+                            onPress: () => router.push('/item/add')
+                        }}
+                    />
+                </View>
+            );
+        }
+
+        if (isLoadingExplore) return <BucketLoaderInline message="Discovering journeys..." />;
+        return (
+            <View style={styles.emptyContainer}>
+                <EmptyState
+                    icon={Search}
+                    title="No Open Journeys"
+                    description="There are no open journeys to join right now. Check back later or start your own!"
+                />
+            </View>
+        );
+    };
+
+    const renderFooter = () => {
+        if (activeTab !== 'explore' || !isFetchingMoreExplore) return null;
+        return (
+            <View style={styles.footerLoader}>
+                <ActivityIndicator color={colors.primary} />
+            </View>
+        );
     };
 
 
@@ -172,100 +273,23 @@ export default function JourneysScreen() {
                 </TouchableOpacity>
             </View>
 
-            <ScrollView
+            <FlatList
+                data={data as any[]}
+                renderItem={renderJourneyItem as any}
+                keyExtractor={(item: any) => item.id}
                 contentContainerStyle={styles.scrollContent}
                 showsVerticalScrollIndicator={false}
                 refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
-            >
-                {activeTab === 'my-journeys' ? (
-                    <>
-                        {isLoadingMyJourneys ? (
-                            <BucketLoaderInline message="Loading your journeys..." />
-                        ) : allMyJourneys.length > 0 ? (
-                            <View style={styles.grid}>
-                                {allMyJourneys.map(item => {
-                                    // Logic to find journey metadata for "My Journeys" list (optional, but good for avatar)
-                                    // For owned items, we have owner details in store or auth.
-                                    // For joined items, we might need author details which are in 'preview' if we used journeyToItem.
-                                    // Wait, DreamCard needs 'user' object.
-
-                                    // Check if it's a joined journey to pass correct author
-                                    const linkedJourney = joinedJourneys.find(j => j.dreamId === item.id);
-
-                                    // Construct user object for card
-                                    const cardUser = linkedJourney ? {
-                                        id: linkedJourney.ownerId,
-                                        displayName: linkedJourney.preview?.authorName || 'Unknown',
-                                        avatar: linkedJourney.preview?.authorAvatar || '',
-                                        email: '', bio: '', publicDreamsCount: 0, completedDreamsCount: 0, createdAt: 0
-                                    } : undefined; // Default will fall back to item.userId logic in DreamCard or we assume owned
-
-                                    return (
-                                        <DreamCard
-                                            key={item.id}
-                                            item={item}
-                                            onPress={() => item.userId === auth.currentUser?.uid ? handlePress(item.id) : handlePressJourney(linkedJourney as Journey)}
-                                            user={cardUser}
-                                            showUser={!!cardUser} // Show user if it's someone else's dream
-                                        />
-                                    );
-                                })}
-                            </View>
-                        ) : (
-                            <View style={styles.emptyContainer}>
-                                <EmptyState
-                                    icon={Users}
-                                    title="No Journeys Yet"
-                                    description="Start a journey by inviting friends to your dreams, or join an open dream."
-                                    action={{
-                                        label: "Create a Dream",
-                                        onPress: () => router.push('/item/add')
-                                    }}
-                                />
-                            </View>
-                        )}
-                    </>
-                ) : (
-                    <>
-                        {isLoadingExplore ? (
-                            <BucketLoaderInline message="Discovering journeys..." />
-                        ) : (
-                            <>
-                                {openJourneys.length > 0 ? (
-                                    <View style={styles.grid}>
-                                        {openJourneys.map(journey => (
-                                            <DreamCard
-                                                key={journey.id}
-                                                item={journeyToItem(journey)}
-                                                onPress={() => handlePressJourney(journey)}
-                                                user={{
-                                                    displayName: journey.preview?.authorName || 'User',
-                                                    avatar: journey.preview?.authorAvatar || '',
-                                                    id: journey.ownerId,
-                                                    email: '',
-                                                    bio: '',
-                                                    publicDreamsCount: 0,
-                                                    completedDreamsCount: 0,
-                                                    createdAt: 0
-                                                }}
-                                                showUser={true}
-                                            />
-                                        ))}
-                                    </View>
-                                ) : (
-                                    <View style={styles.emptyContainer}>
-                                        <EmptyState
-                                            icon={Search}
-                                            title="No Open Journeys"
-                                            description="There are no open journeys to join right now. Check back later or start your own!"
-                                        />
-                                    </View>
-                                )}
-                            </>
-                        )}
-                    </>
-                )}
-            </ScrollView>
+                ListEmptyComponent={renderEmpty}
+                ListFooterComponent={renderFooter}
+                ItemSeparatorComponent={() => <View style={{ height: 16 }} />}
+                onEndReachedThreshold={0.45}
+                onEndReached={() => {
+                    if (activeTab === 'explore' && hasMoreExplore && !isLoadingExplore && !isFetchingMoreExplore) {
+                        fetchOpenJourneys(true);
+                    }
+                }}
+            />
 
             {/* Global Chat Floating Action Button */}
             <View style={styles.fabContainer}>
@@ -320,14 +344,15 @@ const styles = StyleSheet.create({
         fontWeight: '600',
     },
     scrollContent: {
-        paddingBottom: 40,
-    },
-    grid: {
         paddingHorizontal: 16,
-        gap: 16,
+        paddingBottom: 100,
     },
     emptyContainer: {
         marginTop: 40,
+    },
+    footerLoader: {
+        paddingVertical: 14,
+        alignItems: 'center',
     },
     fabContainer: {
         position: 'absolute',

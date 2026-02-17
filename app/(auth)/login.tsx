@@ -5,8 +5,11 @@ import { useState } from 'react';
 import { Alert, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { auth } from '../../firebaseConfig';
 import { KeyManager } from '../../src/services/keyManager';
+import { createExponentialBackoffLimiter } from '../../src/utils/rateLimiter';
 import { safeValidate, loginSchema } from '../../src/services/validation';
 import { useTheme } from '../../src/theme';
+
+const loginLimiter = createExponentialBackoffLimiter(30_000, 5);
 
 export default function Login() {
     const { colors, isDark } = useTheme();
@@ -17,6 +20,12 @@ export default function Login() {
     const router = useRouter();
 
     const handleLogin = async () => {
+        const gate = loginLimiter.canProceed('login');
+        if (!gate.allowed) {
+            const seconds = Math.ceil(gate.retryAfterMs / 1000);
+            return Alert.alert("Too Many Attempts", `Please wait ${seconds}s before trying again.`);
+        }
+
         if (!email || !password) return Alert.alert("Error", "Please fill in all fields.");
 
         const validation = safeValidate(loginSchema, { email, password });
@@ -31,9 +40,11 @@ export default function Login() {
 
             setLoadingText('Setting up encryption...');
             await KeyManager.initializeKeysOnLogin(password, userCredential.user.uid);
+            loginLimiter.registerSuccess('login');
 
             router.replace('/(tabs)');
         } catch (e: any) {
+            loginLimiter.registerFailure('login');
             Alert.alert("Login Failed", e.message);
         } finally {
             setLoading(false);

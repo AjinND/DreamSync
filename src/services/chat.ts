@@ -19,6 +19,7 @@ import {
     onSnapshot,
     orderBy,
     query,
+    serverTimestamp,
     setDoc,
     updateDoc,
     where
@@ -37,6 +38,7 @@ import {
 import { KeyManager } from './keyManager';
 import { validate, messageSchema } from './validation';
 import { encodeBase64, decodeBase64 } from 'tweetnacl-util';
+import { AppError, ErrorCode, toAppError } from '../utils/AppError';
 
 const IMAGE_PREVIEW_TEXT = '[Image]';
 const LEGACY_PREVIEW_PLACEHOLDERS = new Set([
@@ -47,6 +49,11 @@ const LEGACY_PREVIEW_PLACEHOLDERS = new Set([
 const legacyRepairInFlight = new Set<string>();
 const legacyRepairCompleted = new Set<string>();
 
+export interface SendMessageResult {
+    encrypted: boolean;
+    reason?: string;
+}
+
 export const ChatService = {
     /**
      * Touch chat metadata so Cloud Function syncs participants into RTDB.
@@ -54,7 +61,7 @@ export const ChatService = {
     ensureParticipantIndex: async (chatId: string): Promise<void> => {
         try {
             const chatRef = doc(db, 'chats', chatId);
-            await updateDoc(chatRef, { updatedAt: Date.now() });
+            await updateDoc(chatRef, { updatedAt: serverTimestamp() });
         } catch (error) {
             console.warn('[ChatService] Failed to trigger participant index sync:', error);
         }
@@ -136,7 +143,9 @@ export const ChatService = {
      */
     createDMChat: async (otherUserId: string): Promise<string> => {
         const currentUserId = auth.currentUser?.uid;
-        if (!currentUserId) throw new Error("Not authenticated");
+        if (!currentUserId) {
+            throw new AppError('Not authenticated', ErrorCode.AUTH_REQUIRED, 'Please sign in to start chats.');
+        }
 
         // Check if DM already exists
         // (In a real app, you might want to query this efficiently or store DM IDs in user profile)
@@ -160,8 +169,8 @@ export const ChatService = {
             id: chatId,
             type: 'dm',
             participants: sortedIds,
-            createdAt: Date.now(),
-            updatedAt: Date.now(),
+            createdAt: serverTimestamp() as any,
+            updatedAt: serverTimestamp() as any,
             unreadCounts: {
                 [currentUserId]: 0,
                 [otherUserId]: 0
@@ -212,8 +221,8 @@ export const ChatService = {
             name: title || 'Journey Chat',
             photoUrl: image || null,
             participants,
-            createdAt: Date.now(),
-            updatedAt: Date.now(),
+            createdAt: serverTimestamp() as any,
+            updatedAt: serverTimestamp() as any,
             unreadCounts: participants.reduce((acc, uid) => ({ ...acc, [uid]: 0 }), {}),
             encryptedKeys: Object.keys(encryptedKeys).length > 0 ? encryptedKeys : undefined,
             encryptionEnabled: Object.keys(encryptedKeys).length > 0,
@@ -237,9 +246,11 @@ export const ChatService = {
         type: 'text' | 'image' = 'text',
         mediaUrl?: string,
         clientId?: string,
-    ) => {
+    ): Promise<SendMessageResult> => {
         const currentUserId = auth.currentUser?.uid;
-        if (!currentUserId) throw new Error("Not authenticated");
+        if (!currentUserId) {
+            throw new AppError('Not authenticated', ErrorCode.AUTH_REQUIRED, 'Please sign in to send messages.');
+        }
 
         // Validate message input
         validate(messageSchema, { text, type, mediaUrl });
@@ -252,6 +263,7 @@ export const ChatService = {
         // 1. Determine encryption method and encrypt
         let messageData: Record<string, any>;
         let lastMessageText: string;
+        let fallbackReason: string | null = null;
 
         const messagesRef = ref(rtdb, `messages/${chatId}`);
         const newMessageRef = push(messagesRef);
@@ -295,6 +307,7 @@ export const ChatService = {
                     // Fallback: send unencrypted if recipient has no public key
                     messageData = ChatService._buildPlaintextMessage(newMessageRef.key!, currentUserId, text, type, mediaUrl, clientId);
                     lastMessageText = ChatService._normalizeLastMessageText(text, type);
+                    fallbackReason = 'recipient_missing_public_key';
                 }
             } else if (chatData?.encryptedKeys?.[currentUserId]) {
                 // Group: Symmetric encryption with group key
@@ -331,16 +344,19 @@ export const ChatService = {
                 } else {
                     messageData = ChatService._buildPlaintextMessage(newMessageRef.key!, currentUserId, text, type, mediaUrl, clientId);
                     lastMessageText = ChatService._normalizeLastMessageText(text, type);
+                    fallbackReason = 'group_key_decrypt_failed';
                 }
             } else {
                 // No encryption keys available for this chat
                 messageData = ChatService._buildPlaintextMessage(newMessageRef.key!, currentUserId, text, type, mediaUrl, clientId);
                 lastMessageText = ChatService._normalizeLastMessageText(text, type);
+                fallbackReason = 'chat_missing_encrypted_keys';
             }
         } else {
             // No key pair — send unencrypted
             messageData = ChatService._buildPlaintextMessage(newMessageRef.key!, currentUserId, text, type, mediaUrl, clientId);
             lastMessageText = ChatService._normalizeLastMessageText(text, type);
+            fallbackReason = 'sender_missing_keypair';
         }
 
         await set(newMessageRef, messageData);
@@ -358,9 +374,14 @@ export const ChatService = {
                 senderId: currentUserId,
                 timestamp: Date.now()
             },
+            lastMessageAt: serverTimestamp(),
             ...unreadUpdates,
-            updatedAt: Date.now()
+            updatedAt: serverTimestamp()
         });
+
+        return fallbackReason
+            ? { encrypted: false, reason: fallbackReason }
+            : { encrypted: true };
     },
 
     /** Build a plaintext message object (no encryption). */
@@ -394,6 +415,46 @@ export const ChatService = {
         let cachedChatData: Chat | null = null;
         let cachedGroupKey: Uint8Array | null = null;
         let unsubscribeValue: (() => void) | null = null;
+        let unsubscribeChatDoc: (() => void) | null = null;
+
+        const refreshCachedGroupKey = async (chatData: Chat | null) => {
+            cachedChatData = chatData;
+            cachedGroupKey = null;
+
+            if (!chatData || chatData.type === 'dm') return;
+
+            const currentUserId = auth.currentUser?.uid;
+            const chatKeyPair = await KeyManager.getChatKeyPair();
+            if (!currentUserId || !chatKeyPair) return;
+
+            const myEncKey = chatData.encryptedKeys?.[currentUserId];
+            if (!myEncKey) return;
+
+            try {
+                const senderPubKey = decodeBase64(myEncKey.senderPublicKey);
+                cachedGroupKey = decryptGroupKey(myEncKey, chatKeyPair.secretKey, senderPubKey);
+            } catch {
+                cachedGroupKey = null;
+            }
+        };
+
+        unsubscribeChatDoc = onSnapshot(
+            doc(db, 'chats', chatId),
+            async (chatSnap) => {
+                if (!chatSnap.exists()) {
+                    await refreshCachedGroupKey(null);
+                    return;
+                }
+
+                await refreshCachedGroupKey({
+                    id: chatSnap.id,
+                    ...chatSnap.data(),
+                } as Chat);
+            },
+            () => {
+                // Keep message stream active even if metadata watcher fails.
+            }
+        );
 
         const subscribe = (hasRetried = false) => onValue(q, async (snapshot) => {
             const data = snapshot.val();
@@ -411,15 +472,10 @@ export const ChatService = {
                     const chatDocRef = doc(db, 'chats', chatId);
                     const chatDoc = await getDoc(chatDocRef);
                     if (chatDoc.exists()) {
-                        cachedChatData = chatDoc.data() as Chat;
-
-                        // Decrypt group key if available
-                        const currentUserId = auth.currentUser?.uid;
-                        if (currentUserId && cachedChatData.encryptedKeys?.[currentUserId]) {
-                            const myEncKey = cachedChatData.encryptedKeys[currentUserId];
-                            const senderPubKey = decodeBase64(myEncKey.senderPublicKey);
-                            cachedGroupKey = decryptGroupKey(myEncKey, chatKeyPair.secretKey, senderPubKey);
-                        }
+                        await refreshCachedGroupKey({
+                            id: chatDoc.id,
+                            ...chatDoc.data(),
+                        } as Chat);
                     }
                 } catch {
                     // Continue without decryption
@@ -557,6 +613,7 @@ export const ChatService = {
         return () => {
             isDisposed = true;
             if (unsubscribeValue) unsubscribeValue();
+            if (unsubscribeChatDoc) unsubscribeChatDoc();
             off(q);
         };
     },
@@ -576,7 +633,7 @@ export const ChatService = {
         );
 
         return onSnapshot(q, (snapshot) => {
-            console.log(`[ChatService] Fetched ${snapshot.docs.length} chats`);
+            __DEV__ && console.log(`[ChatService] Fetched ${snapshot.docs.length} chats`);
             const chats = snapshot.docs.map(doc => {
                 const chat = { id: doc.id, ...doc.data() } as Chat;
                 if (ChatService._isLegacyPreviewPlaceholder(chat.lastMessage?.text)) {
@@ -603,21 +660,31 @@ export const ChatService = {
         updates: { name?: string; photoUrl?: string | null },
     ): Promise<void> => {
         const currentUserId = auth.currentUser?.uid;
-        if (!currentUserId) throw new Error('Not authenticated');
+        if (!currentUserId) {
+            throw new AppError('Not authenticated', ErrorCode.AUTH_REQUIRED, 'Please sign in to edit chats.');
+        }
 
         const chatDocRef = doc(db, 'chats', chatId);
         const chatDoc = await getDoc(chatDocRef);
-        if (!chatDoc.exists()) throw new Error('Chat not found');
+        if (!chatDoc.exists()) {
+            throw new AppError('Chat not found', ErrorCode.NOT_FOUND, 'Chat not found.');
+        }
 
         const chat = chatDoc.data() as Chat;
-        if (chat.type !== 'journey') throw new Error('Only journey chats can be edited');
-        if (!chat.participants?.includes(currentUserId)) throw new Error('Not a participant');
+        if (chat.type !== 'journey') {
+            throw new AppError('Only journey chats can be edited', ErrorCode.PERMISSION_DENIED, 'Only journey chats can be edited.');
+        }
+        if (!chat.participants?.includes(currentUserId)) {
+            throw new AppError('Not a participant', ErrorCode.PERMISSION_DENIED, 'You are not a participant in this chat.');
+        }
 
-        const payload: Record<string, any> = { updatedAt: Date.now() };
+        const payload: Record<string, any> = { updatedAt: serverTimestamp() };
 
         if (typeof updates.name === 'string') {
             const trimmed = updates.name.trim();
-            if (!trimmed) throw new Error('Group name cannot be empty');
+            if (!trimmed) {
+                throw new AppError('Group name cannot be empty', ErrorCode.VALIDATION_ERROR, 'Group name cannot be empty.');
+            }
             payload.name = trimmed;
         }
 
@@ -625,7 +692,14 @@ export const ChatService = {
             payload.photoUrl = updates.photoUrl ?? null;
         }
 
-        await updateDoc(chatDocRef, payload);
+        try {
+            await updateDoc(chatDocRef, payload);
+        } catch (error) {
+            throw toAppError(error, {
+                code: ErrorCode.UNKNOWN,
+                userMessage: 'Failed to update chat details.',
+            });
+        }
     },
 
     /**

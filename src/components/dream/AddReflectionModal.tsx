@@ -6,12 +6,13 @@ import { useState } from 'react';
 import {
     KeyboardAvoidingView,
     Modal,
-    Platform,
+    ScrollView,
     StyleSheet,
     Text,
     TouchableOpacity,
     View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 interface AddReflectionModalProps {
     visible: boolean;
@@ -21,6 +22,7 @@ interface AddReflectionModalProps {
 
 export function AddReflectionModal({ visible, onClose, onSave }: AddReflectionModalProps) {
     const { colors } = useTheme();
+    const insets = useSafeAreaInsets();
     const [text, setText] = useState('');
     const [imageUrl, setImageUrl] = useState('');
     const [linkUrl, setLinkUrl] = useState('');
@@ -55,14 +57,21 @@ export function AddReflectionModal({ visible, onClose, onSave }: AddReflectionMo
     };
 
     return (
-        <Modal visible={visible} animationType="slide" transparent>
+        <Modal
+            visible={visible}
+            animationType="slide"
+            transparent
+            presentationStyle="overFullScreen"
+            statusBarTranslucent
+            onRequestClose={onClose}
+        >
             <View style={styles.overlay}>
                 <KeyboardAvoidingView
-                    behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                    behavior="padding"
                     style={styles.keyboardView}
                 >
-                    <View style={[styles.container, { backgroundColor: colors.background }]}>
-                        {/* Header */}
+                    <View style={[styles.container, { backgroundColor: colors.background, paddingBottom: Math.max(24, insets.bottom + 12) }]}>
+                        {/* Header — always visible */}
                         <View style={styles.header}>
                             <Text style={[styles.title, { color: colors.textPrimary }]}>
                                 Add Reflection
@@ -72,42 +81,49 @@ export function AddReflectionModal({ visible, onClose, onSave }: AddReflectionMo
                             </TouchableOpacity>
                         </View>
 
-                        <Input
-                            label="Reflection Text"
-                            placeholder="What did you learn, feel, or discover?"
-                            value={text}
-                            onChangeText={setText}
-                            multiline
-                            numberOfLines={4}
-                            style={{ minHeight: 100, textAlignVertical: 'top' }}
-                        />
+                        {/* Scrollable form body — prevents buttons being clipped by keyboard */}
+                        <ScrollView
+                            keyboardShouldPersistTaps="handled"
+                            showsVerticalScrollIndicator={false}
+                            contentContainerStyle={styles.scrollContent}
+                        >
+                            <Input
+                                label="Reflection Text"
+                                placeholder="What did you learn, feel, or discover?"
+                                value={text}
+                                onChangeText={setText}
+                                multiline
+                                numberOfLines={4}
+                                style={{ minHeight: 100, textAlignVertical: 'top' }}
+                            />
 
-                        <Input
-                            label="Image URL (Optional)"
-                            placeholder="https://example.com/reflection.jpg"
-                            value={imageUrl}
-                            onChangeText={setImageUrl}
-                            autoCapitalize="none"
-                            keyboardType="url"
-                        />
+                            <Input
+                                label="Image URL (Optional)"
+                                placeholder="https://example.com/reflection.jpg"
+                                value={imageUrl}
+                                onChangeText={setImageUrl}
+                                autoCapitalize="none"
+                                keyboardType="url"
+                            />
 
-                        <Input
-                            label="Link URL (Optional)"
-                            placeholder="https://example.com/article"
-                            value={linkUrl}
-                            onChangeText={setLinkUrl}
-                            autoCapitalize="none"
-                            keyboardType="url"
-                        />
+                            <Input
+                                label="Link URL (Optional)"
+                                placeholder="https://example.com/article"
+                                value={linkUrl}
+                                onChangeText={setLinkUrl}
+                                autoCapitalize="none"
+                                keyboardType="url"
+                            />
 
-                        <Input
-                            label="Link Title (Optional)"
-                            placeholder="Add a short title for the link"
-                            value={linkCaption}
-                            onChangeText={setLinkCaption}
-                        />
+                            <Input
+                                label="Link Title (Optional)"
+                                placeholder="Add a short title for the link"
+                                value={linkCaption}
+                                onChangeText={setLinkCaption}
+                            />
+                        </ScrollView>
 
-                        {/* Actions */}
+                        {/* Actions — always visible at bottom, outside scroll */}
                         <View style={styles.actions}>
                             <TouchableOpacity
                                 style={[styles.cancelButton, { borderColor: colors.border }]}
@@ -145,7 +161,9 @@ const styles = StyleSheet.create({
         justifyContent: 'flex-end',
     },
     keyboardView: {
+        flex: 1,
         width: '100%',
+        justifyContent: 'flex-end',
     },
     container: {
         borderTopLeftRadius: 24,
@@ -166,14 +184,13 @@ const styles = StyleSheet.create({
     closeButton: {
         padding: 4,
     },
-    label: {
-        fontSize: 14,
-        marginBottom: 8,
+    scrollContent: {
+        paddingBottom: 4,
     },
     actions: {
         flexDirection: 'row',
         gap: 12,
-        marginTop: 24,
+        marginTop: 16,
     },
     cancelButton: {
         flex: 1,

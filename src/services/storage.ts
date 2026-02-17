@@ -3,11 +3,11 @@ import { auth, storage } from '../../firebaseConfig';
 import {
     optimizeImage,
     sanitizeStoragePath,
-    validateImageFormat,
-    validateImageSize,
+    validateImage,
     type PresetName,
 } from './imageOptimizer';
 import type { BucketItem } from '../types/item';
+import { AppError, ErrorCode } from '../utils/AppError';
 
 /**
  * Centralized Storage path helpers.
@@ -20,17 +20,17 @@ import type { BucketItem } from '../types/item';
 export const StoragePaths = {
     dreamCover: (userId: string, dreamId: string, isPublic: boolean = false) =>
         isPublic
-            ? `public_dreams/${dreamId}/cover.jpg`
+            ? `public_dreams/${userId}/${dreamId}/cover.jpg`
             : `dreams/${userId}/${dreamId}/cover.jpg`,
 
     dreamMemory: (userId: string, dreamId: string, memoryId: string, isPublic: boolean = false) =>
         isPublic
-            ? `public_dreams/${dreamId}/memories/${memoryId}.jpg`
+            ? `public_dreams/${userId}/${dreamId}/memories/${memoryId}.jpg`
             : `dreams/${userId}/${dreamId}/memories/${memoryId}.jpg`,
 
     dreamProgress: (userId: string, dreamId: string, progressId: string, isPublic: boolean = false) =>
         isPublic
-            ? `public_dreams/${dreamId}/progress/${progressId}.jpg`
+            ? `public_dreams/${userId}/${dreamId}/progress/${progressId}.jpg`
             : `dreams/${userId}/${dreamId}/progress/${progressId}.jpg`,
 
     profileAvatar: (userId: string) =>
@@ -65,10 +65,12 @@ export const StorageService = {
         }
 
         const user = auth.currentUser;
-        if (!user) throw new Error('User not authenticated');
+        if (!user) {
+            throw new AppError('User not authenticated', ErrorCode.AUTH_REQUIRED, 'Please sign in to upload images.');
+        }
 
-        // 1. Validate format
-        await validateImageFormat(uri);
+        // 1. Validate image (format + size in one pass)
+        await validateImage(uri);
 
         // 2. Sanitize path
         const safePath = sanitizeStoragePath(path);
@@ -76,8 +78,8 @@ export const StorageService = {
         // 3. Optimize (resize + compress)
         const optimizedUri = await optimizeImage(uri, preset);
 
-        // 4. Validate size post-optimization
-        await validateImageSize(optimizedUri);
+        // 4. Validate optimized image (format + size in one pass)
+        await validateImage(optimizedUri);
 
         // 5. Upload to Firebase Storage
         const response = await fetch(optimizedUri);

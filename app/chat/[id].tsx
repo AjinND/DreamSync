@@ -21,10 +21,11 @@ import { IconButton } from '@/src/components/ui/IconButton';
 import { ChatService } from '@/src/services/chat';
 import { JourneysService } from '@/src/services/journeys';
 import { StoragePaths, StorageService } from '@/src/services/storage';
-import { useChatStore } from '@/src/stores/useChatStore';
+import { useChatStore } from '@/src/store/useChatStore';
 import { useTheme } from '@/src/theme';
 import { Message } from '@/src/types/chat';
 import { ArrowLeft, ShieldCheck } from 'lucide-react-native';
+import { createCooldownLimiter } from '@/src/utils/rateLimiter';
 
 interface UserProfile {
   uid: string;
@@ -42,6 +43,8 @@ export default function ChatRoomScreen() {
   const [isInitializing, setIsInitializing] = useState(false);
   const [profiles, setProfiles] = useState<Record<string, UserProfile>>({});
   const [isSendingMessage, setIsSendingMessage] = useState(false);
+  const loadedProfileIdsRef = useRef<Set<string>>(new Set());
+  const sendLimiterRef = useRef(createCooldownLimiter(1000));
 
   const currentChat = chats.find((c) => c.id === id);
   const title = currentChat?.name || (currentChat?.type === 'dm' ? 'Direct Message' : 'Journey Chat');
@@ -56,7 +59,7 @@ export default function ChatRoomScreen() {
       const participantIds = currentChat?.participants || [];
       if (!participantIds.length) return;
 
-      const missingIds = participantIds.filter((uid) => !profiles[uid]);
+      const missingIds = participantIds.filter((uid) => !loadedProfileIdsRef.current.has(uid));
       if (missingIds.length === 0) return;
 
       const newProfiles: Record<string, UserProfile> = {};
@@ -79,12 +82,13 @@ export default function ChatRoomScreen() {
       );
 
       if (Object.keys(newProfiles).length > 0) {
+        Object.keys(newProfiles).forEach((uid) => loadedProfileIdsRef.current.add(uid));
         setProfiles((prev) => ({ ...prev, ...newProfiles }));
       }
     };
 
     fetchProfiles();
-  }, [currentChat?.participants, profiles]);
+  }, [currentChat?.participants]);
 
   useEffect(() => {
     const initChat = async () => {
@@ -123,10 +127,19 @@ export default function ChatRoomScreen() {
 
   const handleSend = async (payload: { text: string; imageUri?: string | null }) => {
     if (!id) return;
+    if (!sendLimiterRef.current.allow(`chat_send_${id}`)) return;
 
     const trimmedText = payload.text.trim();
     const imageUri = payload.imageUri;
     if (!trimmedText && !imageUri) return;
+
+    const warnIfUnencrypted = (reason?: string) => {
+      if (!reason) return;
+      Alert.alert(
+        'Message Sent Without Encryption',
+        `This message was sent without end-to-end encryption (${reason.replaceAll('_', ' ')}).`
+      );
+    };
 
     setIsSendingMessage(true);
     try {
@@ -150,17 +163,19 @@ export default function ChatRoomScreen() {
           'chatMessage',
         );
 
-        await sendMessage({
+        const result = await sendMessage({
           text: trimmedText,
           type: 'image',
           mediaUrl,
           clientId,
           skipOptimistic: true,
         });
+        if (!result.encrypted) warnIfUnencrypted(result.reason);
         return;
       }
 
-      await sendMessage({ text: trimmedText, type: 'text' });
+      const result = await sendMessage({ text: trimmedText, type: 'text' });
+      if (!result.encrypted) warnIfUnencrypted(result.reason);
     } catch (error: any) {
       Alert.alert('Message Failed', error?.message || 'Unable to send message right now.');
     } finally {

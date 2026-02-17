@@ -27,11 +27,12 @@ import { EmptyState, Header } from '@/src/components/shared';
 import { CommentSection } from '@/src/components/social';
 import { Button, Card, IconButton } from '@/src/components/ui';
 import { CommunityService } from '@/src/services/community';
+import { ItemService } from '@/src/services/items';
 import { JourneysService } from '@/src/services/journeys';
 import { useBucketStore } from '@/src/store/useBucketStore';
 import { useCommunityStore } from '@/src/store/useCommunityStore';
 import { useTheme } from '@/src/theme';
-import { BucketItem, Expense, Phase, ReflectionBlock } from '@/src/types/item';
+import { BucketItem, Expense, Inspiration, Memory, Phase, ProgressEntry, Reflection, ReflectionBlock } from '@/src/types/item';
 import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
 import * as Linking from 'expo-linking';
@@ -84,13 +85,6 @@ export default function DreamDetailScreen() {
         addItem,
         updateItem,
         deleteItem,
-        addInspiration,
-        deleteInspiration,
-        addMemory,
-        deleteMemory,
-        addReflection,
-        addProgress,
-        addExpense,
         subscribeToItem,
         unsubscribeFromItem,
     } = useBucketStore();
@@ -99,9 +93,13 @@ export default function DreamDetailScreen() {
 
     const [item, setItem] = useState<BucketItem | undefined>(items.find((i) => i.id === id));
     const [isLoading, setIsLoading] = useState(!items.find((i) => i.id === id)); // Start loading if not in local cache
+    const [inspirations, setInspirations] = useState<Inspiration[]>([]);
+    const [memories, setMemories] = useState<Memory[]>([]);
+    const [reflections, setReflections] = useState<Reflection[]>([]);
+    const [progressEntries, setProgressEntries] = useState<ProgressEntry[]>([]);
+    const [expenses, setExpenses] = useState<Expense[]>([]);
     const [activeTab, setActiveTab] = useState<TabId>('story');
     const [isDeleting, setIsDeleting] = useState(false);
-    const [chatId, setChatId] = useState<string | null>(null);
     const [showConfetti, setShowConfetti] = useState(false);
 
     // Check ownership & participation
@@ -115,13 +113,12 @@ export default function DreamDetailScreen() {
     // Parallelize participation check with item load
     useEffect(() => {
         const checkParticipation = async () => {
-            if (isJourney && item && userId) {
+            if (isJourney && item?.id && userId) {
                 try {
                     const journey = await JourneysService.getJourneyByDreamId(item.id);
                     if (journey) {
                         const participants = journey.participants || [];
                         setIsParticipant(participants.includes(userId));
-                        setChatId(`journey_${journey.id}`);
                     }
                 } catch (e) {
                     console.error("Failed to check participation", e);
@@ -131,10 +128,37 @@ export default function DreamDetailScreen() {
 
         // Run in parallel with item subscription (non-blocking)
         checkParticipation();
-    }, [isJourney, item, userId]);
+    }, [isJourney, item?.id, userId]);
 
     // Derived permission: Can Edit = Owner OR Participant
     const canEdit = isOwner || isParticipant;
+
+    const loadSubItems = async (dreamId: string, editable: boolean) => {
+        try {
+            const [nextInspirations, nextMemories, nextReflections] = await Promise.all([
+                ItemService.getInspirations(dreamId),
+                ItemService.getMemories(dreamId),
+                ItemService.getReflections(dreamId),
+            ]);
+            setInspirations(nextInspirations);
+            setMemories(nextMemories);
+            setReflections(nextReflections);
+
+            if (editable) {
+                const [nextProgress, nextExpenses] = await Promise.all([
+                    ItemService.getProgress(dreamId),
+                    ItemService.getExpenses(dreamId),
+                ]);
+                setProgressEntries(nextProgress);
+                setExpenses(nextExpenses);
+            } else {
+                setProgressEntries([]);
+                setExpenses([]);
+            }
+        } catch (error) {
+            console.error('Failed to load dream sub-items:', error);
+        }
+    };
 
     // Modal states
     const [showInspirationModal, setShowInspirationModal] = useState(false);
@@ -143,7 +167,6 @@ export default function DreamDetailScreen() {
     const [showProgressModal, setShowProgressModal] = useState(false);
     const [showExpenseModal, setShowExpenseModal] = useState(false);
     const [showShareModal, setShowShareModal] = useState(false);
-    const [isSharing, setIsSharing] = useState(false);
 
     // Action menu ref
     const actionMenuRef = useRef<BottomSheetModal>(null);
@@ -202,7 +225,12 @@ export default function DreamDetailScreen() {
 
             loadDream();
         }
-    }, [id, isOwner, isParticipant, isDeleting]);
+    }, [id, isOwner, isParticipant, isDeleting, items, subscribeToItem, unsubscribeFromItem]);
+
+    useEffect(() => {
+        if (!item?.id) return;
+        loadSubItems(item.id, canEdit);
+    }, [item?.id, canEdit]);
 
     const getPhaseColor = (phase: Phase) => {
         switch (phase) {
@@ -225,7 +253,7 @@ export default function DreamDetailScreen() {
         if (!item) return;
 
         try {
-            const link = Linking.createURL(`item/${item.id}`);
+            const link = Linking.createURL(`dream/${item.id}`);
             await Clipboard.setStringAsync(link);
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
             Alert.alert('Link Copied!', 'Share this link with others to show your dream.', [{ text: 'OK' }]);
@@ -301,7 +329,6 @@ export default function DreamDetailScreen() {
         const user = auth.currentUser;
         if (!user) return;
 
-        setIsSharing(true);
         try {
             await updateItem(item.id, {
                 isPublic: true,
@@ -322,8 +349,6 @@ export default function DreamDetailScreen() {
         } catch (error) {
             console.error('Share failed:', error);
             Alert.alert('Error', 'Failed to share dream. Please try again.');
-        } finally {
-            setIsSharing(false);
         }
     };
 
@@ -346,7 +371,6 @@ export default function DreamDetailScreen() {
                     text: 'Make Private',
                     style: 'destructive',
                     onPress: async () => {
-                        setIsSharing(true);
                         try {
                             await updateItem(item.id, { isPublic: false });
                             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -354,8 +378,6 @@ export default function DreamDetailScreen() {
                         } catch (error) {
                             console.error('Unshare failed:', error);
                             Alert.alert('Error', 'Failed to update privacy. Please try again.');
-                        } finally {
-                            setIsSharing(false);
                         }
                     },
                 },
@@ -397,42 +419,107 @@ export default function DreamDetailScreen() {
     const handleDeleteInspiration = (inspirationId: string) => {
         Alert.alert('Delete Inspiration', 'Are you sure?', [
             { text: 'Cancel', style: 'cancel' },
-            { text: 'Delete', style: 'destructive', onPress: () => deleteInspiration(item!.id, inspirationId) },
+            {
+                text: 'Delete',
+                style: 'destructive',
+                onPress: async () => {
+                    if (!item) return;
+                    await ItemService.deleteInspiration(item.id, inspirationId);
+                    setInspirations((prev) => prev.filter((i) => i.id !== inspirationId));
+                }
+            },
         ]);
     };
 
     // Modal handlers
     const handleAddInspiration = async (type: 'image' | 'quote' | 'link', content: string, caption?: string) => {
         if (!item) return;
-        await addInspiration(item.id, { type, content, caption });
+        const newInspiration: Inspiration = {
+            id: `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
+            type,
+            content,
+            caption,
+        };
+        await ItemService.addInspiration(item.id, newInspiration);
+        setInspirations((prev) => [newInspiration, ...prev]);
     };
 
     const handleAddMemory = async (memoryId: string, imageUrl: string, caption: string) => {
         if (!item) return;
-        await addMemory(item.id, { id: memoryId, imageUrl, caption, date: Date.now() });
+        const newMemory: Memory = { id: memoryId, imageUrl, caption, date: Date.now() };
+        await ItemService.addMemory(item.id, newMemory);
+        setMemories((prev) => [newMemory, ...prev]);
     };
 
     const handleDeleteMemory = (memoryId: string) => {
         if (!item) return;
         Alert.alert('Delete Memory', 'Are you sure you want to delete this memory?', [
             { text: 'Cancel', style: 'cancel' },
-            { text: 'Delete', style: 'destructive', onPress: () => deleteMemory(item.id, memoryId) },
+            {
+                text: 'Delete',
+                style: 'destructive',
+                onPress: async () => {
+                    if (!item) return;
+                    const deleted = memories.find((m) => m.id === memoryId);
+                    await ItemService.deleteMemory(item.id, memoryId);
+                    setMemories((prev) => prev.filter((m) => m.id !== memoryId));
+                    if (deleted?.imageUrl) {
+                        const { StoragePaths, StorageService } = await import('@/src/services/storage');
+                        const deterministicPath = StoragePaths.dreamMemory(item.userId, item.id, memoryId, item.isPublic === true);
+                        await Promise.allSettled([
+                            StorageService.deleteImage(deterministicPath),
+                            StorageService.deleteImageByUrl(deleted.imageUrl),
+                        ]);
+                    }
+                }
+            },
         ]);
     };
 
     const handleAddReflection = async (blocks: ReflectionBlock[]) => {
         if (!item) return;
-        await addReflection(item.id, { contentBlocks: blocks, date: Date.now() });
+        if (item.phase !== 'done') {
+            throw new Error('Reflections can be added only when dream is completed');
+        }
+        const newReflection: Reflection = {
+            id: `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
+            contentBlocks: blocks,
+            date: Date.now(),
+        };
+        await ItemService.addReflection(item.id, newReflection);
+        setReflections((prev) => [newReflection, ...prev]);
     };
 
     const handleAddProgress = async (title: string, description?: string, imageUrl?: string) => {
         if (!item) return;
-        await addProgress(item.id, { title, description, imageUrl, date: Date.now() });
+        if (item.phase !== 'doing') {
+            throw new Error('Progress updates can only be added when dream is in Doing phase');
+        }
+        const newProgress: ProgressEntry = {
+            id: `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
+            title,
+            description,
+            imageUrl,
+            date: Date.now(),
+        };
+        await ItemService.addProgress(item.id, newProgress);
+        setProgressEntries((prev) => [newProgress, ...prev]);
     };
 
     const handleAddExpense = async (title: string, amount: number, category: Expense['category']) => {
         if (!item) return;
-        await addExpense(item.id, { title, amount, category, date: Date.now() });
+        if (item.phase !== 'doing') {
+            throw new Error('Expenses can only be added when dream is in Doing phase');
+        }
+        const newExpense: Expense = {
+            id: `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
+            title,
+            amount,
+            category,
+            date: Date.now(),
+        };
+        await ItemService.addExpense(item.id, newExpense);
+        setExpenses((prev) => [newExpense, ...prev]);
     };
 
     // Loading State - show loader while fetching
@@ -599,7 +686,7 @@ export default function DreamDetailScreen() {
 
                                 {/* Inspiration Board */}
                                 <InspirationBoard
-                                    inspirations={item.inspirations}
+                                    inspirations={inspirations}
                                     isOwner={canEdit}
                                     onAdd={canEdit ? () => setShowInspirationModal(true) : undefined}
                                     onDelete={canEdit ? handleDeleteInspiration : undefined}
@@ -608,7 +695,7 @@ export default function DreamDetailScreen() {
                                 {/* Memory Capsule */}
                                 {(item.phase === 'doing' || item.phase === 'done') && (
                                     <MemoryCapsule
-                                        memories={item.memories}
+                                        memories={memories}
                                         onAdd={canEdit ? () => setShowMemoryModal(true) : undefined}
                                         onDelete={canEdit ? handleDeleteMemory : undefined}
                                     />
@@ -617,7 +704,7 @@ export default function DreamDetailScreen() {
                                 {/* Reflections */}
                                 {item.phase === 'done' && (
                                     <Reflections
-                                        reflections={item.reflections}
+                                        reflections={reflections}
                                         onAdd={canEdit ? () => setShowReflectionModal(true) : undefined}
                                     />
                                 )}
@@ -634,6 +721,7 @@ export default function DreamDetailScreen() {
                                         <CommentSection
                                             dreamId={item.id}
                                             commentsCount={item.commentsCount}
+                                            isDreamOwner={isOwner}
                                             onCountChange={(count) => {
                                                 if (item.commentsCount !== count) {
                                                     setItem(prev => prev ? { ...prev, commentsCount: count } : undefined);
@@ -662,7 +750,8 @@ export default function DreamDetailScreen() {
 
                         {activeTab === 'progress' && (
                             <ProgressTab
-                                item={item}
+                                phase={item.phase}
+                                entries={progressEntries}
                                 isOwner={canEdit}
                                 onAddProgress={() => setShowProgressModal(true)}
                             />
@@ -670,7 +759,9 @@ export default function DreamDetailScreen() {
 
                         {activeTab === 'expenses' && (
                             <ExpensesTab
-                                item={item}
+                                phase={item.phase}
+                                budget={item.budget}
+                                expenses={expenses}
                                 isOwner={canEdit}
                                 onAddExpense={() => setShowExpenseModal(true)}
                             />

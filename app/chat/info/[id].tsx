@@ -21,7 +21,7 @@ import { Avatar } from '@/src/components/ui/Avatar';
 import { IconButton } from '@/src/components/ui/IconButton';
 import { ChatService } from '@/src/services/chat';
 import { StoragePaths, StorageService } from '@/src/services/storage';
-import { useChatStore } from '@/src/stores/useChatStore';
+import { useChatStore } from '@/src/store/useChatStore';
 import { useTheme } from '@/src/theme';
 import { Message } from '@/src/types/chat';
 

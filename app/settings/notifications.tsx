@@ -20,8 +20,6 @@ import {
     Text,
     View,
 } from 'react-native';
-import { doc, updateDoc } from 'firebase/firestore';
-import { db } from '@/firebaseConfig';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Header } from '@/src/components/shared';
 import { IconButton } from '@/src/components/ui';
@@ -62,8 +60,14 @@ export default function NotificationsScreen() {
 
     const savePref = async (updated: NotificationPreferences) => {
         if (!user) return;
-        const userRef = doc(db, 'users', user.uid);
-        await updateDoc(userRef, { 'settings.notifications': updated });
+        const profile = await UsersService.getUserProfile(user.uid);
+        await UsersService.updateUserProfile({
+            settings: {
+                notifications: updated,
+                privacy: profile?.settings?.privacy,
+                theme: profile?.settings?.theme,
+            } as any,
+        });
     };
 
     const toggleSetting = async (key: keyof NotificationPreferences) => {

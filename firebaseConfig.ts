@@ -2,16 +2,14 @@
 import "react-native-get-random-values";
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { initializeApp } from 'firebase/app';
-import {
-    Auth,
-    getAuth,
-    initializeAuth
-} from 'firebase/auth';
-// @ts-ignore
-import { getReactNativePersistence } from 'firebase/auth';
-import { getFirestore, initializeFirestore } from 'firebase/firestore';
+import { initializeAppCheck, ReCaptchaV3Provider } from 'firebase/app-check';
+import * as FirebaseAuth from 'firebase/auth';
+import { getFirestore, initializeFirestore, persistentLocalCache } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
+import { getDatabase } from 'firebase/database';
 import { Platform } from 'react-native';
+
+type Auth = FirebaseAuth.Auth;
 
 const firebaseConfig = {
     apiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY,
@@ -27,23 +25,33 @@ const firebaseConfig = {
 // Validation
 if (!firebaseConfig.apiKey || !firebaseConfig.authDomain) {
     console.error("FIREBASE CONFIG ERROR: Missing API Key or Auth Domain. Check your .env file.");
-    console.error("Current Config (Partial):", JSON.stringify(firebaseConfig, null, 2));
 }
 
 const app = initializeApp(firebaseConfig);
 
+if (Platform.OS === 'web' && process.env.EXPO_PUBLIC_RECAPTCHA_V3_SITE_KEY) {
+    try {
+        initializeAppCheck(app, {
+            provider: new ReCaptchaV3Provider(process.env.EXPO_PUBLIC_RECAPTCHA_V3_SITE_KEY),
+            isTokenAutoRefreshEnabled: true,
+        });
+    } catch (e) {
+        console.warn("App Check init skipped:", e);
+    }
+}
+
 let auth: Auth;
 
 if (Platform.OS === 'web') {
-    auth = getAuth(app);
+    auth = FirebaseAuth.getAuth(app);
 } else {
     try {
-        auth = initializeAuth(app, {
-            persistence: getReactNativePersistence(AsyncStorage)
+        auth = FirebaseAuth.initializeAuth(app, {
+            persistence: (FirebaseAuth as any).getReactNativePersistence(AsyncStorage)
         });
     } catch (e) {
         console.warn("Auth init error, falling back to default:", e);
-        auth = getAuth(app);
+        auth = FirebaseAuth.getAuth(app);
     }
 }
 
@@ -55,11 +63,16 @@ export { auth };
 // Safe initialization for HMR (Hot Module Replacement)
 export const db = (() => {
     try {
+        if (Platform.OS === 'web') {
+            return initializeFirestore(app, {
+                localCache: persistentLocalCache({}),
+            } as any);
+        }
         if (Platform.OS === 'android') {
             return initializeFirestore(app, { experimentalAutoDetectLongPolling: true } as any);
         }
         return getFirestore(app);
-    } catch (e) {
+    } catch {
         // If already initialized (e.g. reload), return existing instance
         return getFirestore(app);
     }
@@ -67,9 +80,6 @@ export const db = (() => {
 
 
 export const storage = getStorage(app);
-
-// Initialize Realtime Database
-import { getDatabase } from 'firebase/database';
 export const rtdb = getDatabase(app);
 
 export default app;

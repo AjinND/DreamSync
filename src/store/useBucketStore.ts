@@ -1,14 +1,23 @@
 import { create } from 'zustand';
+import { DocumentData, QueryDocumentSnapshot } from 'firebase/firestore';
 import { ItemService } from '../services/items';
 import { expenseSchema, inspirationSchema, progressSchema, reflectionSchema, safeValidate } from '../services/validation';
 import { BucketItem, Expense, Inspiration, Memory, Phase, ProgressEntry, Reflection } from '../types/item';
+import { getUserMessage } from '../utils/AppError';
 
 interface BucketState {
     items: BucketItem[];
+    filteredItems: BucketItem[];
     itemMap: Record<string, BucketItem>;
     loading: boolean;
+    isFetchingMore: boolean;
+    hasMore: boolean;
+    itemsCursor: QueryDocumentSnapshot<DocumentData> | null;
     error: string | null;
+    searchQuery: string;
     fetchItems: () => Promise<void>;
+    fetchMore: () => Promise<void>;
+    searchItems: (query: string) => void;
     addItem: (item: Omit<BucketItem, 'id' | 'createdAt' | 'userId'>) => Promise<void>;
     updatePhase: (id: string, newPhase: Phase) => Promise<void>;
     updateItem: (id: string, updates: Partial<BucketItem>) => Promise<void>;
@@ -37,11 +46,25 @@ const cleanForFirestore = <T extends object>(obj: T): T => {
     ) as T;
 };
 
+const applySearchFilter = (items: BucketItem[], query: string): BucketItem[] => {
+    const normalized = query.trim().toLowerCase();
+    if (!normalized) return items;
+    return items.filter((item) =>
+        item.title.toLowerCase().includes(normalized) ||
+        (item.description || '').toLowerCase().includes(normalized)
+    );
+};
+
 export const useBucketStore = create<BucketState>((set, get) => ({
     items: [],
+    filteredItems: [],
     itemMap: {},
     loading: false,
+    isFetchingMore: false,
+    hasMore: true,
+    itemsCursor: null,
     error: null,
+    searchQuery: '',
     activeSubscriptions: {},
 
     fetchItems: async () => {
@@ -53,10 +76,11 @@ export const useBucketStore = create<BucketState>((set, get) => ({
             const userId = auth.currentUser?.uid;
 
             // 1 & 2. Parallelize Owned Items + Joined Journeys queries
-            const [ownedItems, myJourneys] = await Promise.all([
-                ItemService.getUserItems(),
+            const [ownedPage, myJourneys] = await Promise.all([
+                ItemService.getUserItemsPaginated({ pageSize: 20, cursor: null }),
                 userId ? JourneysService.getUserJourneys(userId) : Promise.resolve([]),
             ]);
+            const ownedItems = ownedPage.items;
 
             // 3. Fetch shared dream items from joined journeys
             let sharedItems: BucketItem[] = [];
@@ -81,10 +105,57 @@ export const useBucketStore = create<BucketState>((set, get) => ({
             // Sort by createdAt desc
             allItems.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
 
-            set({ items: allItems, itemMap, loading: false });
+            set({
+                items: allItems,
+                filteredItems: allItems,
+                itemMap,
+                loading: false,
+                itemsCursor: ownedPage.lastDoc,
+                hasMore: ownedPage.hasMore,
+                searchQuery: '',
+            });
         } catch (e: any) {
-            set({ error: e.message, loading: false });
+            set({ error: getUserMessage(e), loading: false });
         }
+    },
+
+    fetchMore: async () => {
+        const { isFetchingMore, hasMore, itemsCursor, itemMap } = get();
+        if (isFetchingMore || !hasMore) return;
+
+        set({ isFetchingMore: true, error: null });
+        try {
+            const page = await ItemService.getUserItemsPaginated({ pageSize: 20, cursor: itemsCursor });
+            const mergedMap = { ...itemMap };
+            page.items.forEach((item) => {
+                mergedMap[item.id] = item;
+            });
+            const mergedItems = Object.values(mergedMap).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+            const query = get().searchQuery.trim().toLowerCase();
+            const filtered = query
+                ? mergedItems.filter((item) =>
+                    item.title.toLowerCase().includes(query) ||
+                    (item.description || '').toLowerCase().includes(query)
+                )
+                : mergedItems;
+
+            set({
+                items: mergedItems,
+                filteredItems: filtered,
+                itemMap: mergedMap,
+                itemsCursor: page.lastDoc,
+                hasMore: page.hasMore,
+                isFetchingMore: false,
+            });
+        } catch (e: any) {
+            set({ isFetchingMore: false, error: getUserMessage(e) });
+        }
+    },
+
+    searchItems: (query: string) => {
+        const items = get().items;
+        const filtered = applySearchFilter(items, query);
+        set({ searchQuery: query, filteredItems: filtered });
     },
 
     addItem: async (itemData) => {
@@ -99,7 +170,7 @@ export const useBucketStore = create<BucketState>((set, get) => ({
                 await UsersService.incrementPublicDreamsCount(1);
             }
         } catch (e: any) {
-            set({ error: e.message, loading: false });
+            set({ error: getUserMessage(e), loading: false });
             throw e;
         }
     },
@@ -125,13 +196,19 @@ export const useBucketStore = create<BucketState>((set, get) => ({
             updatedItemMap[id] = updatedItem;
         }
 
-        set({ items: updatedItems, itemMap: updatedItemMap });
+        set({
+            items: updatedItems,
+            filteredItems: applySearchFilter(updatedItems, get().searchQuery),
+            itemMap: updatedItemMap
+        });
 
         try {
-            await ItemService.updateItem(id, { phase });
-            if (phase === 'done') {
-                await ItemService.updateItem(id, { completedAt: Date.now() });
-            }
+            await ItemService.updateItem(
+                id,
+                phase === 'done'
+                    ? { phase, completedAt: now }
+                    : { phase, completedAt: undefined as any }
+            );
 
             // Update completed count when transitioning into or out of done
             if (!wasDone && phase === 'done') {
@@ -155,12 +232,19 @@ export const useBucketStore = create<BucketState>((set, get) => ({
                 }
             }
         } catch (e: any) {
-            set({ items: prevItems, itemMap: prevItemMap, error: e.message });
+            set({
+                items: prevItems,
+                filteredItems: applySearchFilter(prevItems, get().searchQuery),
+                itemMap: prevItemMap,
+                error: getUserMessage(e)
+            });
             throw e;
         }
     },
 
     updateItem: async (id, updates) => {
+        const prevItems = get().items;
+        const prevItemMap = get().itemMap;
         try {
             const oldItem = get().itemMap[id];
             const wasPublic = oldItem?.isPublic || false;
@@ -168,6 +252,19 @@ export const useBucketStore = create<BucketState>((set, get) => ({
 
             let processedUpdates = { ...updates };
             const isVisibilityChange = 'isPublic' in updates && oldItem && updates.isPublic !== oldItem.isPublic;
+
+            // Optimistic update for non-visibility transitions.
+            if (!isVisibilityChange && oldItem) {
+                const optimisticItem = { ...oldItem, ...processedUpdates };
+                set((state) => {
+                    const updatedItems = state.items.map(i => i.id === id ? optimisticItem : i);
+                    return {
+                        items: updatedItems,
+                        filteredItems: applySearchFilter(updatedItems, state.searchQuery),
+                        itemMap: { ...state.itemMap, [id]: optimisticItem },
+                    };
+                });
+            }
 
             if ('isPublic' in updates && oldItem) {
                 // Visibility transition requires rewriting fields so ItemService can
@@ -205,16 +302,10 @@ export const useBucketStore = create<BucketState>((set, get) => ({
 
             await ItemService.updateItem(id, processedUpdates, { currentIsPublic: oldItem?.isPublic ?? false });
 
-            // Only do full re-fetch on visibility transitions (encryption state changes)
-            // Otherwise, merge updates locally for instant UI update
+            // For visibility transitions, re-fetch because encryption/state may change.
+            // Non-visibility transitions were applied optimistically above.
             if (isVisibilityChange) {
                 await get().fetchItems();
-            } else {
-                const mergedItem = { ...oldItem, ...processedUpdates };
-                set((state) => ({
-                    items: state.items.map(i => i.id === id ? mergedItem : i),
-                    itemMap: { ...state.itemMap, [id]: mergedItem },
-                }));
             }
 
             const newItem = get().itemMap[id];
@@ -258,7 +349,12 @@ export const useBucketStore = create<BucketState>((set, get) => ({
                 }
             }
         } catch (e: any) {
-            set({ error: e.message });
+            set({
+                items: prevItems,
+                filteredItems: applySearchFilter(prevItems, get().searchQuery),
+                itemMap: prevItemMap,
+                error: getUserMessage(e)
+            });
             throw e;
         }
     },
@@ -267,14 +363,22 @@ export const useBucketStore = create<BucketState>((set, get) => ({
         try {
             // Capture item before deletion for Storage cleanup AND stats
             const item = get().itemMap[id];
+            const [memories, progressEntries] = await Promise.all([
+                ItemService.getMemories(id).catch(() => []),
+                ItemService.getProgress(id).catch(() => []),
+            ]);
 
             await ItemService.deleteItem(id);
-            set(state => ({
-                items: state.items.filter(i => i.id !== id),
-                itemMap: Object.fromEntries(
-                    Object.entries(state.itemMap).filter(([key]) => key !== id)
-                ),
-            }));
+            set(state => {
+                const updatedItems = state.items.filter(i => i.id !== id);
+                return {
+                    items: updatedItems,
+                    filteredItems: applySearchFilter(updatedItems, state.searchQuery),
+                    itemMap: Object.fromEntries(
+                        Object.entries(state.itemMap).filter(([key]) => key !== id)
+                    ),
+                };
+            });
 
             // Update user stats if needed
             if (item) {
@@ -298,13 +402,17 @@ export const useBucketStore = create<BucketState>((set, get) => ({
                 const { StorageService } = await import('../services/storage');
                 const userId = auth.currentUser?.uid;
                 if (userId) {
-                    StorageService.deleteDreamAssets(userId, id, item).catch(() => {
+                    StorageService.deleteDreamAssets(userId, id, {
+                        ...(item || {}),
+                        memories,
+                        progress: progressEntries,
+                    } as BucketItem).catch(() => {
                         // Silently ignore — best effort
                     });
                 }
             }
         } catch (e: any) {
-            set({ error: e.message });
+            set({ error: getUserMessage(e) });
             throw e;
         }
     },
@@ -317,23 +425,54 @@ export const useBucketStore = create<BucketState>((set, get) => ({
             throw new Error(`Validation failed: ${validation.error}`);
         }
         const newInsp = cleanForFirestore({ ...inspiration, id: generateId() });
-        const updated = [...(item.inspirations || []), newInsp];
-        await get().updateItem(itemId, { inspirations: updated });
+        await ItemService.addInspiration(itemId, newInsp as Inspiration);
+        set((state) => {
+            const current = state.itemMap[itemId];
+            if (!current) return state;
+            const mergedItem = { ...current, inspirations: [...(current.inspirations || []), newInsp as Inspiration] };
+            const updatedItems = state.items.map((i) => (i.id === itemId ? mergedItem : i));
+            return {
+                items: updatedItems,
+                filteredItems: applySearchFilter(updatedItems, state.searchQuery),
+                itemMap: { ...state.itemMap, [itemId]: mergedItem },
+            };
+        });
     },
 
     deleteInspiration: async (itemId, inspirationId) => {
-        const item = get().itemMap[itemId];
-        if (!item) return;
-        const updated = (item.inspirations || []).filter(i => i.id !== inspirationId);
-        await get().updateItem(itemId, { inspirations: updated });
+        await ItemService.deleteInspiration(itemId, inspirationId);
+        set((state) => {
+            const current = state.itemMap[itemId];
+            if (!current) return state;
+            const mergedItem = {
+                ...current,
+                inspirations: (current.inspirations || []).filter(i => i.id !== inspirationId),
+            };
+            const updatedItems = state.items.map((i) => (i.id === itemId ? mergedItem : i));
+            return {
+                items: updatedItems,
+                filteredItems: applySearchFilter(updatedItems, state.searchQuery),
+                itemMap: { ...state.itemMap, [itemId]: mergedItem },
+            };
+        });
     },
 
     addMemory: async (itemId, memory) => {
         const item = get().itemMap[itemId];
         if (!item) return;
         const newMem = cleanForFirestore({ ...memory, id: memory.id || generateId() });
-        const updated = [...(item.memories || []), newMem];
-        await get().updateItem(itemId, { memories: updated });
+        await ItemService.addMemory(itemId, newMem as Memory);
+        set((state) => {
+            const current = state.itemMap[itemId];
+            if (!current) return state;
+            const mergedItem = { ...current, memories: [...(current.memories || []), newMem as Memory] };
+            const updatedItems = state.items.map((i) => (i.id === itemId ? mergedItem : i));
+            return {
+                items: updatedItems,
+                filteredItems: applySearchFilter(updatedItems, state.searchQuery),
+                itemMap: { ...state.itemMap, [itemId]: mergedItem },
+            };
+        });
     },
 
     deleteMemory: async (itemId, memoryId) => {
@@ -341,10 +480,22 @@ export const useBucketStore = create<BucketState>((set, get) => ({
         if (!item) return;
 
         const memoryToDelete = (item.memories || []).find((m) => m.id === memoryId);
-        if (!memoryToDelete) return;
 
-        const updated = (item.memories || []).filter((m) => m.id !== memoryId);
-        await get().updateItem(itemId, { memories: updated });
+        await ItemService.deleteMemory(itemId, memoryId);
+        set((state) => {
+            const current = state.itemMap[itemId];
+            if (!current) return state;
+            const mergedItem = {
+                ...current,
+                memories: (current.memories || []).filter((m) => m.id !== memoryId),
+            };
+            const updatedItems = state.items.map((i) => (i.id === itemId ? mergedItem : i));
+            return {
+                items: updatedItems,
+                filteredItems: applySearchFilter(updatedItems, state.searchQuery),
+                itemMap: { ...state.itemMap, [itemId]: mergedItem },
+            };
+        });
 
         // Best-effort storage cleanup.
         const { StoragePaths, StorageService } = await import('../services/storage');
@@ -353,7 +504,7 @@ export const useBucketStore = create<BucketState>((set, get) => ({
 
         await Promise.allSettled([
             StorageService.deleteImage(deterministicPath),
-            StorageService.deleteImageByUrl(memoryToDelete.imageUrl),
+            memoryToDelete?.imageUrl ? StorageService.deleteImageByUrl(memoryToDelete.imageUrl) : Promise.resolve(),
         ]);
     },
 
@@ -368,8 +519,18 @@ export const useBucketStore = create<BucketState>((set, get) => ({
             throw new Error(`Validation failed: ${validation.error}`);
         }
         const newRef = cleanForFirestore({ ...reflection, id: generateId() });
-        const updated = [...(item.reflections || []), newRef];
-        await get().updateItem(itemId, { reflections: updated });
+        await ItemService.addReflection(itemId, newRef as Reflection);
+        set((state) => {
+            const current = state.itemMap[itemId];
+            if (!current) return state;
+            const mergedItem = { ...current, reflections: [...(current.reflections || []), newRef as Reflection] };
+            const updatedItems = state.items.map((i) => (i.id === itemId ? mergedItem : i));
+            return {
+                items: updatedItems,
+                filteredItems: applySearchFilter(updatedItems, state.searchQuery),
+                itemMap: { ...state.itemMap, [itemId]: mergedItem },
+            };
+        });
     },
 
     addProgress: async (itemId, entry) => {
@@ -383,8 +544,18 @@ export const useBucketStore = create<BucketState>((set, get) => ({
             throw new Error(`Validation failed: ${validation.error}`);
         }
         const newEntry = cleanForFirestore({ ...entry, id: generateId() });
-        const updated = [...(item.progress || []), newEntry];
-        await get().updateItem(itemId, { progress: updated });
+        await ItemService.addProgress(itemId, newEntry as ProgressEntry);
+        set((state) => {
+            const current = state.itemMap[itemId];
+            if (!current) return state;
+            const mergedItem = { ...current, progress: [...(current.progress || []), newEntry as ProgressEntry] };
+            const updatedItems = state.items.map((i) => (i.id === itemId ? mergedItem : i));
+            return {
+                items: updatedItems,
+                filteredItems: applySearchFilter(updatedItems, state.searchQuery),
+                itemMap: { ...state.itemMap, [itemId]: mergedItem },
+            };
+        });
     },
 
     addExpense: async (itemId, expense) => {
@@ -398,8 +569,18 @@ export const useBucketStore = create<BucketState>((set, get) => ({
             throw new Error(`Validation failed: ${validation.error}`);
         }
         const newExp = cleanForFirestore({ ...expense, id: generateId() });
-        const updated = [...(item.expenses || []), newExp];
-        await get().updateItem(itemId, { expenses: updated });
+        await ItemService.addExpense(itemId, newExp as Expense);
+        set((state) => {
+            const current = state.itemMap[itemId];
+            if (!current) return state;
+            const mergedItem = { ...current, expenses: [...(current.expenses || []), newExp as Expense] };
+            const updatedItems = state.items.map((i) => (i.id === itemId ? mergedItem : i));
+            return {
+                items: updatedItems,
+                filteredItems: applySearchFilter(updatedItems, state.searchQuery),
+                itemMap: { ...state.itemMap, [itemId]: mergedItem },
+            };
+        });
     },
 
     subscribeToItem: (itemId, onUpdate) => {
@@ -422,7 +603,8 @@ export const useBucketStore = create<BucketState>((set, get) => ({
 
                     return {
                         itemMap: updatedItemMap,
-                        items: updatedItems
+                        items: updatedItems,
+                        filteredItems: applySearchFilter(updatedItems, state.searchQuery)
                     };
                 });
 

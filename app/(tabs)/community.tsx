@@ -5,14 +5,15 @@
 
 import { CategoryTabs, CommunityCard } from '@/src/components/community';
 import { BucketLoaderFull } from '@/src/components/loading';
-import { EmptyState, NotificationBell } from '@/src/components/shared';
+import { EmptyState, NotificationBell, SearchBar } from '@/src/components/shared';
 import { useCommunityStore } from '@/src/store/useCommunityStore';
 import { useTheme } from '@/src/theme';
 import { useFocusEffect } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { Globe } from 'lucide-react-native';
-import { memo, useCallback, useEffect } from 'react';
+import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import {
+    ActivityIndicator,
     FlatList,
     RefreshControl,
     StyleSheet,
@@ -27,17 +28,28 @@ export default function CommunityScreen() {
         shuffledDreams,
         isLoading,
         selectedCategory,
-        fetchPublicDreams,
         filterByCategory,
         toggleLike,
         refreshFeed,
         reshuffleFeed,
+        fetchMore,
+        hasMore,
+        isFetchingMore,
     } = useCommunityStore();
+    const [query, setQuery] = useState('');
+    const visibleDreams = useMemo(() => {
+        const q = query.trim().toLowerCase();
+        if (!q) return shuffledDreams;
+        return shuffledDreams.filter((dream) =>
+            dream.title.toLowerCase().includes(q) ||
+            (dream.description || '').toLowerCase().includes(q)
+        );
+    }, [query, shuffledDreams]);
 
     // Initial fetch on mount
     useEffect(() => {
         refreshFeed();
-    }, []);
+    }, [refreshFeed]);
 
     // Refresh when tab is focused (uses smart caching with 30s TTL)
     // This ensures fresh comment/like counts when returning from detail screens
@@ -60,6 +72,15 @@ export default function CommunityScreen() {
         [toggleLike]
     );
 
+    const renderFooter = useCallback(() => {
+        if (!isFetchingMore) return null;
+        return (
+            <View style={styles.footerLoader}>
+                <ActivityIndicator color={colors.primary} />
+            </View>
+        );
+    }, [colors.primary, isFetchingMore]);
+
     return (
         <SafeAreaView style={[styles.container, { backgroundColor: isDark ? '#000' : colors.background }]} edges={['top']}>
             <StatusBar style={isDark ? 'light' : 'dark'} />
@@ -74,6 +95,11 @@ export default function CommunityScreen() {
                 <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
                     Dream. Explore. Inspire.
                 </Text>
+                <SearchBar
+                    value={query}
+                    onChangeText={setQuery}
+                    placeholder="Search community dreams..."
+                />
             </View>
 
             {/* Category tabs - full width, outside padded header */}
@@ -83,11 +109,11 @@ export default function CommunityScreen() {
             />
 
             {/* Loading State */}
-            {isLoading && shuffledDreams.length === 0 ? (
+            {isLoading && visibleDreams.length === 0 ? (
                 <BucketLoaderFull message="Loading dreams..." />
             ) : (
                 <FlatList
-                    data={shuffledDreams}
+                    data={visibleDreams}
                     renderItem={renderItem}
                     keyExtractor={(item) => item.id}
                     contentContainerStyle={styles.listContent}
@@ -95,12 +121,19 @@ export default function CommunityScreen() {
                     showsVerticalScrollIndicator={false}
                     refreshControl={
                         <RefreshControl
-                            refreshing={isLoading && shuffledDreams.length > 0}
+                            refreshing={isLoading && visibleDreams.length > 0}
                             onRefresh={handleRefresh}
                             colors={[colors.primary]}
                             tintColor={colors.primary}
                         />
                     }
+                    onEndReachedThreshold={0.4}
+                    onEndReached={() => {
+                        if (hasMore && !isLoading && !isFetchingMore) {
+                            fetchMore();
+                        }
+                    }}
+                    ListFooterComponent={renderFooter}
                     // Performance optimizations
                     removeClippedSubviews={true}
                     maxToRenderPerBatch={5}
@@ -114,7 +147,7 @@ export default function CommunityScreen() {
 }
 
 // Memoized components
-const MemoizedEmptyState = memo(() => {
+const EmptyStateContent = () => {
     const { refreshFeed, reshuffleFeed } = useCommunityStore();
 
     const handleRefresh = () => {
@@ -133,7 +166,10 @@ const MemoizedEmptyState = memo(() => {
             }}
         />
     );
-});
+};
+
+const MemoizedEmptyState = memo(EmptyStateContent);
+MemoizedEmptyState.displayName = 'MemoizedEmptyState';
 
 
 const styles = StyleSheet.create({
@@ -163,5 +199,9 @@ const styles = StyleSheet.create({
     subtitle: {
         fontSize: 16,
         marginBottom: 20,
+    },
+    footerLoader: {
+        paddingVertical: 16,
+        alignItems: 'center',
     },
 });

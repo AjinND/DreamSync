@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { auth } from '../../firebaseConfig';
-import { ChatService } from '../services/chat';
+import { ChatService, SendMessageResult } from '../services/chat';
 import { Chat, Message } from '../types/chat';
 
 interface ChatState {
@@ -16,7 +16,7 @@ interface ChatState {
     leaveChat: () => void; // Unsubscribes from messages
     clear: () => void; // Unsubscribes from everything (Sign out)
     addPendingMessage: (payload: { text?: string; type?: 'text' | 'image'; mediaUrl?: string; clientId?: string }) => string;
-    sendMessage: (payload: { text?: string; type?: 'text' | 'image'; mediaUrl?: string; clientId?: string; skipOptimistic?: boolean }) => Promise<void>;
+    sendMessage: (payload: { text?: string; type?: 'text' | 'image'; mediaUrl?: string; clientId?: string; skipOptimistic?: boolean }) => Promise<SendMessageResult>;
 }
 
 export const useChatStore = create<ChatState>((set, get) => {
@@ -129,7 +129,7 @@ export const useChatStore = create<ChatState>((set, get) => {
 
         sendMessage: async ({ text = '', type = 'text', mediaUrl, clientId, skipOptimistic = false }) => {
             const { activeChatId } = get();
-            if (!activeChatId) return;
+            if (!activeChatId) return { encrypted: true };
 
             let resolvedClientId = clientId;
             if (!skipOptimistic) {
@@ -137,7 +137,7 @@ export const useChatStore = create<ChatState>((set, get) => {
             }
 
             try {
-                await ChatService.sendMessage(activeChatId, text, type, mediaUrl, resolvedClientId);
+                return await ChatService.sendMessage(activeChatId, text, type, mediaUrl, resolvedClientId);
             } catch (error) {
                 console.error("Failed to send message:", error);
                 set((state) => ({
@@ -147,6 +147,7 @@ export const useChatStore = create<ChatState>((set, get) => {
                             : m
                     )
                 }));
+                return { encrypted: false, reason: 'send_failed' };
             }
         }
     };

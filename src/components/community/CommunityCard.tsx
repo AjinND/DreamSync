@@ -10,19 +10,20 @@ import { formatTimeAgo } from '@/src/utils/formatTimeAgo';
 import { BottomSheetModal } from '@gorhom/bottom-sheet';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
+import * as Linking from 'expo-linking';
 import { useRouter } from 'expo-router';
 import { Heart, MessageCircle, MoreVertical } from 'lucide-react-native';
 import { memo, useRef, useState } from 'react';
 import {
     Alert,
     Animated,
-    Dimensions,
     Image,
     Share,
     StyleSheet,
     Text,
     TouchableOpacity,
     View,
+    useWindowDimensions,
 } from 'react-native';
 import { CommunityPostActionMenu } from './CommunityPostActionMenu';
 
@@ -30,8 +31,6 @@ interface CommunityCardProps {
     dream: BucketItem;
     onLike: (dreamId: string) => void;
 }
-
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 const CATEGORY_EMOJI: Record<string, string> = {
     travel: '✈️',
@@ -69,13 +68,14 @@ const PHASE_LABELS: Record<string, string> = {
 
 export const CommunityCard = memo(function CommunityCard({ dream, onLike }: CommunityCardProps) {
     const { colors, isDark } = useTheme();
+    const { width: screenWidth } = useWindowDimensions();
     const router = useRouter();
     const actionMenuRef = useRef<BottomSheetModal>(null);
     const [imageOpacity] = useState(new Animated.Value(0));
     const [likeScale] = useState(new Animated.Value(1));
 
     const isLiked = CommunityService.isLikedByUser(dream);
-    const likesCount = dream.likes?.length ?? dream.likesCount ?? 0;
+    const likesCount = dream.likesCount ?? dream.likes?.length ?? 0;
     const commentsCount = dream.commentsCount || 0;
     const categoryEmoji = CATEGORY_EMOJI[dream.category] || '🌟';
     const phaseColor = PHASE_COLORS[dream.phase];
@@ -129,7 +129,7 @@ export const CommunityCard = memo(function CommunityCard({ dream, onLike }: Comm
 
     const handleShare = async () => {
         try {
-            const shareUrl = `https://dreamsync.app/dream/${dream.id}`;
+            const shareUrl = Linking.createURL(`dream/${dream.id}`);
             const message = `Check out this dream: ${dream.title}`;
 
             await Share.share({
@@ -204,11 +204,11 @@ export const CommunityCard = memo(function CommunityCard({ dream, onLike }: Comm
     return (
         <View style={styles.container}>
             {/* Image Section - Full Width */}
-            <TouchableOpacity onPress={handlePress} activeOpacity={0.95} style={styles.imageContainer}>
+            <TouchableOpacity onPress={handlePress} activeOpacity={0.95} style={[styles.imageContainer, { width: screenWidth }]}>
                 {dream.mainImage ? (
                     <Animated.Image
                         source={{ uri: dream.mainImage }}
-                        style={[styles.dreamImage, { opacity: imageOpacity }]}
+                        style={[styles.dreamImage, { opacity: imageOpacity, width: screenWidth }]}
                         resizeMode="cover"
                         onLoad={handleImageLoad}
                     />
@@ -217,7 +217,7 @@ export const CommunityCard = memo(function CommunityCard({ dream, onLike }: Comm
                         colors={gradientColors}
                         start={{ x: 0, y: 0 }}
                         end={{ x: 1, y: 1 }}
-                        style={styles.dreamImage}
+                        style={[styles.dreamImage, { width: screenWidth }]}
                     >
                         <Text style={styles.gradientEmoji}>{categoryEmoji}</Text>
                     </LinearGradient>
@@ -350,12 +350,10 @@ const styles = StyleSheet.create({
         marginBottom: 4, // Minimal gap between posts
     },
     imageContainer: {
-        width: SCREEN_WIDTH,
         height: 280,
         position: 'relative',
     },
     dreamImage: {
-        width: SCREEN_WIDTH,
         height: 280,
         justifyContent: 'center',
         alignItems: 'center',

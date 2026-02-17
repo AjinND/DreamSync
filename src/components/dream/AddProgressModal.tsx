@@ -16,6 +16,7 @@ import {
     TouchableOpacity,
     View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 interface AddProgressModalProps {
     visible: boolean;
@@ -27,6 +28,7 @@ interface AddProgressModalProps {
 
 export function AddProgressModal({ visible, dreamId, isPublic = false, onClose, onSave }: AddProgressModalProps) {
     const { colors } = useTheme();
+    const insets = useSafeAreaInsets();
     const [title, setTitle] = useState('');
     const [description, setDescription] = useState('');
     const [imageUri, setImageUri] = useState<string | null>(null);
@@ -104,13 +106,20 @@ export function AddProgressModal({ visible, dreamId, isPublic = false, onClose, 
             : 'Save';
 
     return (
-        <Modal visible={visible} animationType="slide" transparent>
+        <Modal
+            visible={visible}
+            animationType="slide"
+            transparent
+            presentationStyle="overFullScreen"
+            statusBarTranslucent
+            onRequestClose={onClose}
+        >
             <View style={styles.overlay}>
                 <KeyboardAvoidingView
                     behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
                     style={styles.keyboardView}
                 >
-                    <View style={[styles.container, { backgroundColor: colors.background }]}>
+                    <View style={[styles.container, { backgroundColor: colors.background, paddingBottom: Math.max(24, insets.bottom + 12) }]}>
                         {/* Header */}
                         <View style={styles.header}>
                             <Text style={[styles.title, { color: colors.textPrimary }]}>
@@ -204,7 +213,9 @@ const styles = StyleSheet.create({
         justifyContent: 'flex-end',
     },
     keyboardView: {
+        flex: 1,
         width: '100%',
+        justifyContent: 'flex-end',
     },
     container: {
         borderTopLeftRadius: 24,

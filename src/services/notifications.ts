@@ -19,6 +19,7 @@ import {
     onSnapshot,
     orderBy,
     query,
+    setDoc,
     updateDoc,
     where,
     writeBatch,
@@ -28,6 +29,8 @@ import { auth, db } from '../../firebaseConfig';
 import { AppNotification } from '../types/notification';
 
 const PUSH_TOKEN_STORAGE_KEY = 'DREAMSYNC_PUSH_TOKEN';
+const PRIVATE_COLLECTION = 'private';
+const PRIVATE_SETTINGS_DOC = 'settings';
 
 export const NotificationService = {
     /**
@@ -130,8 +133,8 @@ export const NotificationService = {
         const user = auth.currentUser;
         if (!user) return;
 
-        const userRef = doc(db, 'users', user.uid);
-        await updateDoc(userRef, { pushTokens: arrayUnion(token) });
+        const privateSettingsRef = doc(db, 'users', user.uid, PRIVATE_COLLECTION, PRIVATE_SETTINGS_DOC);
+        await setDoc(privateSettingsRef, { pushTokens: arrayUnion(token) }, { merge: true });
     },
 
     /**
@@ -141,8 +144,8 @@ export const NotificationService = {
         const user = auth.currentUser;
         if (!user) return;
 
-        const userRef = doc(db, 'users', user.uid);
-        await updateDoc(userRef, { pushTokens: arrayRemove(token) });
+        const privateSettingsRef = doc(db, 'users', user.uid, PRIVATE_COLLECTION, PRIVATE_SETTINGS_DOC);
+        await setDoc(privateSettingsRef, { pushTokens: arrayRemove(token) }, { merge: true });
     },
 
     /**
@@ -199,9 +202,12 @@ export const NotificationService = {
         const snapshot = await getDocs(q);
         if (snapshot.empty) return;
 
-        const batch = writeBatch(db);
-        snapshot.docs.forEach(d => batch.update(d.ref, { read: true }));
-        await batch.commit();
+        const docs = snapshot.docs;
+        for (let i = 0; i < docs.length; i += 500) {
+            const batch = writeBatch(db);
+            docs.slice(i, i + 500).forEach(d => batch.update(d.ref, { read: true }));
+            await batch.commit();
+        }
     },
 
     /**
