@@ -4,7 +4,8 @@
  * Provides field-level symmetric encryption (XSalsa20-Poly1305 via nacl.secretbox)
  * and asymmetric encryption for chat (X25519 + XSalsa20-Poly1305 via nacl.box).
  *
- * Key derivation uses PBKDF2-HMAC-SHA256 via @noble/hashes.
+ * Key derivation uses PBKDF2-HMAC-SHA256. Primary path: Web Crypto API (async,
+ * native engine ~100x faster). Fallback: @noble/hashes pure-JS implementation.
  */
 
 import { pbkdf2 } from '@noble/hashes/pbkdf2.js';
@@ -33,15 +34,41 @@ const KDF_DOMAIN_FIELD = 'dreamsync:field-key';
 
 /**
  * Derive a 32-byte master key from a password + salt using PBKDF2-HMAC-SHA256.
- * Uses @noble/hashes which is a well-audited, pure-JS implementation.
+ *
+ * Primary path: Web Crypto API (async, native engine) — available in Hermes
+ * (RN 0.73+), browsers, and Node 15+. ~100x faster than pure-JS on device.
+ * Fallback: @noble/hashes pure-JS (synchronous) for compatibility.
  */
-export function deriveKeyFromPassword(
+export async function deriveKeyFromPassword(
     password: string,
     salt: string,
     iterations: number,
-): Uint8Array {
-    const saltBytes = decodeUTF8(salt);
-    const passwordBytes = decodeUTF8(password);
+): Promise<Uint8Array> {
+    const passwordBytes = new TextEncoder().encode(password);
+    const saltBytes = new TextEncoder().encode(salt);
+
+    // Primary path: Web Crypto API (async, native, ~100x faster than pure JS)
+    if (typeof globalThis.crypto?.subtle?.deriveBits === 'function') {
+        try {
+            const keyMaterial = await globalThis.crypto.subtle.importKey(
+                'raw',
+                passwordBytes,
+                { name: 'PBKDF2' },
+                false,
+                ['deriveBits'],
+            );
+            const bits = await globalThis.crypto.subtle.deriveBits(
+                { name: 'PBKDF2', salt: saltBytes, iterations, hash: 'SHA-256' },
+                keyMaterial,
+                256,
+            );
+            return new Uint8Array(bits);
+        } catch {
+            // Fall through to pure-JS path if crypto.subtle fails
+        }
+    }
+
+    // Fallback: pure JS via @noble/hashes (synchronous, kept for compatibility)
     return pbkdf2(sha256, passwordBytes, saltBytes, {
         c: iterations,
         dkLen: 32,

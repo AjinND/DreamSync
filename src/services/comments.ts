@@ -55,7 +55,7 @@ export const CommentsService = {
             const commentsRef = collection(db, ITEMS_COLLECTION, dreamId, 'comments');
             const docRef = await addDoc(commentsRef, comment);
 
-            console.log('[CommentsService] Comment added:', docRef.id);
+            __DEV__ && console.log('[CommentsService] Comment added:', docRef.id);
 
             // Try to increment comments count (may fail if not owner, that's OK)
             try {
@@ -65,7 +65,7 @@ export const CommentsService = {
                 });
             } catch (countError) {
                 // Non-owners can't update the dream document, but the comment was still added
-                console.log('[CommentsService] Could not update count (user is not owner)');
+                __DEV__ && console.log('[CommentsService] Could not update count (user is not owner)');
             }
 
             return { id: docRef.id, ...comment };
@@ -89,7 +89,7 @@ export const CommentsService = {
                 ...doc.data(),
             } as Comment));
 
-            console.log(`[CommentsService] Fetched ${comments.length} comments`);
+            __DEV__ && console.log(`[CommentsService] Fetched ${comments.length} comments`);
             return comments;
         } catch (error) {
             console.error('[CommentsService] Failed to fetch comments:', error);
@@ -108,11 +108,29 @@ export const CommentsService = {
         }
 
         try {
-            // Delete the comment
             const commentRef = doc(db, ITEMS_COLLECTION, dreamId, 'comments', commentId);
+            const [commentSnap, dreamSnap] = await Promise.all([
+                getDoc(commentRef),
+                getDoc(doc(db, ITEMS_COLLECTION, dreamId)),
+            ]);
+
+            if (!commentSnap.exists()) {
+                console.error('[CommentsService] Comment not found:', commentId);
+                return false;
+            }
+
+            const commentData = commentSnap.data() as Comment;
+            const dreamOwnerId = dreamSnap.exists() ? (dreamSnap.data()?.userId as string | undefined) : undefined;
+            const canDelete = commentData.userId === user.uid || dreamOwnerId === user.uid;
+            if (!canDelete) {
+                console.error('[CommentsService] Unauthorized delete attempt:', commentId);
+                return false;
+            }
+
+            // Delete the comment after authorization check
             await deleteDoc(commentRef);
 
-            console.log('[CommentsService] Comment deleted:', commentId);
+            __DEV__ && console.log('[CommentsService] Comment deleted:', commentId);
 
             // Try to decrement comments count (may fail if not dream owner, that's OK)
             try {
@@ -122,7 +140,7 @@ export const CommentsService = {
                 });
             } catch (countError) {
                 // Non-owners can't update the dream document, but the comment was still deleted
-                console.log('[CommentsService] Could not update count (user is not owner)');
+                __DEV__ && console.log('[CommentsService] Could not update count (user is not owner)');
             }
 
             return true;
@@ -142,10 +160,10 @@ export const CommentsService = {
             await updateDoc(dreamRef, {
                 commentsCount: actualCount,
             });
-            console.log(`[CommentsService] Synced comments count to ${actualCount}`);
+            __DEV__ && console.log(`[CommentsService] Synced comments count to ${actualCount}`);
         } catch (error) {
             // Silently fail if we can't update (e.g. permission issues)
-            console.log('[CommentsService] Failed to sync count:', error);
+            __DEV__ && console.log('[CommentsService] Failed to sync count:', error);
         }
     },
 };

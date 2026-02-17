@@ -2,6 +2,7 @@ import { EncryptedChatKey } from './encryption';
 
 export interface Message {
     id: string;
+    clientId?: string;
     senderId: string;
     text: string;
     createdAt: number;

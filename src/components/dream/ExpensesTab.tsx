@@ -5,7 +5,7 @@
 import { EmptyState } from '@/src/components/shared';
 import { Card } from '@/src/components/ui';
 import { useTheme } from '@/src/theme';
-import { BucketItem, Expense } from '@/src/types/item';
+import { Expense, Phase } from '@/src/types/item';
 import { DollarSign, Plus } from 'lucide-react-native';
 import {
     StyleSheet,
@@ -15,16 +15,18 @@ import {
 } from 'react-native';
 
 interface ExpensesTabProps {
-    item: BucketItem;
+    phase: Phase;
+    budget?: number;
+    expenses: Expense[];
     isOwner: boolean;
     onAddExpense: () => void;
 }
 
-export function ExpensesTab({ item, isOwner, onAddExpense }: ExpensesTabProps) {
+export function ExpensesTab({ phase, budget, expenses, isOwner, onAddExpense }: ExpensesTabProps) {
     const { colors } = useTheme();
-    const totalExpenses = item.expenses?.reduce((sum, e) => sum + e.amount, 0) || 0;
+    const totalExpenses = expenses.reduce((sum, e) => sum + e.amount, 0);
 
-    if (item.phase === 'dream') {
+    if (phase === 'dream') {
         return (
             <EmptyState
                 icon={DollarSign}
@@ -44,17 +46,17 @@ export function ExpensesTab({ item, isOwner, onAddExpense }: ExpensesTabProps) {
                         ${totalExpenses.toFixed(2)}
                     </Text>
                 </View>
-                {item.budget && (
+                {typeof budget === 'number' && (
                     <View style={styles.summaryRow}>
                         <Text style={[styles.summaryLabel, { color: colors.textSecondary }]}>Budget</Text>
                         <Text style={[styles.summaryAmount, { color: colors.primary }]}>
-                            ${item.budget.toFixed(2)}
+                            ${budget.toFixed(2)}
                         </Text>
                     </View>
                 )}
             </Card>
 
-            {isOwner && item.phase === 'doing' && (
+            {isOwner && phase === 'doing' && (
                 <TouchableOpacity
                     style={[styles.addButton, { borderColor: colors.primary }]}
                     onPress={onAddExpense}
@@ -64,8 +66,8 @@ export function ExpensesTab({ item, isOwner, onAddExpense }: ExpensesTabProps) {
                 </TouchableOpacity>
             )}
 
-            {item.expenses && item.expenses.length > 0 ? (
-                item.expenses.map((expense: Expense) => (
+            {expenses.length > 0 ? (
+                expenses.map((expense: Expense) => (
                     <Card key={expense.id} style={[styles.expenseCard, { backgroundColor: colors.surface }]}>
                         <View style={styles.expenseLeft}>
                             <View style={[styles.expenseIcon, { backgroundColor: colors.primary + '15' }]}>

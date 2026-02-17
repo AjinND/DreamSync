@@ -1,11 +1,30 @@
-import { db } from '@/firebaseConfig';
+import { auth, db } from '@/firebaseConfig';
 import { Journey } from '@/src/types/social';
 import { Chat } from '@/src/types/chat';
-import { addDoc, arrayRemove, arrayUnion, collection, deleteField, doc, getDoc, getDocs, query, updateDoc, where, writeBatch } from 'firebase/firestore';
+import {
+    arrayRemove,
+    arrayUnion,
+    collection,
+    deleteField,
+    doc,
+    DocumentData,
+    getDoc,
+    getDocs,
+    limit,
+    orderBy,
+    query,
+    QueryDocumentSnapshot,
+    serverTimestamp,
+    startAfter,
+    updateDoc,
+    where,
+    writeBatch
+} from 'firebase/firestore';
 import { decodeBase64 } from 'tweetnacl-util';
 import { ChatService } from './chat';
 import { decryptGroupKey, encryptGroupKeyForUser, generateGroupKey } from './encryption';
 import { KeyManager } from './keyManager';
+import { AppError, ErrorCode, toAppError } from '../utils/AppError';
 
 export const JourneysService = {
     _normalizeSettings: (
@@ -60,12 +79,15 @@ export const JourneysService = {
             });
 
             await batch.commit();
-            console.log('[JourneysService] Journey created and dream updated with journeyParticipants:', [ownerId]);
+            __DEV__ && console.log('[JourneysService] Journey created and dream updated with journeyParticipants:', [ownerId]);
 
             return journeyRef.id;
         } catch (error) {
             console.error('Error creating journey:', error);
-            throw error;
+            throw toAppError(error, {
+                code: ErrorCode.UNKNOWN,
+                userMessage: 'Failed to create journey. Please try again.',
+            });
         }
     },
 
@@ -104,7 +126,10 @@ export const JourneysService = {
             return null;
         } catch (error) {
             console.error('Error getting journey:', error);
-            throw error;
+            throw toAppError(error, {
+                code: ErrorCode.UNKNOWN,
+                userMessage: 'Failed to load journey details.',
+            });
         }
     },
 
@@ -137,7 +162,7 @@ export const JourneysService = {
         try {
             // Get journey to find associated dream
             const journey = await JourneysService.getJourneyById(journeyId);
-            if (!journey) throw new Error('Journey not found');
+            if (!journey) throw new AppError('Journey not found', ErrorCode.NOT_FOUND, 'Journey not found.');
 
             // Batch write: journey participants + dream participants
             const batch = writeBatch(db);
@@ -148,7 +173,7 @@ export const JourneysService = {
             batch.update(dreamRef, { journeyParticipants: arrayUnion(userId) });
 
             await batch.commit();
-            console.log('[JourneysService] Added user to journey and dream participants:', userId);
+            __DEV__ && console.log('[JourneysService] Added user to journey and dream participants:', userId);
 
             // Build updated journey locally (avoid re-fetch)
             const updatedJourney = {
@@ -167,7 +192,10 @@ export const JourneysService = {
             await JourneysService._distributeGroupKey(chatId, userId);
         } catch (error) {
             console.error('Error joining journey:', error);
-            throw error;
+            throw toAppError(error, {
+                code: ErrorCode.UNKNOWN,
+                userMessage: 'Failed to join journey. Please try again.',
+            });
         }
     },
 
@@ -184,6 +212,7 @@ export const JourneysService = {
         }>
     ): Promise<void> => {
         try {
+            const currentUserId = auth.currentUser?.uid;
             const journeyRef = doc(db, 'journeys', journeyId);
             const journey = await JourneysService.getJourneyById(journeyId);
             const normalized = JourneysService._normalizeSettings({
@@ -191,7 +220,11 @@ export const JourneysService = {
                 ...settings,
             });
 
-            await updateDoc(journeyRef, { settings: normalized });
+            await updateDoc(journeyRef, {
+                settings: normalized,
+                updatedAt: serverTimestamp(),
+                ...(currentUserId ? { updatedBy: currentUserId } : {}),
+            });
 
             // Keep linked dream discoverability in sync for community visibility.
             if (journey?.dreamId && normalized.discoverability) {
@@ -202,7 +235,10 @@ export const JourneysService = {
             }
         } catch (error) {
             console.error('Error updating journey settings:', error);
-            throw error;
+            throw toAppError(error, {
+                code: ErrorCode.UNKNOWN,
+                userMessage: 'Failed to update journey settings.',
+            });
         }
     },
 
@@ -217,7 +253,10 @@ export const JourneysService = {
             });
         } catch (error) {
             console.error('Error requesting to join:', error);
-            throw error;
+            throw toAppError(error, {
+                code: ErrorCode.UNKNOWN,
+                userMessage: 'Failed to send join request.',
+            });
         }
     },
 
@@ -228,22 +267,23 @@ export const JourneysService = {
         try {
             // Get journey to find associated dream
             const journey = await JourneysService.getJourneyById(journeyId);
-            if (!journey) throw new Error('Journey not found');
+            if (!journey) throw new AppError('Journey not found', ErrorCode.NOT_FOUND, 'Journey not found.');
 
             const journeyRef = doc(db, 'journeys', journeyId);
 
             if (action === 'accept') {
-                // Add to journey participants
-                await updateDoc(journeyRef, {
+                const dreamRef = doc(db, 'items', journey.dreamId);
+
+                // Atomic accept: journey + dream updates in a single batch.
+                const batch = writeBatch(db);
+                batch.update(journeyRef, {
                     participants: arrayUnion(userId),
                     requests: arrayRemove(userId)
                 });
-
-                // Grant dream access to the new participant
-                const dreamRef = doc(db, 'items', journey.dreamId);
-                await updateDoc(dreamRef, {
+                batch.update(dreamRef, {
                     journeyParticipants: arrayUnion(userId)
                 });
+                await batch.commit();
 
                 // Build updated journey locally (avoid re-fetch)
                 const updatedJourney = {
@@ -269,7 +309,10 @@ export const JourneysService = {
             }
         } catch (error) {
             console.error('Error handling join request:', error);
-            throw error;
+            throw toAppError(error, {
+                code: ErrorCode.UNKNOWN,
+                userMessage: 'Failed to process join request.',
+            });
         }
     },
 
@@ -277,29 +320,44 @@ export const JourneysService = {
      * Get Open Journeys (Looking for Partners)
      */
     getOpenJourneys: async (): Promise<Journey[]> => {
+        const result = await JourneysService.getOpenJourneysPaginated(20, null);
+        return result.journeys;
+    },
+
+    getOpenJourneysPaginated: async (
+        pageSize: number = 20,
+        cursor: QueryDocumentSnapshot<DocumentData> | null = null
+    ): Promise<{
+        journeys: Journey[];
+        lastDoc: QueryDocumentSnapshot<DocumentData> | null;
+        hasMore: boolean;
+    }> => {
         try {
-            // Note: This requires a composite index on settings.isOpen if we sort or complex filter
-            // For now, simpler query.
-            let q = query(collection(db, 'journeys'), where('settings.discoverability', '==', 'public'));
-            let querySnapshot = await getDocs(q);
-
-            // Backward compatibility for older journey docs.
-            if (querySnapshot.empty) {
-                q = query(collection(db, 'journeys'), where('settings.isOpen', '==', true));
-                querySnapshot = await getDocs(q);
-            }
-
-            return querySnapshot.docs.map(doc => ({
+            const baseQuery = query(
+                collection(db, 'journeys'),
+                where('settings.discoverability', '==', 'public'),
+                orderBy('createdAt', 'desc')
+            );
+            const pageQuery = cursor
+                ? query(baseQuery, startAfter(cursor), limit(pageSize))
+                : query(baseQuery, limit(pageSize));
+            const snapshot = await getDocs(pageQuery);
+            const journeys = snapshot.docs.map(doc => ({
                 id: doc.id,
                 ...doc.data()
             } as Journey));
+
+            return {
+                journeys,
+                lastDoc: snapshot.empty ? cursor : snapshot.docs[snapshot.docs.length - 1],
+                hasMore: snapshot.size >= pageSize,
+            };
         } catch (error: any) {
             if (error.code === 'failed-precondition') {
                 console.error('Missing Firestore Index for Open Journeys query. Check Firebase Console.');
             }
             console.error('Error fetching open journeys:', error);
-            // Return empty instead of throwing to prevent UI break
-            return [];
+            return { journeys: [], lastDoc: cursor, hasMore: false };
         }
     },
 
@@ -317,7 +375,10 @@ export const JourneysService = {
             } as Journey));
         } catch (error) {
             console.error('Error fetching user journeys:', error);
-            throw error;
+            throw toAppError(error, {
+                code: ErrorCode.UNKNOWN,
+                userMessage: 'Failed to load your journeys.',
+            });
         }
     },
 
@@ -328,34 +389,41 @@ export const JourneysService = {
         try {
             // Get journey to find associated dream
             const journey = await JourneysService.getJourneyById(journeyId);
-            if (!journey) throw new Error('Journey not found');
+            if (!journey) throw new AppError('Journey not found', ErrorCode.NOT_FOUND, 'Journey not found.');
 
-            // Remove from journey participants
             const journeyRef = doc(db, 'journeys', journeyId);
-            await updateDoc(journeyRef, {
+            const dreamRef = doc(db, 'items', journey.dreamId);
+            const batch = writeBatch(db);
+
+            // Atomic leave updates across journey + dream (+ chat when present)
+            batch.update(journeyRef, {
                 participants: arrayRemove(userId)
             });
 
-            // Revoke dream access
-            const dreamRef = doc(db, 'items', journey.dreamId);
-            await updateDoc(dreamRef, {
+            batch.update(dreamRef, {
                 journeyParticipants: arrayRemove(userId)
             });
 
-            // Remove from chat participants and rotate group key if chat exists
             if (journey.chatId) {
                 const chatRef = doc(db, 'chats', journey.chatId);
-                await updateDoc(chatRef, {
+                batch.update(chatRef, {
                     participants: arrayRemove(userId),
                     [`encryptedKeys.${userId}`]: deleteField(),
                 });
-
-                // Rotate group key for remaining participants
-                await JourneysService._rotateGroupKey(journey.chatId, userId);
             }
+
+            await batch.commit();
+
+            // Rotate group key for remaining participants after membership update succeeds.
+            if (journey.chatId) {
+                await JourneysService._rotateGroupKey(journey.chatId, userId);
+            }            
         } catch (error) {
             console.error('Error leaving journey:', error);
-            throw error;
+            throw toAppError(error, {
+                code: ErrorCode.UNKNOWN,
+                userMessage: 'Failed to leave journey.',
+            });
         }
     },
 
@@ -463,8 +531,14 @@ export const JourneysService = {
     deleteJourney: async (journeyId: string, userId: string): Promise<void> => {
         try {
             const journey = await JourneysService.getJourneyById(journeyId);
-            if (!journey) throw new Error('Journey not found');
-            if (journey.ownerId !== userId) throw new Error('Only the owner can delete a journey');
+            if (!journey) throw new AppError('Journey not found', ErrorCode.NOT_FOUND, 'Journey not found.');
+            if (journey.ownerId !== userId) {
+                throw new AppError(
+                    'Only the owner can delete a journey',
+                    ErrorCode.PERMISSION_DENIED,
+                    'Only the journey owner can delete this journey.'
+                );
+            }
 
             // Delete chat if one was created (RTDB + Firestore, done separately)
             if (journey.chatId) {
@@ -486,7 +560,10 @@ export const JourneysService = {
             await batch.commit();
         } catch (error) {
             console.error('Error deleting journey:', error);
-            throw error;
+            throw toAppError(error, {
+                code: ErrorCode.UNKNOWN,
+                userMessage: 'Failed to delete journey.',
+            });
         }
     }
 };

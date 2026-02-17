@@ -1,6 +1,7 @@
 import { auth } from '@/firebaseConfig';
 import { UsersService } from '@/src/services/users';
 import { useTheme } from '@/src/theme';
+import { DEFAULT_NOTIFICATION_PREFERENCES } from '@/src/types/notification';
 import { UserSettings } from '@/src/types/social';
 import { Stack, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
@@ -53,9 +54,7 @@ export default function PrivacyScreen() {
         if (user) {
             try {
                 const profile = await UsersService.getUserProfile(user.uid);
-                const currentNotifs = profile?.settings?.notifications || {
-                    comments: true, likes: true, mentions: true, journeyInvites: true
-                };
+                const currentNotifs = profile?.settings?.notifications || DEFAULT_NOTIFICATION_PREFERENCES;
                 const currentTheme = profile?.settings?.theme || 'system';
 
                 await UsersService.updateUserProfile({

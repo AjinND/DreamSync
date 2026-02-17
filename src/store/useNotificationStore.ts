@@ -6,6 +6,7 @@
 import { create } from 'zustand';
 import { NotificationService } from '../services/notifications';
 import { AppNotification } from '../types/notification';
+import { getUserMessage } from '../utils/AppError';
 
 interface NotificationState {
     notifications: AppNotification[];
@@ -40,7 +41,7 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
             set({ notifications, unreadCount, isLoading: false });
         } catch (error) {
             console.error('Failed to fetch notifications:', error);
-            set({ error: 'Failed to load notifications', isLoading: false });
+            set({ error: getUserMessage(error, 'Failed to load notifications'), isLoading: false });
         }
     },
 
@@ -63,9 +64,10 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
     markAsRead: async (id: string) => {
         // Optimistic update
         const prev = get().notifications;
+        const prevCount = get().unreadCount;
         set({
             notifications: prev.map(n => (n.id === id ? { ...n, read: true } : n)),
-            unreadCount: Math.max(0, get().unreadCount - 1),
+            unreadCount: Math.max(0, prevCount - 1),
         });
 
         try {
@@ -73,7 +75,7 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
         } catch (error) {
             console.error('Failed to mark as read:', error);
             // Revert
-            set({ notifications: prev, unreadCount: get().unreadCount + 1 });
+            set({ notifications: prev, unreadCount: prevCount });
         }
     },
 

@@ -5,7 +5,7 @@
 
 import { DreamCard } from '@/src/components/dream';
 import { BucketLoaderFull } from '@/src/components/loading/BucketLoaderFull';
-import { EmptyState, FilterChips, NotificationBell } from '@/src/components/shared';
+import { EmptyState, FilterChips, NotificationBell, SearchBar } from '@/src/components/shared';
 import { UsersService } from '@/src/services/users';
 import { useBucketStore } from '@/src/store/useBucketStore';
 import { useTheme } from '@/src/theme';
@@ -13,8 +13,8 @@ import { UserProfile } from '@/src/types/social';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { Moon, Plus } from 'lucide-react-native';
-import { useCallback, useEffect, useState } from 'react';
-import { FlatList, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { ActivityIndicator, FlatList, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 type Status = 'all' | 'dream' | 'doing' | 'done';
@@ -29,27 +29,40 @@ const STATUS_OPTIONS: { value: Status; label: string }[] = [
 export default function HomeScreen() {
   const router = useRouter();
   const { colors, isDark } = useTheme();
-  const { items, fetchItems, loading } = useBucketStore();
+  const {
+    items,
+    filteredItems,
+    fetchItems,
+    fetchMore,
+    loading,
+    hasMore,
+    isFetchingMore,
+    searchItems,
+    searchQuery,
+  } = useBucketStore();
 
   const [selectedFilter, setSelectedFilter] = useState<Status>('all');
   const [refreshing, setRefreshing] = useState(false);
   const [user, setUser] = useState<UserProfile | null>(null);
+  const hasLoadedRef = useRef(false);
 
   useEffect(() => {
-    fetchItems();
+    fetchItems().finally(() => {
+      hasLoadedRef.current = true;
+    });
     UsersService.ensureUserProfile()
       .then(setUser)
       .catch(err => console.error('Failed to load user profile:', err));
-  }, []);
+  }, [fetchItems]);
 
   // Refresh data when tab regains focus (avoids stale data when navigating back)
   useFocusEffect(
     useCallback(() => {
-      // Only refresh if items are already loaded (avoid loading spinner)
-      if (items.length > 0) {
+      // Only refresh after initial load has completed.
+      if (hasLoadedRef.current) {
         fetchItems();
       }
-    }, [items.length])
+    }, [fetchItems])
   );
 
   const handleRefresh = async () => {
@@ -67,7 +80,7 @@ export default function HomeScreen() {
   };
 
   // Filter items
-  const filteredItems = items.filter((item) => {
+  const phaseFilteredItems = filteredItems.filter((item) => {
     if (selectedFilter === 'all') return true;
     return item.phase === selectedFilter;
   });
@@ -126,6 +139,11 @@ export default function HomeScreen() {
 
       {/* Filters */}
       <View style={styles.filterSection}>
+        <SearchBar
+          value={searchQuery}
+          onChangeText={searchItems}
+          placeholder="Search dreams..."
+        />
         <FilterChips
           options={STATUS_OPTIONS}
           selected={selectedFilter}
@@ -134,6 +152,15 @@ export default function HomeScreen() {
       </View>
     </View>
   );
+
+  const ListFooter = () => {
+    if (!isFetchingMore) return null;
+    return (
+      <View style={styles.footerLoader}>
+        <ActivityIndicator color={colors.primary} />
+      </View>
+    );
+  };
 
   if (loading && items.length === 0) {
     return (
@@ -149,7 +176,7 @@ export default function HomeScreen() {
       <StatusBar style={isDark ? 'light' : 'dark'} />
 
       <FlatList
-        data={filteredItems}
+        data={phaseFilteredItems}
         renderItem={renderDreamCard}
         keyExtractor={(item) => item.id}
         ListHeaderComponent={ListHeader}
@@ -168,6 +195,13 @@ export default function HomeScreen() {
         showsVerticalScrollIndicator={false}
         refreshing={refreshing}
         onRefresh={handleRefresh}
+        onEndReachedThreshold={0.4}
+        onEndReached={() => {
+          if (hasMore && !loading && !isFetchingMore) {
+            fetchMore();
+          }
+        }}
+        ListFooterComponent={ListFooter}
       />
 
       {/* Floating Action Button */}
@@ -235,9 +269,14 @@ const styles = StyleSheet.create({
   },
   filterSection: {
     marginBottom: 8,
+    gap: 10,
   },
   listContent: {
     paddingBottom: 100,
+  },
+  footerLoader: {
+    paddingVertical: 14,
+    alignItems: 'center',
   },
   fab: {
     position: 'absolute',

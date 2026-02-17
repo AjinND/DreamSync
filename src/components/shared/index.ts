@@ -3,6 +3,7 @@
  */
 
 export { EmptyState } from './EmptyState';
+export { ErrorBoundary } from './ErrorBoundary';
 export { FilterChips } from './FilterChips';
 export { Header } from './Header';
 export { LoadingState } from './LoadingState';

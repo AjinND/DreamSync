@@ -1,25 +1,24 @@
 import { Link, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { createUserWithEmailAndPassword } from 'firebase/auth';
+import { createUserWithEmailAndPassword, sendEmailVerification } from 'firebase/auth';
 import { useState } from 'react';
 import { Alert, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { auth } from '../../firebaseConfig';
 import { KeyManager } from '../../src/services/keyManager';
 import { safeValidate, signupSchema } from '../../src/services/validation';
-import { legacyColors as colors } from '../../src/theme';
+import { useTheme } from '../../src/theme';
 
 export default function Signup() {
+    const { colors, isDark } = useTheme();
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [loading, setLoading] = useState(false);
-    const router = useRouter();
-
     const [loadingText, setLoadingText] = useState('');
+    const router = useRouter();
 
     const handleSignup = async () => {
         if (!email || !password) return Alert.alert("Error", "Please fill in all fields.");
 
-        // Validate input
         const validation = safeValidate(signupSchema, { email, password });
         if (!validation.success) {
             return Alert.alert("Validation Error", validation.error);
@@ -30,11 +29,13 @@ export default function Signup() {
             setLoadingText('Creating account...');
             const userCredential = await createUserWithEmailAndPassword(auth, email, password);
 
-            // Initialize encryption keys
             setLoadingText('Securing your account...');
             await KeyManager.initializeKeysOnSignup(password, userCredential.user.uid);
 
-            router.replace('/(tabs)');
+            setLoadingText('Sending verification email...');
+            await sendEmailVerification(userCredential.user);
+
+            router.replace('/(auth)/verify-email' as any);
         } catch (e: any) {
             Alert.alert("Signup Failed", e.message);
         } finally {
@@ -44,21 +45,21 @@ export default function Signup() {
     };
 
     return (
-        <View style={styles.container}>
-            <StatusBar style="dark" />
+        <View style={[styles.container, { backgroundColor: colors.background }]}>
+            <StatusBar style={isDark ? 'light' : 'dark'} />
 
             <View style={styles.header}>
-                <Text style={styles.titleText}>Create Account</Text>
-                <Text style={styles.subtitleText}>Start your bucket list journey today</Text>
+                <Text style={[styles.titleText, { color: colors.textPrimary }]}>Create Account</Text>
+                <Text style={[styles.subtitleText, { color: colors.textSecondary }]}>Start your bucket list journey today</Text>
             </View>
 
             <View style={styles.form}>
                 <View style={styles.inputGroup}>
-                    <Text style={styles.label}>Email</Text>
+                    <Text style={[styles.label, { color: colors.textSecondary }]}>Email</Text>
                     <TextInput
-                        style={styles.input}
+                        style={[styles.input, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.textPrimary }]}
                         placeholder="hello@example.com"
-                        placeholderTextColor={colors.slate[400]}
+                        placeholderTextColor={colors.textMuted}
                         autoCapitalize="none"
                         value={email}
                         onChangeText={setEmail}
@@ -66,11 +67,11 @@ export default function Signup() {
                 </View>
 
                 <View style={styles.inputGroup}>
-                    <Text style={styles.label}>Password</Text>
+                    <Text style={[styles.label, { color: colors.textSecondary }]}>Password</Text>
                     <TextInput
-                        style={styles.input}
+                        style={[styles.input, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.textPrimary }]}
                         placeholder="••••••••"
-                        placeholderTextColor={colors.slate[400]}
+                        placeholderTextColor={colors.textMuted}
                         secureTextEntry
                         value={password}
                         onChangeText={setPassword}
@@ -78,21 +79,21 @@ export default function Signup() {
                 </View>
 
                 <TouchableOpacity
-                    style={[styles.button, loading && styles.buttonDisabled]}
+                    style={[styles.button, { backgroundColor: colors.primary, shadowColor: colors.primary }, loading && styles.buttonDisabled]}
                     onPress={handleSignup}
                     disabled={loading}
                 >
-                    <Text style={styles.buttonText}>
+                    <Text style={[styles.buttonText, { color: colors.textInverse }]}>
                         {loading ? (loadingText || "Creating Account...") : "Sign Up"}
                     </Text>
                 </TouchableOpacity>
             </View>
 
             <View style={styles.footer}>
-                <Text style={styles.footerText}>Already have an account? </Text>
+                <Text style={[styles.footerText, { color: colors.textSecondary }]}>Already have an account? </Text>
                 <Link href="/(auth)/login" asChild>
                     <TouchableOpacity>
-                        <Text style={styles.linkText}>Sign In</Text>
+                        <Text style={[styles.linkText, { color: colors.primary }]}>Sign In</Text>
                     </TouchableOpacity>
                 </Link>
             </View>
@@ -103,7 +104,6 @@ export default function Signup() {
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: colors.white,
         padding: 24,
         justifyContent: 'center',
     },
@@ -114,11 +114,9 @@ const styles = StyleSheet.create({
     titleText: {
         fontSize: 30,
         fontWeight: 'bold',
-        color: colors.slate[900],
     },
     subtitleText: {
         fontSize: 16,
-        color: colors.slate[500],
         marginTop: 8,
     },
     form: {
@@ -130,26 +128,20 @@ const styles = StyleSheet.create({
     label: {
         fontSize: 14,
         fontWeight: '500',
-        color: colors.slate[700],
         marginBottom: 6,
         marginLeft: 4,
     },
     input: {
-        backgroundColor: colors.slate[50],
         borderWidth: 1,
-        borderColor: colors.slate[200],
         padding: 16,
         borderRadius: 12,
         fontSize: 16,
-        color: colors.slate[900],
     },
     button: {
-        backgroundColor: colors.indigo[600],
         padding: 16,
         borderRadius: 12,
         alignItems: 'center',
         marginTop: 8,
-        shadowColor: colors.indigo[600],
         shadowOffset: { width: 0, height: 4 },
         shadowOpacity: 0.2,
         shadowRadius: 8,
@@ -159,7 +151,6 @@ const styles = StyleSheet.create({
         opacity: 0.7,
     },
     buttonText: {
-        color: colors.white,
         fontSize: 18,
         fontWeight: 'bold',
     },
@@ -169,11 +160,9 @@ const styles = StyleSheet.create({
         marginTop: 32,
     },
     footerText: {
-        color: colors.slate[500],
         fontSize: 14,
     },
     linkText: {
-        color: colors.indigo[600],
         fontWeight: 'bold',
         fontSize: 14,
     },

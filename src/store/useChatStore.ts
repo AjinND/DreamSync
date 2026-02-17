@@ -1,5 +1,6 @@
 import { create } from 'zustand';
-import { ChatService } from '../services/chat';
+import { auth } from '../../firebaseConfig';
+import { ChatService, SendMessageResult } from '../services/chat';
 import { Chat, Message } from '../types/chat';
 
 interface ChatState {
@@ -14,7 +15,8 @@ interface ChatState {
     enterChat: (chatId: string) => void; // Subscribes to messages
     leaveChat: () => void; // Unsubscribes from messages
     clear: () => void; // Unsubscribes from everything (Sign out)
-    sendMessage: (text: string, type?: 'text' | 'image', mediaUrl?: string) => Promise<void>;
+    addPendingMessage: (payload: { text?: string; type?: 'text' | 'image'; mediaUrl?: string; clientId?: string }) => string;
+    sendMessage: (payload: { text?: string; type?: 'text' | 'image'; mediaUrl?: string; clientId?: string; skipOptimistic?: boolean }) => Promise<SendMessageResult>;
 }
 
 export const useChatStore = create<ChatState>((set, get) => {
@@ -45,6 +47,7 @@ export const useChatStore = create<ChatState>((set, get) => {
             }
 
             set({ activeChatId: chatId, messages: [], isLoading: true });
+            void ChatService.markChatAsRead(chatId);
 
             // Set a timeout to prevent infinite loading
             const loadingTimeout = setTimeout(() => {
@@ -59,7 +62,15 @@ export const useChatStore = create<ChatState>((set, get) => {
                 // Remove pending messages that have been confirmed by server
                 set((state) => {
                     const confirmedIds = new Set(messages.map(m => m.id));
-                    const pendingMessages = state.messages.filter(m => m._pending && !confirmedIds.has(m.id));
+                    const confirmedClientIds = new Set(
+                        messages.map(m => m.clientId).filter((v): v is string => typeof v === 'string' && v.length > 0)
+                    );
+                    const pendingMessages = state.messages.filter((m) => {
+                        if (!m._pending) return false;
+                        if (confirmedIds.has(m.id)) return false;
+                        if (m.clientId && confirmedClientIds.has(m.clientId)) return false;
+                        return true;
+                    });
                     const allMessages = [...messages, ...pendingMessages];
 
                     return {
@@ -91,16 +102,18 @@ export const useChatStore = create<ChatState>((set, get) => {
             set({ chats: [], activeChatId: null, messages: [], isLoading: false, decryptionError: false });
         },
 
-        sendMessage: async (text: string, type = 'text', mediaUrl) => {
+        addPendingMessage: ({ text = '', type = 'text', mediaUrl, clientId }) => {
             const { activeChatId, messages } = get();
-            if (!activeChatId) return;
+            if (!activeChatId) return '';
 
-            const userId = (await import('@/firebaseConfig')).auth.currentUser?.uid;
-            if (!userId) return;
+            const userId = auth.currentUser?.uid;
+            if (!userId) return '';
 
-            // Create optimistic pending message
+            const resolvedClientId = clientId || `client_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+
             const pendingMessage: Message = {
                 id: `pending_${Date.now()}_${Math.random()}`,
+                clientId: resolvedClientId,
                 senderId: userId,
                 text,
                 createdAt: Date.now(),
@@ -110,22 +123,31 @@ export const useChatStore = create<ChatState>((set, get) => {
                 _pending: true,
             };
 
-            // Add pending message to UI immediately
             set({ messages: [...messages, pendingMessage] });
+            return resolvedClientId;
+        },
+
+        sendMessage: async ({ text = '', type = 'text', mediaUrl, clientId, skipOptimistic = false }) => {
+            const { activeChatId } = get();
+            if (!activeChatId) return { encrypted: true };
+
+            let resolvedClientId = clientId;
+            if (!skipOptimistic) {
+                resolvedClientId = get().addPendingMessage({ text, type, mediaUrl, clientId });
+            }
 
             try {
-                await ChatService.sendMessage(activeChatId, text, type, mediaUrl);
-                // Real-time listener will replace pending message with server-confirmed one
+                return await ChatService.sendMessage(activeChatId, text, type, mediaUrl, resolvedClientId);
             } catch (error) {
                 console.error("Failed to send message:", error);
-                // Mark message as failed
                 set((state) => ({
                     messages: state.messages.map(m =>
-                        m.id === pendingMessage.id
+                        m.clientId === resolvedClientId
                             ? { ...m, _pending: false, _failed: true }
                             : m
                     )
                 }));
+                return { encrypted: false, reason: 'send_failed' };
             }
         }
     };

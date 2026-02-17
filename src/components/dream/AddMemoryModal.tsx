@@ -10,12 +10,13 @@ import {
     Image,
     KeyboardAvoidingView,
     Modal,
-    Platform,
+    ScrollView,
     StyleSheet,
     Text,
     TouchableOpacity,
     View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 interface AddMemoryModalProps {
     visible: boolean;
@@ -27,6 +28,7 @@ interface AddMemoryModalProps {
 
 export function AddMemoryModal({ visible, dreamId, isPublic = false, onClose, onSave }: AddMemoryModalProps) {
     const { colors } = useTheme();
+    const insets = useSafeAreaInsets();
     const [imageUri, setImageUri] = useState<string | null>(null);
     const [caption, setCaption] = useState('');
     const [loading, setLoading] = useState(false);
@@ -110,14 +112,21 @@ export function AddMemoryModal({ visible, dreamId, isPublic = false, onClose, on
         : 'Save Memory';
 
     return (
-        <Modal visible={visible} animationType="slide" transparent>
+        <Modal
+            visible={visible}
+            animationType="slide"
+            transparent
+            presentationStyle="overFullScreen"
+            statusBarTranslucent
+            onRequestClose={onClose}
+        >
             <View style={styles.overlay}>
                 <KeyboardAvoidingView
-                    behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                    behavior="padding"
                     style={styles.keyboardView}
                 >
-                    <View style={[styles.container, { backgroundColor: colors.background }]}>
-                        {/* Header */}
+                    <View style={[styles.container, { backgroundColor: colors.background, paddingBottom: Math.max(24, insets.bottom + 12) }]}>
+                        {/* Header — always visible */}
                         <View style={styles.header}>
                             <Text style={[styles.title, { color: colors.textPrimary }]}>
                                 Add Memory
@@ -127,49 +136,56 @@ export function AddMemoryModal({ visible, dreamId, isPublic = false, onClose, on
                             </TouchableOpacity>
                         </View>
 
-                        {/* Image Preview / Picker */}
-                        {imageUri ? (
-                            <TouchableOpacity onPress={pickImage} style={styles.imagePreview}>
-                                <Image source={{ uri: imageUri }} style={styles.previewImage} />
-                                <View style={styles.changeOverlay}>
-                                    <Text style={styles.changeText}>Tap to change</Text>
+                        {/* Scrollable form body — prevents buttons being clipped by keyboard */}
+                        <ScrollView
+                            keyboardShouldPersistTaps="handled"
+                            showsVerticalScrollIndicator={false}
+                            contentContainerStyle={styles.scrollContent}
+                        >
+                            {/* Image Preview / Picker */}
+                            {imageUri ? (
+                                <TouchableOpacity onPress={pickImage} style={styles.imagePreview}>
+                                    <Image source={{ uri: imageUri }} style={styles.previewImage} />
+                                    <View style={styles.changeOverlay}>
+                                        <Text style={styles.changeText}>Tap to change</Text>
+                                    </View>
+                                </TouchableOpacity>
+                            ) : (
+                                <View style={styles.imagePickerRow}>
+                                    <TouchableOpacity
+                                        style={[styles.pickerButton, { backgroundColor: colors.surface, borderColor: colors.border }]}
+                                        onPress={pickImage}
+                                    >
+                                        <ImageIcon size={28} color={colors.primary} />
+                                        <Text style={[styles.pickerText, { color: colors.textSecondary }]}>
+                                            Gallery
+                                        </Text>
+                                    </TouchableOpacity>
+                                    <TouchableOpacity
+                                        style={[styles.pickerButton, { backgroundColor: colors.surface, borderColor: colors.border }]}
+                                        onPress={takePhoto}
+                                    >
+                                        <Camera size={28} color={colors.primary} />
+                                        <Text style={[styles.pickerText, { color: colors.textSecondary }]}>
+                                            Camera
+                                        </Text>
+                                    </TouchableOpacity>
                                 </View>
-                            </TouchableOpacity>
-                        ) : (
-                            <View style={styles.imagePickerRow}>
-                                <TouchableOpacity
-                                    style={[styles.pickerButton, { backgroundColor: colors.surface, borderColor: colors.border }]}
-                                    onPress={pickImage}
-                                >
-                                    <ImageIcon size={28} color={colors.primary} />
-                                    <Text style={[styles.pickerText, { color: colors.textSecondary }]}>
-                                        Gallery
-                                    </Text>
-                                </TouchableOpacity>
-                                <TouchableOpacity
-                                    style={[styles.pickerButton, { backgroundColor: colors.surface, borderColor: colors.border }]}
-                                    onPress={takePhoto}
-                                >
-                                    <Camera size={28} color={colors.primary} />
-                                    <Text style={[styles.pickerText, { color: colors.textSecondary }]}>
-                                        Camera
-                                    </Text>
-                                </TouchableOpacity>
-                            </View>
-                        )}
+                            )}
 
-                        {/* Caption */}
-                        <Input
-                            label="Caption"
-                            placeholder="What's the story behind this moment?"
-                            value={caption}
-                            onChangeText={setCaption}
-                            multiline
-                            numberOfLines={3}
-                            style={{ minHeight: 80, textAlignVertical: 'top' }}
-                        />
+                            {/* Caption */}
+                            <Input
+                                label="Caption"
+                                placeholder="What's the story behind this moment?"
+                                value={caption}
+                                onChangeText={setCaption}
+                                multiline
+                                numberOfLines={3}
+                                style={{ minHeight: 80, textAlignVertical: 'top' }}
+                            />
+                        </ScrollView>
 
-                        {/* Actions */}
+                        {/* Actions — always visible at bottom, outside scroll */}
                         <View style={styles.actions}>
                             <TouchableOpacity
                                 style={[styles.cancelButton, { borderColor: colors.border }]}
@@ -207,7 +223,9 @@ const styles = StyleSheet.create({
         justifyContent: 'flex-end',
     },
     keyboardView: {
+        flex: 1,
         width: '100%',
+        justifyContent: 'flex-end',
     },
     container: {
         borderTopLeftRadius: 24,
@@ -268,10 +286,13 @@ const styles = StyleSheet.create({
         fontSize: 14,
         fontWeight: '600',
     },
+    scrollContent: {
+        paddingBottom: 4,
+    },
     actions: {
         flexDirection: 'row',
         gap: 12,
-        marginTop: 24,
+        marginTop: 16,
     },
     cancelButton: {
         flex: 1,

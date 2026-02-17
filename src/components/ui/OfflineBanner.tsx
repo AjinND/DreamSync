@@ -3,9 +3,10 @@ import NetInfo from "@react-native-community/netinfo";
 import { useEffect, useState } from "react";
 import { Animated, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { legacyColors as colors } from "../../theme";
+import { useTheme } from "../../theme";
 
 export function OfflineBanner() {
+    const { colors } = useTheme();
     const insets = useSafeAreaInsets();
     const [isConnected, setIsConnected] = useState<boolean | null>(true);
     const [heightAnim] = useState(new Animated.Value(0));
@@ -23,15 +24,15 @@ export function OfflineBanner() {
             duration: 300,
             useNativeDriver: false,
         }).start();
-    }, [isConnected]);
+    }, [heightAnim, isConnected]);
 
     if (isConnected !== false) return null;
 
     return (
-        <Animated.View style={[styles.container, { height: heightAnim, paddingTop: insets.top > 0 ? insets.top : 0 }]}>
+        <Animated.View style={[styles.container, { backgroundColor: colors.surfaceElevated, height: heightAnim, paddingTop: insets.top > 0 ? insets.top : 0 }]}>
             <View style={styles.content}>
-                <Ionicons name="cloud-offline" size={16} color="white" style={{ marginRight: 8 }} />
-                <Text style={styles.text}>No Internet Connection</Text>
+                <Ionicons name="cloud-offline" size={16} color={colors.textPrimary} style={{ marginRight: 8 }} />
+                <Text style={[styles.text, { color: colors.textPrimary }]}>No Internet Connection</Text>
             </View>
         </Animated.View>
     );
@@ -39,7 +40,6 @@ export function OfflineBanner() {
 
 const styles = StyleSheet.create({
     container: {
-        backgroundColor: colors.slate[800],
         overflow: 'hidden',
         position: 'absolute',
         top: 0,
@@ -56,7 +56,6 @@ const styles = StyleSheet.create({
         paddingBottom: 4,
     },
     text: {
-        color: 'white',
         fontWeight: '600',
         fontSize: 12,
     },

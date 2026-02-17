@@ -1,12 +1,10 @@
 import { auth } from '@/firebaseConfig';
 import { UsersService } from '@/src/services/users';
 import { useTheme } from '@/src/theme';
+import { DEFAULT_NOTIFICATION_PREFERENCES } from '@/src/types/notification';
 import { Ionicons } from '@expo/vector-icons';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Stack, useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
 import {
-    ActivityIndicator,
     Alert,
     ScrollView,
     StyleSheet,
@@ -22,45 +20,16 @@ import { ChevronLeft } from 'lucide-react-native';
 type ThemeMode = 'system' | 'light' | 'dark';
 
 export default function AppearanceScreen() {
-    const { colors } = useTheme();
+    const { colors, themeMode, setThemeMode } = useTheme();
     const router = useRouter();
     const user = auth.currentUser;
-    const [selectedMode, setSelectedMode] = useState<ThemeMode>('system');
-    const [isLoading, setIsLoading] = useState(true);
-
-    useEffect(() => {
-        loadSettings();
-    }, []);
-
-    const loadSettings = async () => {
-        try {
-            // Try load from storage first
-            const localTheme = await AsyncStorage.getItem('THEME_MODE');
-            if (localTheme) {
-                setSelectedMode(localTheme as ThemeMode);
-            } else if (user) {
-                // Determine from profile if not local
-                const profile = await UsersService.getUserProfile(user.uid);
-                if (profile?.settings?.theme) {
-                    setSelectedMode(profile.settings.theme);
-                }
-            }
-        } catch (error) {
-            console.error('Failed to load theme:', error);
-        } finally {
-            setIsLoading(false);
-        }
-    };
 
     const handleSelect = async (mode: ThemeMode) => {
-        setSelectedMode(mode);
         try {
-            await AsyncStorage.setItem('THEME_MODE', mode);
+            await setThemeMode(mode);
             if (user) {
                 const profile = await UsersService.getUserProfile(user.uid);
-                const currentNotifs = profile?.settings?.notifications || {
-                    comments: true, likes: true, mentions: true, journeyInvites: true
-                };
+                const currentNotifs = profile?.settings?.notifications || DEFAULT_NOTIFICATION_PREFERENCES;
                 const currentPrivacy = profile?.settings?.privacy || {
                     isPublicProfile: true, showCompletedDreams: true
                 };
@@ -73,15 +42,14 @@ export default function AppearanceScreen() {
                     }
                 } as any);
             }
-            // In a real app with ThemeProvider, we would call toggleTheme(mode) here.
-            Alert.alert('Theme Updated', 'Please restart the app to apply the theme change fully.');
         } catch (error) {
             console.error('Error saving theme:', error);
+            Alert.alert('Error', 'Failed to update appearance mode.');
         }
     };
 
     const Option = ({ mode, label, icon }: { mode: ThemeMode; label: string; icon: string }) => {
-        const isSelected = selectedMode === mode;
+        const isSelected = themeMode === mode;
         return (
             <TouchableOpacity
                 style={[styles.option, { backgroundColor: colors.surface }]}
@@ -100,15 +68,6 @@ export default function AppearanceScreen() {
             </TouchableOpacity>
         );
     };
-
-    if (isLoading) {
-        return (
-            <SafeAreaView style={[styles.container, styles.center, { backgroundColor: colors.background }]} edges={['top']}>
-                <Stack.Screen options={{ headerShown: false }} />
-                <ActivityIndicator color={colors.primary} />
-            </SafeAreaView>
-        );
-    }
 
     return (
         <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
@@ -130,7 +89,7 @@ export default function AppearanceScreen() {
             </View>
 
             <Text style={[styles.note, { color: colors.textSecondary }]}>
-                Note: Theme changes may require an app restart to take full effect.
+                Changes apply immediately across the app.
             </Text>
             </ScrollView>
         </SafeAreaView>

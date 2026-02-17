@@ -6,23 +6,95 @@
 import {
     doc,
     getDoc,
+    increment,
     setDoc,
     updateDoc,
 } from 'firebase/firestore';
 import { auth, db } from '../../firebaseConfig';
+import { DEFAULT_NOTIFICATION_PREFERENCES } from '../types/notification';
 import { UserProfile } from '../types/social';
+import { AppError, ErrorCode, toAppError } from '../utils/AppError';
 import { decryptProfileFields, encryptProfileFields, isEncryptedField } from './encryption';
 import { KeyManager } from './keyManager';
 import { safeValidate, profileUpdateSchema } from './validation';
 
 const COLLECTION_NAME = 'users';
+const PRIVATE_COLLECTION = 'private';
+const PRIVATE_SETTINGS_DOC = 'settings';
+
+const DEFAULT_USER_SETTINGS = {
+    notifications: DEFAULT_NOTIFICATION_PREFERENCES,
+    privacy: {
+        isPublicProfile: true,
+        showCompletedDreams: true,
+    },
+    theme: 'system' as const,
+};
+
+const isPermissionDenied = (error: any) =>
+    error?.code === 'permission-denied' || error?.code === 'firestore/permission-denied';
 
 export const UsersService = {
+    _getUserRef(userId: string) {
+        return doc(db, COLLECTION_NAME, userId);
+    },
+
+    _getPrivateSettingsRef(userId: string) {
+        return doc(db, COLLECTION_NAME, userId, PRIVATE_COLLECTION, PRIVATE_SETTINGS_DOC);
+    },
+
+    _getLegacySettingsRef(userId: string) {
+        return doc(db, COLLECTION_NAME, userId);
+    },
+
+    _mergeSettings(settings?: any) {
+        return {
+            ...DEFAULT_USER_SETTINGS,
+            ...(settings || {}),
+            notifications: {
+                ...DEFAULT_USER_SETTINGS.notifications,
+                ...(settings?.notifications || {}),
+            },
+            privacy: {
+                ...DEFAULT_USER_SETTINGS.privacy,
+                ...(settings?.privacy || {}),
+            },
+        };
+    },
+
+    async getUserSettings(userId: string): Promise<UserProfile['settings'] | undefined> {
+        const currentUserId = auth.currentUser?.uid;
+        if (!currentUserId || currentUserId !== userId) return undefined;
+
+        const privateRef = UsersService._getPrivateSettingsRef(userId);
+        try {
+            const privateSnapshot = await getDoc(privateRef);
+            if (privateSnapshot.exists()) {
+                const privateData = privateSnapshot.data();
+                return UsersService._mergeSettings(privateData.settings);
+            }
+        } catch (error: any) {
+            if (!isPermissionDenied(error)) {
+                throw error;
+            }
+        }
+
+        // Backward compatibility: legacy settings on root user doc.
+        const userRef = UsersService._getUserRef(userId);
+        const userSnapshot = await getDoc(userRef);
+        if (userSnapshot.exists()) {
+            const legacySettings = userSnapshot.data()?.settings;
+            if (legacySettings) return UsersService._mergeSettings(legacySettings);
+        }
+
+        return UsersService._mergeSettings();
+    },
+
     /**
      * Get a user's public profile
      */
     async getUserProfile(userId: string): Promise<UserProfile | null> {
-        const docRef = doc(db, COLLECTION_NAME, userId);
+        const docRef = UsersService._getUserRef(userId);
         const snapshot = await getDoc(docRef);
 
         if (!snapshot.exists()) {
@@ -36,6 +108,10 @@ export const UsersService = {
         // Respect public-profile privacy for non-owners.
         if (!isOwner && profileData.settings?.privacy?.isPublicProfile === false) {
             return null;
+        }
+
+        if (isOwner) {
+            profileData.settings = await UsersService.getUserSettings(userId);
         }
 
         // Only decrypt if this is the current user's own profile
@@ -59,13 +135,29 @@ export const UsersService = {
      */
     async ensureUserProfile(): Promise<UserProfile> {
         const user = auth.currentUser;
-        if (!user) throw new Error('User not authenticated');
+        if (!user) {
+            throw new AppError('User not authenticated', ErrorCode.AUTH_REQUIRED, 'Please sign in to continue.');
+        }
 
-        const docRef = doc(db, COLLECTION_NAME, user.uid);
+        const docRef = UsersService._getUserRef(user.uid);
         const snapshot = await getDoc(docRef);
 
         if (snapshot.exists()) {
             const profile = { id: snapshot.id, ...snapshot.data() } as UserProfile;
+            try {
+                const privateSettingsSnap = await getDoc(UsersService._getPrivateSettingsRef(user.uid));
+                if (!privateSettingsSnap.exists()) {
+                    await setDoc(UsersService._getPrivateSettingsRef(user.uid), {
+                        settings: UsersService._mergeSettings(profile.settings),
+                        pushTokens: [],
+                        blockedUsers: [],
+                    }, { merge: true });
+                }
+            } catch (error: any) {
+                if (!isPermissionDenied(error)) {
+                    throw error;
+                }
+            }
 
             // Publish key data if not yet stored (e.g. signup race condition)
             if (!profile.publicKey) {
@@ -85,7 +177,6 @@ export const UsersService = {
         const newProfile: Omit<UserProfile, 'id' | 'settings'> = {
             displayName: user.displayName || user.email?.split('@')[0] || 'Dreamer',
             bio: '',
-            email: user.email ?? undefined,
             avatar: user.photoURL ?? undefined,
             publicDreamsCount: 0,
             completedDreamsCount: 0,
@@ -103,6 +194,23 @@ export const UsersService = {
         }
 
         await setDoc(docRef, firestoreData);
+        try {
+            await setDoc(UsersService._getPrivateSettingsRef(user.uid), {
+                settings: UsersService._mergeSettings(),
+                pushTokens: [],
+                blockedUsers: [],
+            }, { merge: true });
+        } catch (error: any) {
+            if (isPermissionDenied(error)) {
+                await setDoc(UsersService._getLegacySettingsRef(user.uid), {
+                    settings: UsersService._mergeSettings(),
+                    pushTokens: [],
+                    blockedUsers: [],
+                }, { merge: true });
+            } else {
+                throw error;
+            }
+        }
 
         // Publish key data to the new user document
         await KeyManager.publishKeyData(user.uid).catch(() => {});
@@ -113,9 +221,11 @@ export const UsersService = {
     /**
      * Update current user's profile
      */
-    async updateUserProfile(updates: Partial<Pick<UserProfile, 'displayName' | 'avatar' | 'bio'>>): Promise<void> {
+    async updateUserProfile(updates: Partial<Pick<UserProfile, 'displayName' | 'avatar' | 'bio' | 'settings'>>): Promise<void> {
         const user = auth.currentUser;
-        if (!user) throw new Error('User not authenticated');
+        if (!user) {
+            throw new AppError('User not authenticated', ErrorCode.AUTH_REQUIRED, 'Please sign in to update your profile.');
+        }
 
         // Validate input (only validate fields that are present)
         const validationData: Record<string, any> = {};
@@ -124,7 +234,11 @@ export const UsersService = {
         if (Object.keys(validationData).length > 0) {
             const validation = safeValidate(profileUpdateSchema, validationData);
             if (!validation.success) {
-                throw new Error(`Validation failed: ${validation.error}`);
+                throw new AppError(
+                    `Validation failed: ${validation.error}`,
+                    ErrorCode.VALIDATION_ERROR,
+                    'Profile details are invalid. Please review and try again.',
+                );
             }
         }
 
@@ -135,8 +249,39 @@ export const UsersService = {
             updateData = encryptProfileFields(updateData, fieldKey);
         }
 
-        const docRef = doc(db, COLLECTION_NAME, user.uid);
-        await updateDoc(docRef, updateData);
+        if (updateData.settings) {
+            const currentSettings = await UsersService.getUserSettings(user.uid);
+            const merged = UsersService._mergeSettings({
+                ...(currentSettings || {}),
+                ...updateData.settings,
+            });
+            try {
+                await setDoc(UsersService._getPrivateSettingsRef(user.uid), {
+                    settings: merged,
+                }, { merge: true });
+            } catch (error: any) {
+                if (isPermissionDenied(error)) {
+                    await setDoc(UsersService._getLegacySettingsRef(user.uid), {
+                        settings: merged,
+                    }, { merge: true });
+                } else {
+                    throw error;
+                }
+            }
+            delete updateData.settings;
+        }
+
+        if (Object.keys(updateData).length > 0) {
+            const docRef = UsersService._getUserRef(user.uid);
+            try {
+                await updateDoc(docRef, updateData);
+            } catch (error) {
+                throw toAppError(error, {
+                    code: ErrorCode.UNKNOWN,
+                    userMessage: 'Failed to update profile. Please try again.',
+                });
+            }
+        }
     },
 
     /**
@@ -147,12 +292,7 @@ export const UsersService = {
         if (!user) return;
 
         const docRef = doc(db, COLLECTION_NAME, user.uid);
-        const snapshot = await getDoc(docRef);
-
-        if (snapshot.exists()) {
-            const current = snapshot.data().publicDreamsCount || 0;
-            await updateDoc(docRef, { publicDreamsCount: Math.max(0, current + delta) });
-        }
+        await updateDoc(docRef, { publicDreamsCount: increment(delta) });
     },
 
     /**
@@ -163,12 +303,7 @@ export const UsersService = {
         if (!user) return;
 
         const docRef = doc(db, COLLECTION_NAME, user.uid);
-        const snapshot = await getDoc(docRef);
-
-        if (snapshot.exists()) {
-            const current = snapshot.data().completedDreamsCount || 0;
-            await updateDoc(docRef, { completedDreamsCount: Math.max(0, current + delta) });
-        }
+        await updateDoc(docRef, { completedDreamsCount: increment(delta) });
     },
 
     /**

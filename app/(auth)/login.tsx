@@ -5,21 +5,29 @@ import { useState } from 'react';
 import { Alert, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { auth } from '../../firebaseConfig';
 import { KeyManager } from '../../src/services/keyManager';
+import { createExponentialBackoffLimiter } from '../../src/utils/rateLimiter';
 import { safeValidate, loginSchema } from '../../src/services/validation';
-import { legacyColors as colors } from '../../src/theme';
+import { useTheme } from '../../src/theme';
+
+const loginLimiter = createExponentialBackoffLimiter(30_000, 5);
 
 export default function Login() {
+    const { colors, isDark } = useTheme();
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [loading, setLoading] = useState(false);
+    const [loadingText, setLoadingText] = useState('');
     const router = useRouter();
 
-    const [loadingText, setLoadingText] = useState('');
-
     const handleLogin = async () => {
+        const gate = loginLimiter.canProceed('login');
+        if (!gate.allowed) {
+            const seconds = Math.ceil(gate.retryAfterMs / 1000);
+            return Alert.alert("Too Many Attempts", `Please wait ${seconds}s before trying again.`);
+        }
+
         if (!email || !password) return Alert.alert("Error", "Please fill in all fields.");
 
-        // Validate input
         const validation = safeValidate(loginSchema, { email, password });
         if (!validation.success) {
             return Alert.alert("Validation Error", validation.error);
@@ -30,12 +38,13 @@ export default function Login() {
             setLoadingText('Signing in...');
             const userCredential = await signInWithEmailAndPassword(auth, email, password);
 
-            // Initialize encryption keys
             setLoadingText('Setting up encryption...');
             await KeyManager.initializeKeysOnLogin(password, userCredential.user.uid);
+            loginLimiter.registerSuccess('login');
 
             router.replace('/(tabs)');
         } catch (e: any) {
+            loginLimiter.registerFailure('login');
             Alert.alert("Login Failed", e.message);
         } finally {
             setLoading(false);
@@ -44,24 +53,24 @@ export default function Login() {
     };
 
     return (
-        <View style={styles.container}>
-            <StatusBar style="dark" />
+        <View style={[styles.container, { backgroundColor: colors.background }]}>
+            <StatusBar style={isDark ? 'light' : 'dark'} />
 
             <View style={styles.header}>
-                <View style={styles.logoBox}>
-                    <Text style={styles.logoText}>L</Text>
+                <View style={[styles.logoBox, { backgroundColor: colors.primary, shadowColor: colors.primary }]}>
+                    <Text style={[styles.logoText, { color: colors.textInverse }]}>L</Text>
                 </View>
-                <Text style={styles.welcomeText}>Welcome Back</Text>
-                <Text style={styles.subtitleText}>Sign in to continue your journey</Text>
+                <Text style={[styles.welcomeText, { color: colors.textPrimary }]}>Welcome Back</Text>
+                <Text style={[styles.subtitleText, { color: colors.textSecondary }]}>Sign in to continue your journey</Text>
             </View>
 
             <View style={styles.form}>
                 <View style={styles.inputGroup}>
-                    <Text style={styles.label}>Email</Text>
+                    <Text style={[styles.label, { color: colors.textSecondary }]}>Email</Text>
                     <TextInput
-                        style={styles.input}
+                        style={[styles.input, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.textPrimary }]}
                         placeholder="hello@example.com"
-                        placeholderTextColor={colors.slate[400]}
+                        placeholderTextColor={colors.textMuted}
                         autoCapitalize="none"
                         value={email}
                         onChangeText={setEmail}
@@ -69,11 +78,11 @@ export default function Login() {
                 </View>
 
                 <View style={styles.inputGroup}>
-                    <Text style={styles.label}>Password</Text>
+                    <Text style={[styles.label, { color: colors.textSecondary }]}>Password</Text>
                     <TextInput
-                        style={styles.input}
+                        style={[styles.input, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.textPrimary }]}
                         placeholder="••••••••"
-                        placeholderTextColor={colors.slate[400]}
+                        placeholderTextColor={colors.textMuted}
                         secureTextEntry
                         value={password}
                         onChangeText={setPassword}
@@ -81,21 +90,21 @@ export default function Login() {
                 </View>
 
                 <TouchableOpacity
-                    style={[styles.button, loading && styles.buttonDisabled]}
+                    style={[styles.button, { backgroundColor: colors.primary, shadowColor: colors.primary }, loading && styles.buttonDisabled]}
                     onPress={handleLogin}
                     disabled={loading}
                 >
-                    <Text style={styles.buttonText}>
+                    <Text style={[styles.buttonText, { color: colors.textInverse }]}>
                         {loading ? (loadingText || "Signing In...") : "Sign In"}
                     </Text>
                 </TouchableOpacity>
             </View>
 
             <View style={styles.footer}>
-                <Text style={styles.footerText}>Don't have an account? </Text>
+                <Text style={[styles.footerText, { color: colors.textSecondary }]}>Don&apos;t have an account? </Text>
                 <Link href="/(auth)/signup" asChild>
                     <TouchableOpacity>
-                        <Text style={styles.linkText}>Sign Up</Text>
+                        <Text style={[styles.linkText, { color: colors.primary }]}>Sign Up</Text>
                     </TouchableOpacity>
                 </Link>
             </View>
@@ -106,7 +115,6 @@ export default function Login() {
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: colors.white,
         padding: 24,
         justifyContent: 'center',
     },
@@ -117,30 +125,25 @@ const styles = StyleSheet.create({
     logoBox: {
         width: 64,
         height: 64,
-        backgroundColor: colors.indigo[600],
         borderRadius: 16,
         alignItems: 'center',
         justifyContent: 'center',
         marginBottom: 16,
-        shadowColor: colors.indigo[600],
         shadowOffset: { width: 0, height: 4 },
         shadowOpacity: 0.3,
         shadowRadius: 8,
         elevation: 4,
     },
     logoText: {
-        color: colors.white,
         fontSize: 24,
         fontWeight: 'bold',
     },
     welcomeText: {
         fontSize: 30,
         fontWeight: 'bold',
-        color: colors.slate[900],
     },
     subtitleText: {
         fontSize: 16,
-        color: colors.slate[500],
         marginTop: 8,
     },
     form: {
@@ -152,26 +155,20 @@ const styles = StyleSheet.create({
     label: {
         fontSize: 14,
         fontWeight: '500',
-        color: colors.slate[700],
         marginBottom: 6,
         marginLeft: 4,
     },
     input: {
-        backgroundColor: colors.slate[50],
         borderWidth: 1,
-        borderColor: colors.slate[200],
         padding: 16,
         borderRadius: 12,
         fontSize: 16,
-        color: colors.slate[900],
     },
     button: {
-        backgroundColor: colors.indigo[600],
         padding: 16,
         borderRadius: 12,
         alignItems: 'center',
         marginTop: 8,
-        shadowColor: colors.indigo[600],
         shadowOffset: { width: 0, height: 4 },
         shadowOpacity: 0.2,
         shadowRadius: 8,
@@ -181,7 +178,6 @@ const styles = StyleSheet.create({
         opacity: 0.7,
     },
     buttonText: {
-        color: colors.white,
         fontSize: 18,
         fontWeight: 'bold',
     },
@@ -191,11 +187,9 @@ const styles = StyleSheet.create({
         marginTop: 32,
     },
     footerText: {
-        color: colors.slate[500],
         fontSize: 14,
     },
     linkText: {
-        color: colors.indigo[600],
         fontWeight: 'bold',
         fontSize: 14,
     },

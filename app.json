@@ -10,6 +10,9 @@
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
+      "associatedDomains": [
+        "applinks:dreamsync.app"
+      ],
       "infoPlist": {
         "UIBackgroundModes": [
           "remote-notification"
@@ -26,7 +29,23 @@
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
       "package": "com.dreamsync.app",
-      "googleServicesFile": "./google-services.json"
+      "googleServicesFile": "./google-services.json",
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ],
+          "data": [
+            {
+              "scheme": "https",
+              "host": "dreamsync.app"
+            }
+          ]
+        }
+      ]
     },
     "web": {
       "output": "static",

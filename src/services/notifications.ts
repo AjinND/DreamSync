@@ -6,6 +6,7 @@
 import * as Constants from 'expo-constants';
 import * as Device from 'expo-device';
 import * as Notifications from 'expo-notifications';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
     arrayRemove,
     arrayUnion,
@@ -18,6 +19,7 @@ import {
     onSnapshot,
     orderBy,
     query,
+    setDoc,
     updateDoc,
     where,
     writeBatch,
@@ -25,6 +27,10 @@ import {
 import { Platform } from 'react-native';
 import { auth, db } from '../../firebaseConfig';
 import { AppNotification } from '../types/notification';
+
+const PUSH_TOKEN_STORAGE_KEY = 'DREAMSYNC_PUSH_TOKEN';
+const PRIVATE_COLLECTION = 'private';
+const PRIVATE_SETTINGS_DOC = 'settings';
 
 export const NotificationService = {
     /**
@@ -73,14 +79,62 @@ export const NotificationService = {
     },
 
     /**
+     * Get the locally cached Expo push token for this device/session.
+     */
+    async getStoredPushToken(): Promise<string | null> {
+        try {
+            return await AsyncStorage.getItem(PUSH_TOKEN_STORAGE_KEY);
+        } catch {
+            return null;
+        }
+    },
+
+    /**
+     * Persist the Expo push token locally for strict cleanup flows.
+     */
+    async setStoredPushToken(token: string): Promise<void> {
+        try {
+            await AsyncStorage.setItem(PUSH_TOKEN_STORAGE_KEY, token);
+        } catch {
+            // best effort
+        }
+    },
+
+    /**
+     * Clear locally cached Expo push token.
+     */
+    async clearStoredPushToken(): Promise<void> {
+        try {
+            await AsyncStorage.removeItem(PUSH_TOKEN_STORAGE_KEY);
+        } catch {
+            // best effort
+        }
+    },
+
+    /**
+     * Ensure we have a locally cached Expo push token.
+     * Registers with Expo only if token is not already cached.
+     */
+    async ensureRegisteredPushToken(): Promise<string | null> {
+        const cachedToken = await NotificationService.getStoredPushToken();
+        if (cachedToken) return cachedToken;
+
+        const token = await NotificationService.registerForPushNotifications();
+        if (token) {
+            await NotificationService.setStoredPushToken(token);
+        }
+        return token;
+    },
+
+    /**
      * Store push token in the user's Firestore document (array union)
      */
     async storePushToken(token: string): Promise<void> {
         const user = auth.currentUser;
         if (!user) return;
 
-        const userRef = doc(db, 'users', user.uid);
-        await updateDoc(userRef, { pushTokens: arrayUnion(token) });
+        const privateSettingsRef = doc(db, 'users', user.uid, PRIVATE_COLLECTION, PRIVATE_SETTINGS_DOC);
+        await setDoc(privateSettingsRef, { pushTokens: arrayUnion(token) }, { merge: true });
     },
 
     /**
@@ -90,8 +144,18 @@ export const NotificationService = {
         const user = auth.currentUser;
         if (!user) return;
 
-        const userRef = doc(db, 'users', user.uid);
-        await updateDoc(userRef, { pushTokens: arrayRemove(token) });
+        const privateSettingsRef = doc(db, 'users', user.uid, PRIVATE_COLLECTION, PRIVATE_SETTINGS_DOC);
+        await setDoc(privateSettingsRef, { pushTokens: arrayRemove(token) }, { merge: true });
+    },
+
+    /**
+     * Remove cached token from server without re-registering for permissions/token.
+     */
+    async removeStoredPushTokenFromServer(): Promise<void> {
+        const token = await NotificationService.getStoredPushToken();
+        if (!token) return;
+        await NotificationService.removePushToken(token);
+        await NotificationService.clearStoredPushToken();
     },
 
     /**
@@ -138,9 +202,12 @@ export const NotificationService = {
         const snapshot = await getDocs(q);
         if (snapshot.empty) return;
 
-        const batch = writeBatch(db);
-        snapshot.docs.forEach(d => batch.update(d.ref, { read: true }));
-        await batch.commit();
+        const docs = snapshot.docs;
+        for (let i = 0; i < docs.length; i += 500) {
+            const batch = writeBatch(db);
+            docs.slice(i, i + 500).forEach(d => batch.update(d.ref, { read: true }));
+            await batch.commit();
+        }
     },
 
     /**

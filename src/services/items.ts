@@ -1,20 +1,26 @@
 import {
     addDoc,
     collection,
+    DocumentData,
     deleteDoc,
     doc,
     getDoc,
     getDocs,
     limit,
     onSnapshot,
+    orderBy,
     query,
+    QueryDocumentSnapshot,
+    setDoc,
+    startAfter,
     updateDoc,
     where
 } from 'firebase/firestore';
 import { auth, db } from '../../firebaseConfig';
 import { Chat } from '../types/chat';
-import { BucketItem, Phase } from '../types/item';
-import { decryptDreamFields, decryptField, decryptGroupKey, encryptDreamFields, isEncryptedField } from './encryption';
+import { BucketItem, Expense, Inspiration, Memory, Phase, ProgressEntry, Reflection } from '../types/item';
+import { AppError, ErrorCode, toAppError } from '../utils/AppError';
+import { decryptDreamFields, decryptField, decryptGroupKey, encryptDreamFields, encryptField, isEncryptedField } from './encryption';
 import { KeyManager } from './keyManager';
 import { safeValidate, dreamSchema } from './validation';
 import { decodeBase64 } from 'tweetnacl-util';
@@ -137,16 +143,149 @@ const stripUndefinedDeep = (value: any): any => {
     return value;
 };
 
+type SubCollectionName = 'memories' | 'progress' | 'expenses' | 'reflections' | 'inspirations';
+
+const getSubCollectionRef = (itemId: string, subCollection: SubCollectionName) =>
+    collection(db, COLLECTION_NAME, itemId, subCollection);
+
+const normalizeEncryptedNumber = (value: any, fallback = 0): number => {
+    if (typeof value === 'number') return value;
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : fallback;
+};
+
+const encryptInspiration = (inspiration: Inspiration, key: Uint8Array, item: BucketItem): Record<string, any> => {
+    const shouldEncryptStoryFields = item.isPublic !== true;
+    if (!shouldEncryptStoryFields) return inspiration as any;
+    return {
+        ...inspiration,
+        content: typeof inspiration.content === 'string' ? encryptField(inspiration.content, key) : inspiration.content,
+        caption: typeof inspiration.caption === 'string' ? encryptField(inspiration.caption, key) : inspiration.caption,
+        encryptionVersion: 1,
+    };
+};
+
+const decryptInspiration = (inspiration: any, key: Uint8Array | null): Inspiration => {
+    if (!key) return inspiration as Inspiration;
+    return {
+        ...inspiration,
+        content: isEncryptedField(inspiration.content)
+            ? (decryptField(inspiration.content, key) ?? '')
+            : inspiration.content,
+        caption: isEncryptedField(inspiration.caption)
+            ? (decryptField(inspiration.caption, key) ?? '')
+            : inspiration.caption,
+    } as Inspiration;
+};
+
+const encryptMemory = (memory: Memory, key: Uint8Array, item: BucketItem): Record<string, any> => {
+    const shouldEncryptStoryFields = item.isPublic !== true;
+    if (!shouldEncryptStoryFields) return memory as any;
+    return {
+        ...memory,
+        imageUrl: typeof memory.imageUrl === 'string' ? encryptField(memory.imageUrl, key) : memory.imageUrl,
+        caption: typeof memory.caption === 'string' ? encryptField(memory.caption, key) : memory.caption,
+        encryptionVersion: 1,
+    };
+};
+
+const decryptMemory = (memory: any, key: Uint8Array | null): Memory => {
+    if (!key) return memory as Memory;
+    return {
+        ...memory,
+        imageUrl: isEncryptedField(memory.imageUrl)
+            ? (decryptField(memory.imageUrl, key) ?? '')
+            : memory.imageUrl,
+        caption: isEncryptedField(memory.caption)
+            ? (decryptField(memory.caption, key) ?? '')
+            : memory.caption,
+    } as Memory;
+};
+
+const encryptReflection = (reflection: Reflection, key: Uint8Array, item: BucketItem): Record<string, any> => {
+    const shouldEncryptStoryFields = item.isPublic !== true;
+    if (!shouldEncryptStoryFields) return reflection as any;
+    return {
+        ...reflection,
+        answer: typeof reflection.answer === 'string' ? encryptField(reflection.answer, key) : reflection.answer,
+        contentBlocks: Array.isArray(reflection.contentBlocks)
+            ? reflection.contentBlocks.map((block) => ({
+                ...block,
+                value: typeof block.value === 'string' ? encryptField(block.value, key) : block.value,
+                caption: typeof block.caption === 'string' ? encryptField(block.caption, key) : block.caption,
+            }))
+            : reflection.contentBlocks,
+        encryptionVersion: 1,
+    };
+};
+
+const decryptReflection = (reflection: any, key: Uint8Array | null): Reflection => {
+    if (!key) return reflection as Reflection;
+    return {
+        ...reflection,
+        answer: isEncryptedField(reflection.answer)
+            ? (decryptField(reflection.answer, key) ?? '')
+            : reflection.answer,
+        contentBlocks: Array.isArray(reflection.contentBlocks)
+            ? reflection.contentBlocks.map((block: any) => ({
+                ...block,
+                value: isEncryptedField(block.value) ? (decryptField(block.value, key) ?? '') : block.value,
+                caption: isEncryptedField(block.caption) ? (decryptField(block.caption, key) ?? '') : block.caption,
+            }))
+            : reflection.contentBlocks,
+    } as Reflection;
+};
+
+const encryptProgress = (entry: ProgressEntry, key: Uint8Array): Record<string, any> => ({
+    ...entry,
+    title: typeof entry.title === 'string' ? encryptField(entry.title, key) : entry.title,
+    description: typeof entry.description === 'string' ? encryptField(entry.description, key) : entry.description,
+    imageUrl: typeof entry.imageUrl === 'string' ? encryptField(entry.imageUrl, key) : entry.imageUrl,
+    encryptionVersion: 1,
+});
+
+const decryptProgress = (entry: any, key: Uint8Array | null): ProgressEntry => {
+    if (!key) return entry as ProgressEntry;
+    return {
+        ...entry,
+        title: isEncryptedField(entry.title) ? (decryptField(entry.title, key) ?? '') : entry.title,
+        description: isEncryptedField(entry.description) ? (decryptField(entry.description, key) ?? '') : entry.description,
+        imageUrl: isEncryptedField(entry.imageUrl) ? (decryptField(entry.imageUrl, key) ?? '') : entry.imageUrl,
+    } as ProgressEntry;
+};
+
+const encryptExpense = (expense: Expense, key: Uint8Array): Record<string, any> => ({
+    ...expense,
+    title: typeof expense.title === 'string' ? encryptField(expense.title, key) : expense.title,
+    amount: typeof expense.amount === 'number' ? encryptField(String(expense.amount), key) : expense.amount,
+    category: typeof expense.category === 'string' ? encryptField(expense.category, key) : expense.category,
+    encryptionVersion: 1,
+});
+
+const decryptExpense = (expense: any, key: Uint8Array | null): Expense => {
+    if (!key) return expense as Expense;
+    const amountValue = isEncryptedField(expense.amount)
+        ? (decryptField(expense.amount, key) ?? '0')
+        : expense.amount;
+    const categoryValue = isEncryptedField(expense.category)
+        ? (decryptField(expense.category, key) ?? 'other')
+        : expense.category;
+    return {
+        ...expense,
+        title: isEncryptedField(expense.title) ? (decryptField(expense.title, key) ?? '') : expense.title,
+        amount: normalizeEncryptedNumber(amountValue, 0),
+        category: categoryValue,
+    } as Expense;
+};
+
 export const ItemService = {
     // Create
     async createItem(item: Omit<BucketItem, 'id' | 'createdAt' | 'userId'>) {
-        console.log("[ItemService] createItem called with:", item);
         const user = auth.currentUser;
         if (!user) {
             console.error("[ItemService] User not authenticated!");
-            throw new Error("User not authenticated");
+            throw new AppError('User not authenticated', ErrorCode.AUTH_REQUIRED, 'Please sign in to create dreams.');
         }
-        console.log("[ItemService] Current User ID:", user.uid);
 
         // Validate input
         const validation = safeValidate(dreamSchema, {
@@ -159,7 +298,11 @@ export const ItemService = {
             tags: item.tags,
         });
         if (!validation.success) {
-            throw new Error(`Validation failed: ${validation.error}`);
+            throw new AppError(
+                `Validation failed: ${validation.error}`,
+                ErrorCode.VALIDATION_ERROR,
+                'Dream details are invalid. Please review and try again.',
+            );
         }
 
         try {
@@ -169,6 +312,11 @@ export const ItemService = {
                 userId: user.uid,
                 createdAt: Date.now(),
             };
+            delete itemData.inspirations;
+            delete itemData.memories;
+            delete itemData.reflections;
+            delete itemData.progress;
+            delete itemData.expenses;
 
             const fieldKey = await KeyManager.getFieldEncryptionKey();
             if (fieldKey && shouldProtectByPolicy(itemData.isPublic === true, itemData)) {
@@ -178,8 +326,6 @@ export const ItemService = {
             // ... strict sanitization ...
             const sanitizedItem = JSON.parse(JSON.stringify(itemData));
 
-            console.log("[ItemService] Sanitized Item for Firestore:", sanitizedItem);
-            console.log("[ItemService] Attempting to write to 'items' collection...");
 
             // Create a timeout promise
             const timeout = new Promise((_, reject) =>
@@ -192,30 +338,54 @@ export const ItemService = {
                 timeout
             ]) as any;
 
-            console.log("[ItemService] Item created successfully with ID:", docRef.id);
             return { id: docRef.id, ...item };
         } catch (error) {
             console.error("[ItemService] Error adding document:", error);
-            throw error;
+            throw toAppError(error, {
+                code: ErrorCode.UNKNOWN,
+                userMessage: 'Failed to create dream. Please try again.',
+            });
         }
     },
 
     // Read User Items
     async getUserItems(phase?: Phase): Promise<BucketItem[]> {
+        const result = await ItemService.getUserItemsPaginated({ phase, pageSize: 100, cursor: null });
+        return result.items;
+    },
+
+    async getUserItemsPaginated(options?: {
+        phase?: Phase;
+        pageSize?: number;
+        cursor?: QueryDocumentSnapshot<DocumentData> | null;
+    }): Promise<{
+        items: BucketItem[];
+        lastDoc: QueryDocumentSnapshot<DocumentData> | null;
+        hasMore: boolean;
+    }> {
+        const phase = options?.phase;
+        const pageSize = options?.pageSize ?? 20;
+        const cursor = options?.cursor ?? null;
         const user = auth.currentUser;
-        if (!user) throw new Error("User not authenticated");
+        if (!user) {
+            throw new AppError('User not authenticated', ErrorCode.AUTH_REQUIRED, 'Please sign in to load your dreams.');
+        }
 
         let q = query(
             collection(db, COLLECTION_NAME),
-            where("userId", "==", user.uid)
-            // orderBy("createdAt", "desc") // Commented out to avoid Index requirement for now
+            where("userId", "==", user.uid),
+            orderBy("createdAt", "desc")
         );
 
         if (phase) {
             q = query(q, where("phase", "==", phase));
         }
 
+        q = cursor ? query(q, startAfter(cursor), limit(pageSize)) : query(q, limit(pageSize));
+
         const snapshot = await getDocs(q);
+        const lastDoc = snapshot.empty ? cursor : snapshot.docs[snapshot.docs.length - 1];
+        const hasMore = snapshot.size >= pageSize;
         const items = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as BucketItem));
 
         // Batch-resolve journey group keys for all journey-linked items (N+1 fix)
@@ -294,7 +464,7 @@ export const ItemService = {
             }
         }
 
-        return Promise.all(items.map(async (item) => {
+        const decryptedItems = await Promise.all(items.map(async (item) => {
             // Use cached group key for journey items
             let primaryKey: Uint8Array | null = null;
             if (JOURNEY_COLLAB_TYPES.has(item.collaborationType || '')) {
@@ -352,6 +522,12 @@ export const ItemService = {
 
             return item;
         }));
+
+        return {
+            items: decryptedItems,
+            lastDoc,
+            hasMore,
+        };
     },
 
     // Update
@@ -359,6 +535,11 @@ export const ItemService = {
         const docRef = doc(db, COLLECTION_NAME, id);
 
         let processedUpdates: Record<string, any> = { ...updates };
+        delete processedUpdates.inspirations;
+        delete processedUpdates.memories;
+        delete processedUpdates.reflections;
+        delete processedUpdates.progress;
+        delete processedUpdates.expenses;
 
         // Use provided currentIsPublic if available, otherwise fetch document
         let currentData: BucketItem | null = null;
@@ -384,7 +565,11 @@ export const ItemService = {
 
             const key = await resolveDreamFieldKey(contextForKey);
             if (!key) {
-                throw new Error('Unable to resolve encryption key for this dream update');
+                throw new AppError(
+                    'Unable to resolve encryption key for this dream update',
+                    ErrorCode.ENCRYPTION_ERROR,
+                    'Could not secure this dream update. Please retry.',
+                );
             }
 
             processedUpdates = encryptDreamFields(
@@ -397,6 +582,146 @@ export const ItemService = {
         const sanitizedUpdates = stripUndefinedDeep(processedUpdates) as Record<string, any>;
 
         await updateDoc(docRef, sanitizedUpdates);
+    },
+
+    async getItemById(id: string): Promise<BucketItem | null> {
+        const snap = await getDoc(doc(db, COLLECTION_NAME, id));
+        if (!snap.exists()) return null;
+
+        let item = { id: snap.id, ...snap.data() } as BucketItem;
+        if (item.encryptionVersion) {
+            const key = await resolveDreamFieldKey(item);
+            if (key && canDecryptWithKey(item, key)) {
+                item = decryptDreamFields(item, key);
+            }
+        }
+        return item;
+    },
+
+    async addInspiration(itemId: string, inspiration: Inspiration): Promise<Inspiration> {
+        const item = await ItemService.getItemById(itemId);
+        if (!item) throw new AppError('Dream not found', ErrorCode.NOT_FOUND, 'Dream was not found.');
+
+        const key = await resolveDreamFieldKey(item);
+        const payload = key ? encryptInspiration(inspiration, key, item) : inspiration;
+        await setDoc(doc(db, COLLECTION_NAME, itemId, 'inspirations', inspiration.id), payload);
+        return inspiration;
+    },
+
+    async getInspirations(itemId: string): Promise<Inspiration[]> {
+        const item = await ItemService.getItemById(itemId);
+        if (!item) return [];
+        // Inspiration has no `date` field, so orderBy('date') silently returns 0 docs.
+        // Use a plain fetch; document IDs are ${Date.now()}-${random} so order is implicit.
+        const key = await resolveDreamFieldKey(item);
+        const snap = await getDocs(getSubCollectionRef(itemId, 'inspirations'));
+        return snap.docs.map((d) => decryptInspiration({ id: d.id, ...d.data() }, key));
+    },
+
+    async deleteInspiration(itemId: string, inspirationId: string): Promise<void> {
+        await deleteDoc(doc(db, COLLECTION_NAME, itemId, 'inspirations', inspirationId));
+    },
+
+    async addMemory(itemId: string, memory: Memory): Promise<Memory> {
+        const item = await ItemService.getItemById(itemId);
+        if (!item) throw new AppError('Dream not found', ErrorCode.NOT_FOUND, 'Dream was not found.');
+
+        const key = await resolveDreamFieldKey(item);
+        const payload = key ? encryptMemory(memory, key, item) : memory;
+        await setDoc(doc(db, COLLECTION_NAME, itemId, 'memories', memory.id), payload);
+        return memory;
+    },
+
+    async getMemories(itemId: string): Promise<Memory[]> {
+        const item = await ItemService.getItemById(itemId);
+        if (!item) return [];
+        const key = await resolveDreamFieldKey(item);
+
+        const snap = await getDocs(query(getSubCollectionRef(itemId, 'memories'), orderBy('date', 'desc')))
+            .catch(async () => getDocs(getSubCollectionRef(itemId, 'memories')));
+        return snap.docs.map((d) => decryptMemory({ id: d.id, ...d.data() }, key));
+    },
+
+    async deleteMemory(itemId: string, memoryId: string): Promise<void> {
+        await deleteDoc(doc(db, COLLECTION_NAME, itemId, 'memories', memoryId));
+    },
+
+    async addReflection(itemId: string, reflection: Reflection): Promise<Reflection> {
+        const item = await ItemService.getItemById(itemId);
+        if (!item) throw new AppError('Dream not found', ErrorCode.NOT_FOUND, 'Dream was not found.');
+
+        const key = await resolveDreamFieldKey(item);
+        const payload = key ? encryptReflection(reflection, key, item) : reflection;
+        await setDoc(doc(db, COLLECTION_NAME, itemId, 'reflections', reflection.id), payload);
+        return reflection;
+    },
+
+    async getReflections(itemId: string): Promise<Reflection[]> {
+        const item = await ItemService.getItemById(itemId);
+        if (!item) return [];
+        const key = await resolveDreamFieldKey(item);
+
+        const snap = await getDocs(query(getSubCollectionRef(itemId, 'reflections'), orderBy('date', 'desc')))
+            .catch(async () => getDocs(getSubCollectionRef(itemId, 'reflections')));
+        return snap.docs.map((d) => decryptReflection({ id: d.id, ...d.data() }, key));
+    },
+
+    async deleteReflection(itemId: string, reflectionId: string): Promise<void> {
+        await deleteDoc(doc(db, COLLECTION_NAME, itemId, 'reflections', reflectionId));
+    },
+
+    async addProgress(itemId: string, entry: ProgressEntry): Promise<ProgressEntry> {
+        const item = await ItemService.getItemById(itemId);
+        if (!item) throw new AppError('Dream not found', ErrorCode.NOT_FOUND, 'Dream was not found.');
+
+        const key = await resolveDreamFieldKey(item);
+        if (!key) {
+            throw new AppError('No encryption key available', ErrorCode.ENCRYPTION_ERROR, 'Could not secure this progress update.');
+        }
+
+        await setDoc(doc(db, COLLECTION_NAME, itemId, 'progress', entry.id), encryptProgress(entry, key));
+        return entry;
+    },
+
+    async getProgress(itemId: string): Promise<ProgressEntry[]> {
+        const item = await ItemService.getItemById(itemId);
+        if (!item) return [];
+        const key = await resolveDreamFieldKey(item);
+
+        const snap = await getDocs(query(getSubCollectionRef(itemId, 'progress'), orderBy('date', 'desc')))
+            .catch(async () => getDocs(getSubCollectionRef(itemId, 'progress')));
+        return snap.docs.map((d) => decryptProgress({ id: d.id, ...d.data() }, key));
+    },
+
+    async deleteProgress(itemId: string, progressId: string): Promise<void> {
+        await deleteDoc(doc(db, COLLECTION_NAME, itemId, 'progress', progressId));
+    },
+
+    async addExpense(itemId: string, expense: Expense): Promise<Expense> {
+        const item = await ItemService.getItemById(itemId);
+        if (!item) throw new AppError('Dream not found', ErrorCode.NOT_FOUND, 'Dream was not found.');
+
+        const key = await resolveDreamFieldKey(item);
+        if (!key) {
+            throw new AppError('No encryption key available', ErrorCode.ENCRYPTION_ERROR, 'Could not secure this expense.');
+        }
+
+        await setDoc(doc(db, COLLECTION_NAME, itemId, 'expenses', expense.id), encryptExpense(expense, key));
+        return expense;
+    },
+
+    async getExpenses(itemId: string): Promise<Expense[]> {
+        const item = await ItemService.getItemById(itemId);
+        if (!item) return [];
+        const key = await resolveDreamFieldKey(item);
+
+        const snap = await getDocs(query(getSubCollectionRef(itemId, 'expenses'), orderBy('date', 'desc')))
+            .catch(async () => getDocs(getSubCollectionRef(itemId, 'expenses')));
+        return snap.docs.map((d) => decryptExpense({ id: d.id, ...d.data() }, key));
+    },
+
+    async deleteExpense(itemId: string, expenseId: string): Promise<void> {
+        await deleteDoc(doc(db, COLLECTION_NAME, itemId, 'expenses', expenseId));
     },
 
     // Delete

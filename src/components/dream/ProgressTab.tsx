@@ -5,7 +5,7 @@
 import { EmptyState } from '@/src/components/shared';
 import { Card } from '@/src/components/ui';
 import { useTheme } from '@/src/theme';
-import { BucketItem, ProgressEntry } from '@/src/types/item';
+import { Phase, ProgressEntry } from '@/src/types/item';
 import { Flame, Plus } from 'lucide-react-native';
 import {
     Image,
@@ -16,15 +16,16 @@ import {
 } from 'react-native';
 
 interface ProgressTabProps {
-    item: BucketItem;
+    phase: Phase;
+    entries: ProgressEntry[];
     isOwner: boolean;
     onAddProgress: () => void;
 }
 
-export function ProgressTab({ item, isOwner, onAddProgress }: ProgressTabProps) {
+export function ProgressTab({ phase, entries, isOwner, onAddProgress }: ProgressTabProps) {
     const { colors } = useTheme();
 
-    if (item.phase === 'dream') {
+    if (phase === 'dream') {
         return (
             <EmptyState
                 icon={Flame}
@@ -36,7 +37,7 @@ export function ProgressTab({ item, isOwner, onAddProgress }: ProgressTabProps) 
 
     return (
         <View style={styles.container}>
-            {isOwner && item.phase === 'doing' && (
+            {isOwner && phase === 'doing' && (
                 <TouchableOpacity
                     style={[styles.addButton, { borderColor: colors.primary }]}
                     onPress={onAddProgress}
@@ -46,8 +47,8 @@ export function ProgressTab({ item, isOwner, onAddProgress }: ProgressTabProps) 
                 </TouchableOpacity>
             )}
 
-            {item.progress && item.progress.length > 0 ? (
-                item.progress.map((entry: ProgressEntry) => (
+            {entries.length > 0 ? (
+                entries.map((entry: ProgressEntry) => (
                     <Card key={entry.id} style={[styles.progressCard, { backgroundColor: colors.surface }]}>
                         {entry.imageUrl && (
                             <Image source={{ uri: entry.imageUrl }} style={styles.progressImage} />

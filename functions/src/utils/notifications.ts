@@ -96,20 +96,50 @@ const PREF_MAP: Record<string, string> = {
   due_date_reminder: "dueDateReminders",
 };
 
+type NotificationSettings = {
+  pushEnabled?: boolean;
+  [key: string]: unknown;
+};
+
+async function getNotificationSettings(
+  userId: string
+): Promise<NotificationSettings | null> {
+  const userDoc = await db.collection("users").doc(userId).get();
+  if (!userDoc.exists) return null;
+
+  const settings = userDoc.data()?.settings?.notifications;
+  if (!settings || typeof settings !== "object") return null;
+
+  return settings as NotificationSettings;
+}
+
 /**
- * Check whether a user has the given notification type enabled
+ * Check whether in-app notification should be created.
  */
-export async function shouldNotify(
+export async function shouldCreateInAppNotification(
   userId: string,
   notificationType: string
 ): Promise<boolean> {
-  const userDoc = await db.collection("users").doc(userId).get();
-  if (!userDoc.exists) return true; // Default to sending if no settings
-
-  const settings = userDoc.data()?.settings?.notifications;
+  const settings = await getNotificationSettings(userId);
   if (!settings) return true;
 
-  // Master toggle
+  const prefKey = PREF_MAP[notificationType];
+  if (prefKey && settings[prefKey] === false) return false;
+
+  return true;
+}
+
+/**
+ * Check whether push notification should be sent.
+ * pushEnabled is treated as push-only master toggle.
+ */
+export async function shouldSendPushNotification(
+  userId: string,
+  notificationType: string
+): Promise<boolean> {
+  const settings = await getNotificationSettings(userId);
+  if (!settings) return true;
+
   if (settings.pushEnabled === false) return false;
 
   const prefKey = PREF_MAP[notificationType];
@@ -126,16 +156,22 @@ export async function notifyUser(
   type: string,
   payload: Omit<CreateNotificationPayload, "userId" | "type">
 ): Promise<void> {
-  const enabled = await shouldNotify(userId, type);
-  if (!enabled) return;
+  const [shouldCreateInApp, shouldSendPush] = await Promise.all([
+    shouldCreateInAppNotification(userId, type),
+    shouldSendPushNotification(userId, type),
+  ]);
 
-  // Create in-app notification
-  await createNotification({ userId, type, ...payload });
+  if (!shouldCreateInApp && !shouldSendPush) return;
 
-  // Send push
-  const userDoc = await db.collection("users").doc(userId).get();
-  const tokens: string[] = userDoc.data()?.pushTokens ?? [];
-  if (tokens.length > 0) {
-    await sendPushNotification(tokens, payload.title, payload.body, payload.data);
+  if (shouldCreateInApp) {
+    await createNotification({ userId, type, ...payload });
+  }
+
+  if (shouldSendPush) {
+    const userDoc = await db.collection("users").doc(userId).get();
+    const tokens: string[] = userDoc.data()?.pushTokens ?? [];
+    if (tokens.length > 0) {
+      await sendPushNotification(tokens, payload.title, payload.body, payload.data);
+    }
   }
 }

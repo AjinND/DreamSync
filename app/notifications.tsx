@@ -8,10 +8,10 @@ import { EmptyState } from '@/src/components/shared';
 import { useNotificationStore } from '@/src/store/useNotificationStore';
 import { useTheme } from '@/src/theme';
 import { AppNotification } from '@/src/types/notification';
-import { groupNotificationsByDate, NotificationGroup } from '@/src/utils/notificationHelpers';
+import { groupNotificationsByDate } from '@/src/utils/notificationHelpers';
 import { useRouter } from 'expo-router';
-import { ArrowLeft, Bell, CheckCheck } from 'lucide-react-native';
-import { useEffect, useMemo, useState } from 'react';
+import { ArrowLeft, Bell, CheckCheck, Trash2 } from 'lucide-react-native';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
     ActivityIndicator,
     FlatList,
@@ -21,7 +21,9 @@ import {
     TouchableOpacity,
     View,
 } from 'react-native';
+import { Swipeable } from 'react-native-gesture-handler';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import type { Swipeable as SwipeableType } from 'react-native-gesture-handler';
 
 export default function NotificationsScreen() {
     const { colors } = useTheme();
@@ -40,7 +42,7 @@ export default function NotificationsScreen() {
 
     useEffect(() => {
         fetchNotifications();
-    }, []);
+    }, [fetchNotifications]);
 
     const groups = useMemo(
         () => groupNotificationsByDate(notifications),
@@ -49,7 +51,7 @@ export default function NotificationsScreen() {
 
     // Flatten groups into a list with section headers for FlatList
     const flatData = useMemo(() => {
-        const result: Array<{ type: 'header'; title: string } | { type: 'item'; notification: AppNotification }> = [];
+        const result: ({ type: 'header'; title: string } | { type: 'item'; notification: AppNotification })[] = [];
         for (const group of groups) {
             result.push({ type: 'header', title: group.title });
             for (const notif of group.data) {
@@ -80,9 +82,21 @@ export default function NotificationsScreen() {
         }
     };
 
-    const handleLongPress = (notif: AppNotification) => {
-        deleteNotification(notif.id);
-    };
+    const swipeableRefs = useRef<Record<string, SwipeableType | null>>({});
+
+    const renderSwipeDeleteAction = (notificationId: string) => (
+        <TouchableOpacity
+            activeOpacity={0.85}
+            style={[styles.deleteAction, { backgroundColor: colors.error }]}
+            onPress={() => {
+                swipeableRefs.current[notificationId]?.close();
+                deleteNotification(notificationId);
+            }}
+        >
+            <Trash2 size={18} color="#FFFFFF" />
+            <Text style={styles.deleteActionText}>Delete</Text>
+        </TouchableOpacity>
+    );
 
     const renderItem = ({ item }: { item: (typeof flatData)[number] }) => {
         if (item.type === 'header') {
@@ -96,11 +110,19 @@ export default function NotificationsScreen() {
         }
 
         return (
-            <NotificationItem
-                notification={item.notification}
-                onPress={handleNotificationPress}
-                onLongPress={handleLongPress}
-            />
+            <Swipeable
+                ref={(ref) => {
+                    swipeableRefs.current[item.notification.id] = ref;
+                }}
+                renderLeftActions={() => renderSwipeDeleteAction(item.notification.id)}
+                overshootLeft={false}
+                leftThreshold={60}
+            >
+                <NotificationItem
+                    notification={item.notification}
+                    onPress={handleNotificationPress}
+                />
+            </Swipeable>
         );
     };
 
@@ -198,6 +220,18 @@ const styles = StyleSheet.create({
     },
     listContent: {
         paddingBottom: 40,
+    },
+    deleteAction: {
+        width: 104,
+        justifyContent: 'center',
+        alignItems: 'center',
+        flexDirection: 'row',
+        gap: 8,
+    },
+    deleteActionText: {
+        color: '#FFFFFF',
+        fontSize: 13,
+        fontWeight: '700',
     },
     emptyContent: {
         flex: 1,
