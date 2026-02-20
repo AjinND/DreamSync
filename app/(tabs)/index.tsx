@@ -3,8 +3,7 @@
  * Displays user's dreams with filtering, search, and premium DreamCard UI
  */
 
-import { DreamCard } from '@/src/components/dream';
-import { BucketLoaderFull } from '@/src/components/loading/BucketLoaderFull';
+import { DreamCard, DreamCardSkeletonList } from '@/src/components/dream';
 import { EmptyState, FilterChips, NotificationBell, SearchBar } from '@/src/components/shared';
 import { UsersService } from '@/src/services/users';
 import { useBucketStore } from '@/src/store/useBucketStore';
@@ -12,10 +11,12 @@ import { useTheme } from '@/src/theme';
 import { UserProfile } from '@/src/types/social';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { Moon, Plus } from 'lucide-react-native';
+import { Moon, Plus, Trash2 } from 'lucide-react-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, FlatList, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, FlatList, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Swipeable } from 'react-native-gesture-handler';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import type { Swipeable as SwipeableType } from 'react-native-gesture-handler';
 
 type Status = 'all' | 'dream' | 'doing' | 'done';
 
@@ -39,12 +40,15 @@ export default function HomeScreen() {
     isFetchingMore,
     searchItems,
     searchQuery,
+    deleteItem,
   } = useBucketStore();
 
   const [selectedFilter, setSelectedFilter] = useState<Status>('all');
   const [refreshing, setRefreshing] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [user, setUser] = useState<UserProfile | null>(null);
   const hasLoadedRef = useRef(false);
+  const swipeableRefs = useRef<Record<string, SwipeableType | null>>({});
 
   useEffect(() => {
     fetchItems().finally(() => {
@@ -79,6 +83,47 @@ export default function HomeScreen() {
     router.push(`/item/${dreamId}`);
   };
 
+  const handleDeleteDream = useCallback((dreamId: string, title: string) => {
+    Alert.alert(
+      'Delete Dream',
+      `Delete "${title}"? This cannot be undone.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              setDeletingId(dreamId);
+              await deleteItem(dreamId);
+            } catch {
+              Alert.alert('Error', 'Failed to delete this dream. Please try again.');
+            } finally {
+              setDeletingId((current) => (current === dreamId ? null : current));
+            }
+          },
+        },
+      ]
+    );
+  }, [deleteItem]);
+
+  const renderSwipeDeleteAction = useCallback((dreamId: string, title: string) => (
+    <TouchableOpacity
+      activeOpacity={0.85}
+      style={[styles.deleteAction, { backgroundColor: colors.error }]}
+      onPress={() => {
+        swipeableRefs.current[dreamId]?.close();
+        handleDeleteDream(dreamId, title);
+      }}
+      disabled={deletingId === dreamId}
+    >
+      <Trash2 size={18} color="#FFFFFF" />
+      <Text style={styles.deleteActionText}>
+        {deletingId === dreamId ? 'Deleting...' : 'Delete'}
+      </Text>
+    </TouchableOpacity>
+  ), [colors.error, deletingId, handleDeleteDream]);
+
   // Filter items
   const phaseFilteredItems = filteredItems.filter((item) => {
     if (selectedFilter === 'all') return true;
@@ -92,12 +137,21 @@ export default function HomeScreen() {
   const doneCount = items.filter(i => i.phase === 'done').length;
 
   const renderDreamCard = ({ item }: { item: any }) => (
-    <DreamCard
-      item={item}
-      onPress={() => handleDreamPress(item.id)}
-      showUser={false}
-      variant="default"
-    />
+    <Swipeable
+      ref={(ref) => {
+        swipeableRefs.current[item.id] = ref;
+      }}
+      renderRightActions={() => renderSwipeDeleteAction(item.id, item.title)}
+      overshootRight={false}
+      rightThreshold={48}
+    >
+      <DreamCard
+        item={item}
+        onPress={() => handleDreamPress(item.id)}
+        showUser={false}
+        variant="default"
+      />
+    </Swipeable>
   );
 
   const ListHeader = () => (
@@ -166,7 +220,7 @@ export default function HomeScreen() {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
         <StatusBar style={isDark ? 'light' : 'dark'} />
-        <BucketLoaderFull message="Loading your dreams..." />
+        <DreamCardSkeletonList count={5} />
       </SafeAreaView>
     );
   }
@@ -277,6 +331,19 @@ const styles = StyleSheet.create({
   footerLoader: {
     paddingVertical: 14,
     alignItems: 'center',
+  },
+  deleteAction: {
+    width: 108,
+    justifyContent: 'center',
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 16,
+  },
+  deleteActionText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '700',
   },
   fab: {
     position: 'absolute',

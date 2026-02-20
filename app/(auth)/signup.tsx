@@ -1,6 +1,6 @@
 import { Link, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { createUserWithEmailAndPassword, sendEmailVerification } from 'firebase/auth';
+import { createUserWithEmailAndPassword } from 'firebase/auth';
 import { useState } from 'react';
 import { Alert, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { auth } from '../../firebaseConfig';
@@ -31,10 +31,6 @@ export default function Signup() {
 
             setLoadingText('Securing your account...');
             await KeyManager.initializeKeysOnSignup(password, userCredential.user.uid);
-
-            setLoadingText('Sending verification email...');
-            await sendEmailVerification(userCredential.user);
-
             router.replace('/(auth)/verify-email' as any);
         } catch (e: any) {
             Alert.alert("Signup Failed", e.message);

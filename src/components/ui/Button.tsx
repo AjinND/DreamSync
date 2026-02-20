@@ -16,6 +16,8 @@ interface ButtonProps {
     icon?: LucideIcon;
     iconPosition?: 'left' | 'right';
     fullWidth?: boolean;
+    accessibilityLabel?: string;
+    accessibilityHint?: string;
 }
 
 export function Button({
@@ -28,6 +30,8 @@ export function Button({
     icon: Icon,
     iconPosition = 'left',
     fullWidth = false,
+    accessibilityLabel,
+    accessibilityHint,
 }: ButtonProps) {
     const { colors, isDark } = useTheme();
 
@@ -83,6 +87,10 @@ export function Button({
             onPress={onPress}
             disabled={disabled || loading}
             activeOpacity={0.8}
+            accessibilityRole="button"
+            accessibilityLabel={accessibilityLabel ?? title}
+            accessibilityHint={accessibilityHint}
+            accessibilityState={{ disabled: disabled || loading }}
         >
             {loading ? (
                 <ActivityIndicator color={textColor} size="small" />

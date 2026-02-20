@@ -39,7 +39,7 @@ export const NotificationService = {
      */
     async registerForPushNotifications(): Promise<string | null> {
         if (!Device.isDevice) {
-            console.warn('Push notifications require a physical device');
+            __DEV__ && console.warn('Push notifications require a physical device');
             return null;
         }
 
@@ -52,7 +52,7 @@ export const NotificationService = {
         }
 
         if (finalStatus !== 'granted') {
-            console.warn('Push notification permission not granted');
+            __DEV__ && console.warn('Push notification permission not granted');
             return null;
         }
 
@@ -70,7 +70,7 @@ export const NotificationService = {
             ?? Constants.default.easConfig?.projectId;
 
         if (!projectId) {
-            console.warn('No EAS project ID found — push tokens unavailable');
+            __DEV__ && console.warn('No EAS project ID found — push tokens unavailable');
             return null;
         }
 
@@ -257,7 +257,7 @@ export const NotificationService = {
         return onSnapshot(q, snapshot => {
             callback(snapshot.size);
         }, error => {
-            console.error('Unread count listener error:', error);
+            __DEV__ && console.error('Unread count listener error:', error);
             callback(0);
         });
     },

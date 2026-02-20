@@ -3,7 +3,7 @@
  * Modern borderless feed with smooth animations
  */
 
-import { CategoryTabs, CommunityCard } from '@/src/components/community';
+import { CategoryTabs, CommunityCard, CommunityCardSkeletonList } from '@/src/components/community';
 import { BucketLoaderFull } from '@/src/components/loading';
 import { EmptyState, NotificationBell, SearchBar } from '@/src/components/shared';
 import { useCommunityStore } from '@/src/store/useCommunityStore';
@@ -110,7 +110,7 @@ export default function CommunityScreen() {
 
             {/* Loading State */}
             {isLoading && visibleDreams.length === 0 ? (
-                <BucketLoaderFull message="Loading dreams..." />
+                <CommunityCardSkeletonList count={5} />
             ) : (
                 <FlatList
                     data={visibleDreams}

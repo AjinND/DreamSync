@@ -3,7 +3,7 @@
  */
 
 import { auth } from '@/firebaseConfig';
-import { ProfileDreamGrid, ProfileHeader } from '@/src/components/profile';
+import { ProfileDreamGrid, ProfileHeader, ProfileHeaderSkeleton } from '@/src/components/profile';
 import { EmptyState, Header } from '@/src/components/shared';
 import { BucketLoaderFull } from '@/src/components/loading';
 import { Button, IconButton } from '@/src/components/ui';
@@ -85,10 +85,10 @@ export default function ProfileScreen() {
                 <Header
                     title="Profile"
                     leftAction={
-                        <IconButton icon={ChevronLeft} onPress={() => router.back()} variant="ghost" />
+                        <IconButton icon={ChevronLeft} onPress={() => router.back()} variant="ghost" accessibilityLabel="Go back" />
                     }
                 />
-                <BucketLoaderFull message="Loading profile..." />
+                <ProfileHeaderSkeleton />
             </SafeAreaView>
         );
     }
@@ -101,7 +101,7 @@ export default function ProfileScreen() {
                 <Header
                     title="Profile"
                     leftAction={
-                        <IconButton icon={ChevronLeft} onPress={() => router.back()} variant="ghost" />
+                        <IconButton icon={ChevronLeft} onPress={() => router.back()} variant="ghost" accessibilityLabel="Go back" />
                     }
                 />
                 <EmptyState
@@ -122,11 +122,11 @@ export default function ProfileScreen() {
             <Header
                 title="Profile"
                 leftAction={
-                    <IconButton icon={ChevronLeft} onPress={() => router.back()} variant="ghost" />
+                    <IconButton icon={ChevronLeft} onPress={() => router.back()} variant="ghost" accessibilityLabel="Go back" />
                 }
                 rightAction={
                     isOwnProfile ? (
-                        <IconButton icon={Edit2} onPress={handleEditProfile} variant="ghost" />
+                        <IconButton icon={Edit2} onPress={handleEditProfile} variant="ghost" accessibilityLabel="Edit profile" />
                     ) : undefined
                 }
             />

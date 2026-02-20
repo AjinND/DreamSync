@@ -7,6 +7,7 @@ import { auth } from '@/firebaseConfig';
 import { DreamForm } from '@/src/components/dream';
 import { Header } from '@/src/components/shared';
 import { IconButton } from '@/src/components/ui';
+import { useToast } from '@/src/providers/ToastProvider';
 import { StoragePaths, StorageService } from '@/src/services/storage';
 import { useBucketStore } from '@/src/store/useBucketStore';
 import { useTheme } from '@/src/theme';
@@ -26,6 +27,7 @@ export default function AddDreamScreen() {
     const isEditing = !!id;
 
     const { colors, isDark } = useTheme();
+    const { showSuccess, showError } = useToast();
 
     // Use separate selectors to prevent re-renders when items change
     const actions = useBucketStore(
@@ -119,14 +121,16 @@ export default function AddDreamScreen() {
 
             if (isEditing && typeof id === 'string') {
                 await actions.updateItem(id, dreamData);
+                showSuccess('Dream updated successfully');
             } else {
                 await actions.addItem(dreamData);
+                showSuccess('Dream created successfully');
             }
 
             router.back();
         } catch (error) {
-            console.error('Failed to save dream:', error);
-            Alert.alert('Error', 'Failed to save your dream. Please try again.');
+            __DEV__ && console.error('Failed to save dream:', error);
+            showError('Failed to save your dream. Please try again.');
         } finally {
             setLoading(false);
         }
@@ -148,6 +152,7 @@ export default function AddDreamScreen() {
                         icon={ChevronLeft}
                         onPress={handleClose}
                         variant="ghost"
+                        accessibilityLabel="Go back"
                     />
                 }
                 rightAction={
@@ -155,6 +160,7 @@ export default function AddDreamScreen() {
                         icon={X}
                         onPress={handleClose}
                         variant="ghost"
+                        accessibilityLabel="Close"
                     />
                 }
             />

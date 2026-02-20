@@ -20,6 +20,7 @@ import { auth, db } from '../../firebaseConfig';
 import { Chat } from '../types/chat';
 import { BucketItem, Expense, Inspiration, Memory, Phase, ProgressEntry, Reflection } from '../types/item';
 import { AppError, ErrorCode, toAppError } from '../utils/AppError';
+import { assertRateLimit, createDreamLimiter } from '../utils/operationLimiters';
 import { decryptDreamFields, decryptField, decryptGroupKey, encryptDreamFields, encryptField, isEncryptedField } from './encryption';
 import { KeyManager } from './keyManager';
 import { safeValidate, dreamSchema } from './validation';
@@ -283,9 +284,11 @@ export const ItemService = {
     async createItem(item: Omit<BucketItem, 'id' | 'createdAt' | 'userId'>) {
         const user = auth.currentUser;
         if (!user) {
-            console.error("[ItemService] User not authenticated!");
+            __DEV__ && console.error("[ItemService] User not authenticated!");
             throw new AppError('User not authenticated', ErrorCode.AUTH_REQUIRED, 'Please sign in to create dreams.');
         }
+
+        assertRateLimit(createDreamLimiter, user.uid, 'You\'re creating dreams too quickly. Please wait a few seconds before trying again.');
 
         // Validate input
         const validation = safeValidate(dreamSchema, {
@@ -340,7 +343,7 @@ export const ItemService = {
 
             return { id: docRef.id, ...item };
         } catch (error) {
-            console.error("[ItemService] Error adding document:", error);
+            __DEV__ && console.error("[ItemService] Error adding document:", error);
             throw toAppError(error, {
                 code: ErrorCode.UNKNOWN,
                 userMessage: 'Failed to create dream. Please try again.',

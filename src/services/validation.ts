@@ -47,7 +47,14 @@ export const dreamSchema = z.object({
 
 export const messageSchema = z.object({
     text: z.string().max(5000, 'Message is too long (max 5000 characters)').optional(),
-    mediaUrl: z.string().url('Please provide a valid media URL').optional(),
+    mediaUrl: z
+        .string()
+        .url('Please provide a valid media URL')
+        .refine(
+            (val) => /^https?:\/\//i.test(val),
+            { message: 'Only HTTP and HTTPS URLs are allowed' },
+        )
+        .optional(),
     type: z.enum(['text', 'image', 'video', 'system']).optional(),
 }).superRefine((data, ctx) => {
     const type = data.type ?? 'text';
@@ -100,7 +107,13 @@ export const expenseSchema = z.object({
 // Inspiration / Progress / Reflection Schemas
 // ---------------------------------------------------------------------------
 
-const urlSchema = z.string().url('Please enter a valid URL');
+const urlSchema = z
+    .string()
+    .url('Please enter a valid URL')
+    .refine(
+        (val) => /^https?:\/\//i.test(val),
+        { message: 'Only HTTP and HTTPS URLs are allowed' },
+    );
 
 export const inspirationSchema = z.object({
     type: z.enum(['image', 'quote', 'link']),

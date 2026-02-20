@@ -11,10 +11,12 @@
     "ios": {
       "supportsTablet": true,
       "associatedDomains": [
+        "applinks:dreamsync.app",
         "applinks:dreamsync.app"
       ],
       "infoPlist": {
         "UIBackgroundModes": [
+          "remote-notification",
           "remote-notification"
         ]
       }
@@ -31,6 +33,20 @@
       "package": "com.dreamsync.app",
       "googleServicesFile": "./google-services.json",
       "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ],
+          "data": [
+            {
+              "scheme": "https",
+              "host": "dreamsync.app"
+            }
+          ]
+        },
         {
           "action": "VIEW",
           "autoVerify": true,
@@ -83,6 +99,12 @@
       "eas": {
         "projectId": "b9193092-2c84-4efa-be90-870cfb0bccaa"
       }
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/b9193092-2c84-4efa-be90-870cfb0bccaa"
     }
   }
 }

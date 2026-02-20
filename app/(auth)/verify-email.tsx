@@ -50,7 +50,7 @@ export default function VerifyEmailScreen() {
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <Text style={[styles.title, { color: colors.textPrimary }]}>Verify your email</Text>
       <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
-        We sent a verification link to {auth.currentUser?.email || 'your email'}.
+        Verification is optional. You can verify now, or skip and continue using the app.
       </Text>
 
       <TouchableOpacity
@@ -69,6 +69,13 @@ export default function VerifyEmailScreen() {
         <Text style={[styles.secondaryBtnText, { color: colors.textPrimary }]}>
           {isSending ? 'Sending...' : 'Resend Email'}
         </Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity
+        style={[styles.skipBtn, { borderColor: colors.border }]}
+        onPress={() => router.replace('/(tabs)')}
+      >
+        <Text style={[styles.skipBtnText, { color: colors.textSecondary }]}>Skip for now</Text>
       </TouchableOpacity>
     </View>
   );
@@ -111,8 +118,18 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
   },
+  skipBtn: {
+    marginTop: 10,
+    borderRadius: 12,
+    alignItems: 'center',
+    paddingVertical: 12,
+    borderWidth: 1,
+  },
+  skipBtnText: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
   disabled: {
     opacity: 0.7,
   },
 });
-

@@ -59,7 +59,7 @@ export default function DeleteAccountScreen() {
 
       <Header
         title="Delete Account"
-        leftAction={<IconButton icon={ChevronLeft} onPress={() => router.back()} variant="ghost" />}
+        leftAction={<IconButton icon={ChevronLeft} onPress={() => router.back()} variant="ghost" accessibilityLabel="Go back" />}
       />
 
       <View style={styles.content}>

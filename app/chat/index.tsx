@@ -60,6 +60,7 @@ export default function ChatListScreen() {
                         onPress={() => router.back()}
                         variant="ghost"
                         size={24}
+                        accessibilityLabel="Go back"
                     />
                 }
             />

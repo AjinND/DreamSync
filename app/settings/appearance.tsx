@@ -76,7 +76,7 @@ export default function AppearanceScreen() {
             <Header
                 title="Appearance"
                 leftAction={
-                    <IconButton icon={ChevronLeft} onPress={() => router.back()} variant="ghost" />
+                    <IconButton icon={ChevronLeft} onPress={() => router.back()} variant="ghost" accessibilityLabel="Go back" />
                 }
             />
 

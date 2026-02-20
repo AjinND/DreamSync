@@ -104,7 +104,7 @@ export default function PrivacyScreen() {
             <Header
                 title="Privacy"
                 leftAction={
-                    <IconButton icon={ChevronLeft} onPress={() => router.back()} variant="ghost" />
+                    <IconButton icon={ChevronLeft} onPress={() => router.back()} variant="ghost" accessibilityLabel="Go back" />
                 }
             />
 

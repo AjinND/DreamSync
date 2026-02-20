@@ -28,6 +28,7 @@ import {
 import { auth, db } from '../../firebaseConfig';
 import { BucketItem } from '../types/item';
 import { AppError, ErrorCode, toAppError } from '../utils/AppError';
+import { assertRateLimit, commentLimiter, likeLimiter, reportLimiter } from '../utils/operationLimiters';
 import { isEncryptedField } from './encryption';
 import { UsersService } from './users';
 
@@ -335,6 +336,8 @@ export const CommunityService = {
             );
         }
 
+        assertRateLimit(likeLimiter, user.uid, 'You\'re liking too fast. Please wait a moment.');
+
         __DEV__ && console.log(`[CommunityService] Toggling like for dream: ${dreamId}`);
 
         try {
@@ -364,7 +367,7 @@ export const CommunityService = {
             }
         } catch (error: any) {
             if (error.code === 'permission-denied' || error.message?.includes('permission')) {
-                console.error(`[CommunityService] Permission denied for toggling like on dream: ${dreamId}`);
+                __DEV__ && console.error(`[CommunityService] Permission denied for toggling like on dream: ${dreamId}`);
                 throw new AppError(
                     'Permission denied to like dream',
                     ErrorCode.PERMISSION_DENIED,
@@ -407,7 +410,7 @@ export const CommunityService = {
         } catch (error: any) {
             // Check if it's a permission error
             if (error.code === 'permission-denied' || error.message?.includes('permission')) {
-                console.error(`[CommunityService] Permission denied for dream: ${dreamId}`, error);
+                __DEV__ && console.error(`[CommunityService] Permission denied for dream: ${dreamId}`, error);
                 throw new AppError(
                     'Permission denied to view dream',
                     ErrorCode.PERMISSION_DENIED,
@@ -415,7 +418,7 @@ export const CommunityService = {
                     error,
                 );
             }
-            console.error(`[CommunityService] Error fetching dream: ${dreamId}`, error);
+            __DEV__ && console.error(`[CommunityService] Error fetching dream: ${dreamId}`, error);
             throw toAppError(error, {
                 code: ErrorCode.UNKNOWN,
                 userMessage: 'Failed to open dream. Please try again.',
@@ -436,6 +439,8 @@ export const CommunityService = {
             );
         }
 
+        assertRateLimit(reportLimiter, user.uid, 'You\'ve submitted a report recently. Please wait before reporting again.');
+
         __DEV__ && console.log(`[CommunityService] Reporting post: ${dreamId} for ${reason}`);
 
         try {
@@ -448,7 +453,7 @@ export const CommunityService = {
             });
             __DEV__ && console.log(`[CommunityService] Report submitted for dream: ${dreamId}`);
         } catch (error: any) {
-            console.error('[CommunityService] Error submitting report:', error);
+            __DEV__ && console.error('[CommunityService] Error submitting report:', error);
             throw toAppError(error, {
                 code: ErrorCode.UNKNOWN,
                 userMessage: 'Failed to submit report. Please try again.',
@@ -479,7 +484,7 @@ export const CommunityService = {
             invalidateBlockedUsersCache(user.uid);
             __DEV__ && console.log(`[CommunityService] Blocked user: ${blockedUserId}`);
         } catch (error: any) {
-            console.error('[CommunityService] Error blocking user:', error);
+            __DEV__ && console.error('[CommunityService] Error blocking user:', error);
             throw toAppError(error, {
                 code: ErrorCode.UNKNOWN,
                 userMessage: 'Failed to block user. Please try again.',
@@ -558,7 +563,7 @@ export const CommunityService = {
             }
             return [];
         } catch (error: any) {
-            console.error('[CommunityService] Error fetching blocked users:', error);
+            __DEV__ && console.error('[CommunityService] Error fetching blocked users:', error);
             return [];
         }
     },

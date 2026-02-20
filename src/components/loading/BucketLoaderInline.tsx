@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, AccessibilityInfo } from 'react-native';
 import { useTheme } from '@/src/theme';
-import { DEFAULT_LOADING_DREAM_ITEMS } from './constants';
+import { DEFAULT_LOADING_DREAM_ITEMS } from '@/src/constants/loading';
 
 interface BucketLoaderInlineProps {
   message?: string;

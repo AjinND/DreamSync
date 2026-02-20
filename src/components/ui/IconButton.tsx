@@ -13,6 +13,8 @@ interface IconButtonProps {
     color?: string;
     variant?: 'default' | 'primary' | 'ghost';
     disabled?: boolean;
+    accessibilityLabel: string;
+    accessibilityHint?: string;
 }
 
 export function IconButton({
@@ -22,6 +24,8 @@ export function IconButton({
     color,
     variant = 'default',
     disabled = false,
+    accessibilityLabel,
+    accessibilityHint,
 }: IconButtonProps) {
     const { colors } = useTheme();
 
@@ -53,6 +57,10 @@ export function IconButton({
             onPress={onPress}
             disabled={disabled}
             activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel={accessibilityLabel}
+            accessibilityHint={accessibilityHint}
+            accessibilityState={{ disabled }}
         >
             <IconComponent size={size} color={getIconColor()} />
         </TouchableOpacity>
