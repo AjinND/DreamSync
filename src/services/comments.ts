@@ -4,6 +4,7 @@
 
 import { auth, db } from '@/firebaseConfig';
 import { Comment } from '@/src/types/social';
+import { assertRateLimit, commentLimiter } from '@/src/utils/operationLimiters';
 import {
     addDoc,
     collection,
@@ -27,9 +28,11 @@ export const CommentsService = {
     async addComment(dreamId: string, text: string): Promise<Comment | null> {
         const user = auth.currentUser;
         if (!user) {
-            console.error('[CommentsService] User not authenticated');
+            __DEV__ && console.error('[CommentsService] User not authenticated');
             return null;
         }
+
+        assertRateLimit(commentLimiter, user.uid, 'You\'re posting too quickly. Please wait a moment before commenting again.');
 
         try {
             // Fetch user profile from Firestore for accurate displayName
@@ -70,7 +73,7 @@ export const CommentsService = {
 
             return { id: docRef.id, ...comment };
         } catch (error) {
-            console.error('[CommentsService] Failed to add comment:', error);
+            __DEV__ && console.error('[CommentsService] Failed to add comment:', error);
             return null;
         }
     },
@@ -92,7 +95,7 @@ export const CommentsService = {
             __DEV__ && console.log(`[CommentsService] Fetched ${comments.length} comments`);
             return comments;
         } catch (error) {
-            console.error('[CommentsService] Failed to fetch comments:', error);
+            __DEV__ && console.error('[CommentsService] Failed to fetch comments:', error);
             return [];
         }
     },
@@ -103,7 +106,7 @@ export const CommentsService = {
     async deleteComment(dreamId: string, commentId: string): Promise<boolean> {
         const user = auth.currentUser;
         if (!user) {
-            console.error('[CommentsService] User not authenticated');
+            __DEV__ && console.error('[CommentsService] User not authenticated');
             return false;
         }
 
@@ -115,7 +118,7 @@ export const CommentsService = {
             ]);
 
             if (!commentSnap.exists()) {
-                console.error('[CommentsService] Comment not found:', commentId);
+                __DEV__ && console.error('[CommentsService] Comment not found:', commentId);
                 return false;
             }
 
@@ -123,7 +126,7 @@ export const CommentsService = {
             const dreamOwnerId = dreamSnap.exists() ? (dreamSnap.data()?.userId as string | undefined) : undefined;
             const canDelete = commentData.userId === user.uid || dreamOwnerId === user.uid;
             if (!canDelete) {
-                console.error('[CommentsService] Unauthorized delete attempt:', commentId);
+                __DEV__ && console.error('[CommentsService] Unauthorized delete attempt:', commentId);
                 return false;
             }
 
@@ -145,7 +148,7 @@ export const CommentsService = {
 
             return true;
         } catch (error) {
-            console.error('[CommentsService] Failed to delete comment:', error);
+            __DEV__ && console.error('[CommentsService] Failed to delete comment:', error);
             return false;
         }
     },

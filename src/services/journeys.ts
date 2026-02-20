@@ -83,7 +83,7 @@ export const JourneysService = {
 
             return journeyRef.id;
         } catch (error) {
-            console.error('Error creating journey:', error);
+            __DEV__ && console.error('Error creating journey:', error);
             throw toAppError(error, {
                 code: ErrorCode.UNKNOWN,
                 userMessage: 'Failed to create journey. Please try again.',
@@ -125,7 +125,7 @@ export const JourneysService = {
             }
             return null;
         } catch (error) {
-            console.error('Error getting journey:', error);
+            __DEV__ && console.error('Error getting journey:', error);
             throw toAppError(error, {
                 code: ErrorCode.UNKNOWN,
                 userMessage: 'Failed to load journey details.',
@@ -149,7 +149,7 @@ export const JourneysService = {
         } catch (error: any) {
             // Ignore permission errors for non-participants viewing public dreams
             if (error?.code !== 'permission-denied' && !error?.message?.includes('Missing or insufficient permissions')) {
-                console.error('Error getting journey by dream ID:', error);
+                __DEV__ && console.error('Error getting journey by dream ID:', error);
             }
             return null;
         }
@@ -191,7 +191,7 @@ export const JourneysService = {
             // Distribute group encryption key to the new participant
             await JourneysService._distributeGroupKey(chatId, userId);
         } catch (error) {
-            console.error('Error joining journey:', error);
+            __DEV__ && console.error('Error joining journey:', error);
             throw toAppError(error, {
                 code: ErrorCode.UNKNOWN,
                 userMessage: 'Failed to join journey. Please try again.',
@@ -234,7 +234,7 @@ export const JourneysService = {
                 });
             }
         } catch (error) {
-            console.error('Error updating journey settings:', error);
+            __DEV__ && console.error('Error updating journey settings:', error);
             throw toAppError(error, {
                 code: ErrorCode.UNKNOWN,
                 userMessage: 'Failed to update journey settings.',
@@ -252,7 +252,7 @@ export const JourneysService = {
                 requests: arrayUnion(userId)
             });
         } catch (error) {
-            console.error('Error requesting to join:', error);
+            __DEV__ && console.error('Error requesting to join:', error);
             throw toAppError(error, {
                 code: ErrorCode.UNKNOWN,
                 userMessage: 'Failed to send join request.',
@@ -308,7 +308,7 @@ export const JourneysService = {
                 });
             }
         } catch (error) {
-            console.error('Error handling join request:', error);
+            __DEV__ && console.error('Error handling join request:', error);
             throw toAppError(error, {
                 code: ErrorCode.UNKNOWN,
                 userMessage: 'Failed to process join request.',
@@ -354,9 +354,9 @@ export const JourneysService = {
             };
         } catch (error: any) {
             if (error.code === 'failed-precondition') {
-                console.error('Missing Firestore Index for Open Journeys query. Check Firebase Console.');
+                __DEV__ && console.error('Missing Firestore Index for Open Journeys query. Check Firebase Console.');
             }
-            console.error('Error fetching open journeys:', error);
+            __DEV__ && console.error('Error fetching open journeys:', error);
             return { journeys: [], lastDoc: cursor, hasMore: false };
         }
     },
@@ -374,7 +374,7 @@ export const JourneysService = {
                 ...doc.data()
             } as Journey));
         } catch (error) {
-            console.error('Error fetching user journeys:', error);
+            __DEV__ && console.error('Error fetching user journeys:', error);
             throw toAppError(error, {
                 code: ErrorCode.UNKNOWN,
                 userMessage: 'Failed to load your journeys.',
@@ -419,7 +419,7 @@ export const JourneysService = {
                 await JourneysService._rotateGroupKey(journey.chatId, userId);
             }            
         } catch (error) {
-            console.error('Error leaving journey:', error);
+            __DEV__ && console.error('Error leaving journey:', error);
             throw toAppError(error, {
                 code: ErrorCode.UNKNOWN,
                 userMessage: 'Failed to leave journey.',
@@ -467,7 +467,7 @@ export const JourneysService = {
                 [`encryptedKeys.${newUserId}`]: encryptedForNewUser,
             });
         } catch (error) {
-            console.error('[JourneysService] Failed to distribute group key:', error);
+            __DEV__ && console.error('[JourneysService] Failed to distribute group key:', error);
             // Non-fatal: chat will still work, just unencrypted for this user
         }
     },
@@ -520,7 +520,7 @@ export const JourneysService = {
                 await updateDoc(chatDocRef, { encryptedKeys: newEncryptedKeys });
             }
         } catch (error) {
-            console.error('[JourneysService] Failed to rotate group key:', error);
+            __DEV__ && console.error('[JourneysService] Failed to rotate group key:', error);
         }
     },
 
@@ -559,7 +559,7 @@ export const JourneysService = {
 
             await batch.commit();
         } catch (error) {
-            console.error('Error deleting journey:', error);
+            __DEV__ && console.error('Error deleting journey:', error);
             throw toAppError(error, {
                 code: ErrorCode.UNKNOWN,
                 userMessage: 'Failed to delete journey.',

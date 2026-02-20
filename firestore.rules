@@ -33,7 +33,7 @@ service cloud.firestore {
         request.resource.data.userName.size() <= 80 &&
         (!('userAvatar' in request.resource.data) || request.resource.data.userAvatar is string) &&
         request.resource.data.text is string &&
-        request.resource.data.text.size() > 0 &&
+        request.resource.data.text.size() >= 2 &&
         request.resource.data.text.size() <= 500 &&
         request.resource.data.createdAt is int;
     }
@@ -49,12 +49,15 @@ service cloud.firestore {
     }
 
     function participantAllowedItemFieldsOnly() {
+      // Participants can update content but cannot change ownership, visibility, or phase.
       return !request.resource.data.diff(resource.data).affectedKeys()
         .hasAny([
           'userId',
           'collaborationType',
           'journeyParticipants',
-          'createdAt'
+          'createdAt',
+          'isPublic',
+          'phase'
         ]);
     }
 
@@ -153,7 +156,7 @@ service cloud.firestore {
         request.resource.data.type in ['dm', 'journey'] &&
         participants is list &&
         participants.size() >= 1 &&
-        participants.size() <= 50 &&
+        participants.size() <= 20 &&
         request.auth.uid in participants &&
         (
           (
@@ -232,10 +235,11 @@ service cloud.firestore {
         resource.data.collaborationType == 'open'
       );
       
-      // 2. CREATE: Only allow creating own items
+      // 2. CREATE: Only allow creating own items with valid server timestamp
       allow create: if isSignedIn() &&
                     request.resource.data.userId == request.auth.uid &&
-                    canBePublicByPhase(request.resource.data);
+                    canBePublicByPhase(request.resource.data) &&
+                    request.resource.data.createdAt is int;
       
       // 3. DELETE: Only owner can delete
       allow delete: if isSignedIn() && 
@@ -379,6 +383,21 @@ service cloud.firestore {
 
       // Allow deletion by participants (journey owner deletes chat when deleting journey)
       allow delete: if isSignedIn() && request.auth.uid in resource.data.participants;
+    }
+
+    // Reports Collection
+    // Users can submit content reports; only admins (Admin SDK) can read or moderate.
+    match /reports/{reportId} {
+      allow create: if isSignedIn() &&
+                    request.resource.data.keys().hasAll(['dreamId', 'reportedBy', 'reason', 'createdAt', 'status']) &&
+                    request.resource.data.reportedBy == request.auth.uid &&
+                    request.resource.data.dreamId is string &&
+                    request.resource.data.reason is string &&
+                    request.resource.data.reason.size() >= 10 &&
+                    request.resource.data.reason.size() <= 1000 &&
+                    request.resource.data.status == 'pending';
+      // Only Admin SDK can read, update, or delete reports
+      allow read, update, delete: if false;
     }
 
     // Notifications Collection

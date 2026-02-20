@@ -63,7 +63,7 @@ export const ChatService = {
             const chatRef = doc(db, 'chats', chatId);
             await updateDoc(chatRef, { updatedAt: serverTimestamp() });
         } catch (error) {
-            console.warn('[ChatService] Failed to trigger participant index sync:', error);
+            __DEV__ && console.warn('[ChatService] Failed to trigger participant index sync:', error);
         }
     },
 
@@ -75,7 +75,7 @@ export const ChatService = {
                 [`unreadCounts.${currentUserId}`]: 0,
             });
         } catch (error) {
-            console.warn('[ChatService] Failed to mark chat as read:', error);
+            __DEV__ && console.warn('[ChatService] Failed to mark chat as read:', error);
         }
     },
 
@@ -132,7 +132,7 @@ export const ChatService = {
 
             legacyRepairCompleted.add(chat.id);
         } catch (error) {
-            console.warn('[ChatService] Legacy preview repair failed:', error);
+            __DEV__ && console.warn('[ChatService] Legacy preview repair failed:', error);
         } finally {
             legacyRepairInFlight.delete(chat.id);
         }
@@ -591,7 +591,7 @@ export const ChatService = {
             callback(messages);
         }, async (error) => {
             const errorCode = String((error as any)?.code || '').toLowerCase();
-            console.error('[ChatService] Message subscription error:', error);
+            __DEV__ && console.error('[ChatService] Message subscription error:', error);
 
             if (!hasRetried && errorCode.includes('permission_denied')) {
                 await ChatService.ensureParticipantIndex(chatId);
@@ -647,7 +647,7 @@ export const ChatService = {
             });
             callback(chats);
         }, (error) => {
-            console.error("[ChatService] Error subscribing to chats:", error);
+            __DEV__ && console.error("[ChatService] Error subscribing to chats:", error);
             // If index is missing, it will log here
         });
     },

@@ -7,8 +7,8 @@ import * as Notifications from 'expo-notifications';
 import { type Subscription } from 'expo-notifications';
 import { useRouter } from 'expo-router';
 import { useEffect, useRef } from 'react';
-import { useNotificationStore } from '../src/store/useNotificationStore';
-import { NotificationData } from '../src/types/notification';
+import { useNotificationStore } from '../store/useNotificationStore';
+import { NotificationData } from '../types/notification';
 
 // Configure how foreground notifications are displayed
 Notifications.setNotificationHandler({

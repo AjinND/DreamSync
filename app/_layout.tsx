@@ -9,7 +9,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { auth } from "../firebaseConfig";
 import { ErrorBoundary } from "../src/components/shared";
 import { BucketLoaderFull } from "../src/components/loading";
-import { useNotificationHandler } from "../hooks/useNotificationHandler";
+import { useNotificationHandler } from "../src/hooks/useNotificationHandler";
 import { OfflineBanner } from "../src/components/ui/OfflineBanner";
 import { KeyManager } from "../src/services/keyManager";
 import { NotificationService } from "../src/services/notifications";
@@ -17,6 +17,7 @@ import { UsersService } from "../src/services/users";
 import { useNotificationStore } from "../src/store/useNotificationStore";
 import { useChatStore } from "../src/store/useChatStore";
 import { ThemeProvider } from "../src/theme";
+import { ToastProvider } from "../src/providers/ToastProvider";
 
 export default function RootLayout() {
   const [user, setUser] = useState<User | null>(null);
@@ -197,11 +198,7 @@ export default function RootLayout() {
       KeyManager.isKeyInitialized().then(initialized => {
         if (cancelled) return;
         if (initialized) {
-          if (!user.emailVerified) {
-            if (authLeaf !== "verify-email") {
-              router.replace("/(auth)/verify-email" as any);
-            }
-          } else {
+          if (authLeaf !== "verify-email") {
             router.replace("/(tabs)");
           }
         }
@@ -260,6 +257,7 @@ export default function RootLayout() {
 
   return (
     <ThemeProvider>
+      <ToastProvider>
       <GestureHandlerRootView style={{ flex: 1 }}>
         <BottomSheetModalProvider>
           <ErrorBoundary>
@@ -313,6 +311,7 @@ export default function RootLayout() {
           </ErrorBoundary>
         </BottomSheetModalProvider>
       </GestureHandlerRootView>
+      </ToastProvider>
     </ThemeProvider>
   );
 }

@@ -245,6 +245,13 @@ export const UsersService = {
         // Encrypt sensitive fields if key is available (only email, bio is public plaintext)
         let updateData: Record<string, any> = { ...updates };
         const fieldKey = await KeyManager.getFieldEncryptionKey();
+        if (updateData.email && !fieldKey) {
+            throw new AppError(
+                'Cannot update email without encryption key',
+                ErrorCode.ENCRYPTION_ERROR,
+                'Unable to securely save your email. Please try again after signing in.',
+            );
+        }
         if (fieldKey && updateData.email) {
             updateData = encryptProfileFields(updateData, fieldKey);
         }

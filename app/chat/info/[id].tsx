@@ -176,7 +176,7 @@ export default function ChatInfoScreen() {
           borderBottomColor: colors.border,
         }}
       >
-        <IconButton icon={ArrowLeft} onPress={() => router.back()} variant='ghost' size={22} />
+        <IconButton icon={ArrowLeft} onPress={() => router.back()} variant='ghost' size={22} accessibilityLabel="Go back" />
         <Text style={{ flex: 1, fontSize: 18, fontWeight: '700', color: colors.textPrimary }}>Chat Info</Text>
       </View>
 

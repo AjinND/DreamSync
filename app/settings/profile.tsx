@@ -1,5 +1,6 @@
 import { auth } from '@/firebaseConfig';
 import { UserAvatar } from '@/src/components/social/UserAvatar';
+import { useToast } from '@/src/providers/ToastProvider';
 import { StoragePaths, StorageService } from '@/src/services/storage';
 import { UsersService } from '@/src/services/users';
 import { useTheme } from '@/src/theme';
@@ -28,6 +29,7 @@ export default function EditProfileScreen() {
     const { colors } = useTheme();
     const router = useRouter();
     const user = auth.currentUser;
+    const { showSuccess, showError } = useToast();
 
     const [isLoading, setIsLoading] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
@@ -149,10 +151,11 @@ export default function EditProfileScreen() {
                 avatar: avatarUrl || null,
             } as any);
 
+            showSuccess('Profile saved successfully');
             router.back();
         } catch (error: any) {
-            console.error('Failed to save profile:', error);
-            Alert.alert('Error', 'Failed to save profile: ' + error.message);
+            __DEV__ && console.error('Failed to save profile:', error);
+            showError('Failed to save profile. Please try again.');
         } finally {
             setIsSaving(false);
         }
@@ -174,7 +177,7 @@ export default function EditProfileScreen() {
             <Header
                 title="Edit Profile"
                 leftAction={
-                    <IconButton icon={ChevronLeft} onPress={() => router.back()} variant="ghost" />
+                    <IconButton icon={ChevronLeft} onPress={() => router.back()} variant="ghost" accessibilityLabel="Go back" />
                 }
             />
 

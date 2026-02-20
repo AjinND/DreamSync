@@ -177,7 +177,7 @@ export const StorageService = {
             await deleteObject(oldRef);
         } catch (error: any) {
             if (error?.code !== 'storage/object-not-found') {
-                console.warn('Failed to delete old image during migration:', error);
+                __DEV__ && console.warn('Failed to delete old image during migration:', error);
             }
         }
 

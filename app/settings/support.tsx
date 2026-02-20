@@ -65,7 +65,7 @@ export default function SupportScreen() {
             <Header
                 title="Help & Support"
                 leftAction={
-                    <IconButton icon={ChevronLeft} onPress={() => router.back()} variant="ghost" />
+                    <IconButton icon={ChevronLeft} onPress={() => router.back()} variant="ghost" accessibilityLabel="Go back" />
                 }
             />
 

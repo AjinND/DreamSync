@@ -213,7 +213,7 @@ export default function ChatRoomScreen() {
           backgroundColor: colors.background,
         }}
       >
-        <IconButton icon={ArrowLeft} onPress={() => router.back()} variant='ghost' size={22} />
+        <IconButton icon={ArrowLeft} onPress={() => router.back()} variant='ghost' size={22} accessibilityLabel="Go back" />
 
         <Pressable
           onPress={() => router.push(`/chat/info/${id}`)}

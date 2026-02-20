@@ -46,7 +46,14 @@ const publicKeyCache: Map<string, Uint8Array> = new Map();
 async function secureSet(key: string, value: string): Promise<void> {
     if (Platform.OS === 'web') {
         try {
-            // Use sessionStorage on web — cleared when tab closes, not accessible after XSS persistence
+            // SECURITY NOTE: sessionStorage on web is accessible to JavaScript running on
+            // the same origin. An XSS vulnerability could allow an attacker to read the
+            // master key and decrypt all user data. Ensure strict CSP headers are configured
+            // on the web host to mitigate this risk. A future improvement is to use the
+            // Web Crypto API's non-extractable CryptoKey objects which cannot be read by JS.
+            if (__DEV__) {
+                console.warn('[KeyManager] Web storage uses sessionStorage. Ensure CSP headers are configured to mitigate XSS risk.');
+            }
             sessionStorage.setItem(key, value);
         } catch {
             // sessionStorage may be unavailable in some contexts
@@ -137,7 +144,7 @@ export const KeyManager = {
         } catch {
             // User doc may not exist yet (race with ensureUserProfile).
             // Store salt locally; publishKeyData will be called by ensureUserProfile.
-            console.warn('[KeyManager] Initial key publish failed, will retry via ensureUserProfile');
+            __DEV__ && console.warn('[KeyManager] Initial key publish failed, will retry via ensureUserProfile');
         }
     },
 

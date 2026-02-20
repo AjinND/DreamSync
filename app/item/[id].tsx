@@ -540,7 +540,7 @@ export default function DreamDetailScreen() {
                 <Header
                     title="Dream Not Found"
                     leftAction={
-                        <IconButton icon={ChevronLeft} onPress={() => router.back()} variant="ghost" />
+                        <IconButton icon={ChevronLeft} onPress={() => router.back()} variant="ghost" accessibilityLabel="Go back" />
                     }
                 />
                 <EmptyState
