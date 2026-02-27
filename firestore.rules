@@ -84,7 +84,9 @@ service cloud.firestore {
           'settings',
           'status',
           'chatId',
-          'preview'
+          'preview',
+          'updatedAt',
+          'updatedBy'
         ]) &&
         journeyImmutableFieldsUnchanged();
     }

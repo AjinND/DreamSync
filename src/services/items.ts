@@ -1,9 +1,9 @@
 import {
     addDoc,
     collection,
-    DocumentData,
     deleteDoc,
     doc,
+    DocumentData,
     getDoc,
     getDocs,
     limit,
@@ -16,6 +16,7 @@ import {
     updateDoc,
     where
 } from 'firebase/firestore';
+import { decodeBase64 } from 'tweetnacl-util';
 import { auth, db } from '../../firebaseConfig';
 import { Chat } from '../types/chat';
 import { BucketItem, Expense, Inspiration, Memory, Phase, ProgressEntry, Reflection } from '../types/item';
@@ -23,8 +24,7 @@ import { AppError, ErrorCode, toAppError } from '../utils/AppError';
 import { assertRateLimit, createDreamLimiter } from '../utils/operationLimiters';
 import { decryptDreamFields, decryptField, decryptGroupKey, encryptDreamFields, encryptField, isEncryptedField } from './encryption';
 import { KeyManager } from './keyManager';
-import { safeValidate, dreamSchema } from './validation';
-import { decodeBase64 } from 'tweetnacl-util';
+import { dreamSchema, safeValidate } from './validation';
 
 const COLLECTION_NAME = 'items';
 
@@ -157,13 +157,13 @@ const normalizeEncryptedNumber = (value: any, fallback = 0): number => {
 
 const encryptInspiration = (inspiration: Inspiration, key: Uint8Array, item: BucketItem): Record<string, any> => {
     const shouldEncryptStoryFields = item.isPublic !== true;
-    if (!shouldEncryptStoryFields) return inspiration as any;
-    return {
+    if (!shouldEncryptStoryFields) return stripUndefinedDeep(inspiration) as any;
+    return stripUndefinedDeep({
         ...inspiration,
         content: typeof inspiration.content === 'string' ? encryptField(inspiration.content, key) : inspiration.content,
         caption: typeof inspiration.caption === 'string' ? encryptField(inspiration.caption, key) : inspiration.caption,
         encryptionVersion: 1,
-    };
+    });
 };
 
 const decryptInspiration = (inspiration: any, key: Uint8Array | null): Inspiration => {
@@ -606,7 +606,7 @@ export const ItemService = {
         if (!item) throw new AppError('Dream not found', ErrorCode.NOT_FOUND, 'Dream was not found.');
 
         const key = await resolveDreamFieldKey(item);
-        const payload = key ? encryptInspiration(inspiration, key, item) : inspiration;
+        const payload = key ? encryptInspiration(inspiration, key, item) : stripUndefinedDeep(inspiration);
         await setDoc(doc(db, COLLECTION_NAME, itemId, 'inspirations', inspiration.id), payload);
         return inspiration;
     },

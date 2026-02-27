@@ -86,19 +86,35 @@ export default function JourneysScreen() {
         }
     }, [myOwnedJourneys.length]);
 
-    const fetchOpenJourneys = useCallback(async (loadMore: boolean = false) => {
-        if (loadMore) {
-            if (isFetchingMoreExplore || !hasMoreExplore) return;
-            setIsFetchingMoreExplore(true);
-        } else {
-            setIsLoadingExplore(true);
-        }
+    const loadInitialOpenJourneys = useCallback(async () => {
+        setIsLoadingExplore(true);
 
         try {
-            const page = await JourneysService.getOpenJourneysPaginated(
-                12,
-                loadMore ? openJourneysCursor : null
+            const page = await JourneysService.getOpenJourneysPaginated(12, null);
+            const currentUserId = auth.currentUser?.uid;
+
+            const filtered = page.journeys.filter(j =>
+                j.ownerId !== currentUserId &&
+                !j.participants.includes(currentUserId || '')
             );
+
+            setOpenJourneys(filtered);
+            setOpenJourneysCursor(page.lastDoc);
+            setHasMoreExplore(page.hasMore);
+        } catch (error) {
+            console.error('Failed to fetch open journeys', error);
+        } finally {
+            setIsLoadingExplore(false);
+            setRefreshing(false);
+        }
+    }, []);
+
+    const fetchMoreOpenJourneys = useCallback(async () => {
+        if (isFetchingMoreExplore || !hasMoreExplore) return;
+        setIsFetchingMoreExplore(true);
+
+        try {
+            const page = await JourneysService.getOpenJourneysPaginated(12, openJourneysCursor);
             const currentUserId = auth.currentUser?.uid;
 
             const filtered = page.journeys.filter(j =>
@@ -107,18 +123,14 @@ export default function JourneysScreen() {
             );
 
             setOpenJourneys(prev =>
-                loadMore
-                    ? [...prev, ...filtered.filter(next => !prev.some(existing => existing.id === next.id))]
-                    : filtered
+                [...prev, ...filtered.filter(next => !prev.some(existing => existing.id === next.id))]
             );
             setOpenJourneysCursor(page.lastDoc);
             setHasMoreExplore(page.hasMore);
         } catch (error) {
             console.error('Failed to fetch open journeys', error);
         } finally {
-            setIsLoadingExplore(false);
             setIsFetchingMoreExplore(false);
-            setRefreshing(false);
         }
     }, [hasMoreExplore, isFetchingMoreExplore, openJourneysCursor]);
 
@@ -127,15 +139,15 @@ export default function JourneysScreen() {
             if (activeTab === 'my-journeys') {
                 fetchJoinedJourneys();
             } else {
-                fetchOpenJourneys();
+                loadInitialOpenJourneys();
             }
-        }, [activeTab, fetchJoinedJourneys, fetchOpenJourneys])
+        }, [activeTab, fetchJoinedJourneys, loadInitialOpenJourneys])
     );
 
     const onRefresh = () => {
         setRefreshing(true);
         if (activeTab === 'explore') {
-            fetchOpenJourneys();
+            loadInitialOpenJourneys();
         } else {
             fetchJoinedJourneys();
         }
@@ -281,7 +293,7 @@ export default function JourneysScreen() {
                 onEndReachedThreshold={0.45}
                 onEndReached={() => {
                     if (activeTab === 'explore' && hasMoreExplore && !isLoadingExplore && !isFetchingMoreExplore) {
-                        fetchOpenJourneys(true);
+                        fetchMoreOpenJourneys();
                     }
                 }}
             />

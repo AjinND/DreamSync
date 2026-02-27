@@ -4,6 +4,7 @@
  */
 
 import { auth } from '@/firebaseConfig';
+import { ConfettiExplosion } from '@/src/components/animations/ConfettiExplosion';
 import {
     AddExpenseModal,
     AddInspirationModal,
@@ -20,12 +21,10 @@ import {
     Reflections,
     ShareDreamModal,
 } from '@/src/components/dream';
-import { BottomSheetModal } from '@gorhom/bottom-sheet';
-import { ConfettiExplosion } from '@/src/components/animations/ConfettiExplosion';
 import { BucketLoaderFull } from '@/src/components/loading';
 import { EmptyState, Header } from '@/src/components/shared';
 import { CommentSection } from '@/src/components/social';
-import { Button, Card, IconButton } from '@/src/components/ui';
+import { Button, GlassCard, IconButton } from '@/src/components/ui';
 import { CommunityService } from '@/src/services/community';
 import { ItemService } from '@/src/services/items';
 import { JourneysService } from '@/src/services/journeys';
@@ -33,21 +32,26 @@ import { useBucketStore } from '@/src/store/useBucketStore';
 import { useCommunityStore } from '@/src/store/useCommunityStore';
 import { useTheme } from '@/src/theme';
 import { BucketItem, Expense, Inspiration, Memory, Phase, ProgressEntry, Reflection, ReflectionBlock } from '@/src/types/item';
+import { BottomSheetModal } from '@gorhom/bottom-sheet';
 import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
+import { LinearGradient } from 'expo-linear-gradient';
 import * as Linking from 'expo-linking';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import {
+    ArrowRight,
     BookOpen,
-    Calendar,
     ChevronLeft,
     DollarSign,
     Flame,
-    MapPin,
+    Globe,
+    Lock,
     Moon,
+    Quote,
     TrendingUp,
     Trophy,
+    Users
 } from 'lucide-react-native';
 import { useEffect, useRef, useState } from 'react';
 import {
@@ -562,7 +566,7 @@ export default function DreamDetailScreen() {
         : null;
 
     return (
-        <View style={[styles.container, { backgroundColor: colors.background }]}>
+        <View style={[styles.container, { backgroundColor: isDark ? '#1a0a1a' : colors.background }]}>
             <StatusBar style="light" />
 
             {/* Confetti Explosion */}
@@ -583,140 +587,181 @@ export default function DreamDetailScreen() {
                     onSharePress={isOwner ? () => setShowShareModal(true) : undefined}
                 />
 
-                {/* Collaboration Section */}
-                <CollaborationSection
-                    dreamId={item.id}
-                    isOwner={isOwner}
-                    collaborationType={item.collaborationType}
-                    onStartJourney={handleStartJourney}
-                />
-
                 {/* Main Content */}
-                <View style={[styles.contentWrapper, { backgroundColor: colors.background }]}>
-                    {/* Phase Selector - Only for owners and participants */}
+                <View style={styles.contentWrapper}>
+
+                    {/* Main Overlapping Card */}
+                    <GlassCard intensity={isDark ? 30 : 50} style={styles.mainCard}>
+                        {/* Badges */}
+                        <View style={styles.mainCardTop}>
+                            <View style={[styles.categoryBadge, { backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)' }]}>
+                                <Flame size={12} color={isDark ? "rgba(255,255,255,0.8)" : "rgba(0,0,0,0.6)"} />
+                                <Text style={[styles.categoryBadgeText, { color: isDark ? 'rgba(255,255,255,0.8)' : 'rgba(0,0,0,0.6)' }]}>
+                                    {item.category.toUpperCase()}
+                                </Text>
+                            </View>
+                            <LinearGradient
+                                colors={['#ff512f', '#dd2476']}
+                                start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+                                style={styles.privacyBadgeGradient}
+                            >
+                                {item.isPublic ? <Globe size={12} color="#FFF" /> : <Lock size={12} color="#FFF" />}
+                                <Text style={styles.privacyBadgeText}>
+                                    {item.isPublic ? 'PUBLIC' : 'PRIVATE'}
+                                </Text>
+                            </LinearGradient>
+                        </View>
+
+                        <Text style={[styles.mainTitle, { color: isDark ? '#FFF' : colors.textPrimary }]}>{item.title}</Text>
+
+                        {/* Start Journey Section */}
+                        {isOwner && item.collaborationType !== 'group' && (
+                            <>
+                                <View style={styles.inviteRow}>
+                                    <View style={styles.inviteIconBoxWrapper}>
+                                        <LinearGradient
+                                            colors={['#ff512f', '#dd2476']}
+                                            start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+                                            style={styles.inviteIconBox}
+                                        >
+                                            <Users size={20} color="#FFF" />
+                                        </LinearGradient>
+                                    </View>
+                                    <View style={{ flex: 1 }}>
+                                        <Text style={[styles.inviteTitle, { color: isDark ? '#FFF' : colors.textPrimary }]}>Go Farther Together</Text>
+                                        <Text style={styles.inviteSub}>Invite friends to achieve this dream.</Text>
+                                    </View>
+                                </View>
+                                <TouchableOpacity activeOpacity={0.8} onPress={handleStartJourney}>
+                                    <LinearGradient
+                                        colors={['#ff512f', '#dd2476']}
+                                        start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+                                        style={styles.actionButton}
+                                    >
+                                        <Text style={styles.actionButtonText}>Start Journey</Text>
+                                        <ArrowRight size={16} color="#FFF" />
+                                    </LinearGradient>
+                                </TouchableOpacity>
+                            </>
+                        )}
+                        {item.collaborationType === 'group' && (
+                            <CollaborationSection
+                                dreamId={item.id}
+                                isOwner={isOwner}
+                                collaborationType={item.collaborationType}
+                                onStartJourney={handleStartJourney}
+                            />
+                        )}
+                    </GlassCard>
+
+                    {/* Phase Selector Segmented Control */}
                     {canEdit && (
-                        <View style={[styles.phaseSelector, { backgroundColor: colors.border + '30' }]}>
+                        <GlassCard intensity={isDark ? 20 : 60} style={styles.phaseSegmented}>
                             {PHASES.map(({ id: phaseId, label, icon: Icon }) => {
                                 const isActive = item.phase === phaseId;
-                                const phaseColor = getPhaseColor(phaseId);
                                 return (
-                                    <TouchableOpacity
-                                        key={phaseId}
-                                        style={[
-                                            styles.phaseButton,
-                                            isActive && [styles.activePhaseButton, { backgroundColor: '#FFF' }],
-                                        ]}
-                                        onPress={() => handlePhaseChange(phaseId)}
-                                        disabled={isLoading}
-                                    >
-                                        <Icon size={14} color={isActive ? phaseColor : colors.textMuted} />
-                                        <Text style={[
-                                            styles.phaseLabel,
-                                            { color: isActive ? phaseColor : colors.textMuted },
-                                        ]}>
-                                            {label}
-                                        </Text>
-                                    </TouchableOpacity>
+                                    <View key={phaseId} style={{ flex: 1 }}>
+                                        {isActive ? (
+                                            <TouchableOpacity activeOpacity={0.8} onPress={() => handlePhaseChange(phaseId)}>
+                                                <LinearGradient
+                                                    colors={['#ff512f', '#dd2476']}
+                                                    start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+                                                    style={styles.activePhaseGradient}
+                                                >
+                                                    <Icon size={14} color="#FFF" />
+                                                    <Text style={styles.activePhaseText}>{label}</Text>
+                                                </LinearGradient>
+                                            </TouchableOpacity>
+                                        ) : (
+                                            <TouchableOpacity
+                                                style={styles.inactivePhaseButton}
+                                                onPress={() => handlePhaseChange(phaseId)}
+                                                disabled={isLoading}
+                                            >
+                                                <Text style={styles.inactivePhaseText}>{label}</Text>
+                                            </TouchableOpacity>
+                                        )}
+                                    </View>
                                 );
                             })}
-                        </View>
+                        </GlassCard>
                     )}
 
-                    {/* Meta Row */}
-                    {(formattedDate || item.location) && (
-                        <View style={styles.metaRow}>
-                            {formattedDate && (
-                                <View style={styles.metaItem}>
-                                    <Calendar size={14} color={colors.textMuted} />
-                                    <Text style={[styles.metaText, { color: colors.textSecondary }]}>
-                                        {formattedDate}
-                                    </Text>
-                                </View>
-                            )}
-                            {item.location && (
-                                <View style={styles.metaItem}>
-                                    <MapPin size={14} color={colors.textMuted} />
-                                    <Text style={[styles.metaText, { color: colors.textSecondary }]}>
-                                        {item.location}
-                                    </Text>
-                                </View>
-                            )}
-                        </View>
-                    )}
-
-                    {/* Tab Bar - Only show if user can edit */}
+                    {/* Tab Bar - Scrollable */}
                     {canEdit && (
-                        <View style={[styles.tabBar, { backgroundColor: colors.surface }]}>
+                        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabScrollContent}>
                             {TABS.map(({ id: tabId, label, icon: Icon }) => {
                                 const isActive = activeTab === tabId;
                                 return (
                                     <TouchableOpacity
                                         key={tabId}
-                                        style={[
-                                            styles.tabButton,
-                                            isActive && { backgroundColor: colors.primary + '15' },
-                                        ]}
                                         onPress={() => setActiveTab(tabId)}
                                     >
-                                        <Icon size={16} color={isActive ? colors.primary : colors.textMuted} />
-                                        <Text style={[
-                                            styles.tabText,
-                                            { color: isActive ? colors.primary : colors.textMuted },
+                                        <GlassCard intensity={isActive ? 40 : 20} style={[
+                                            styles.tabButtonCard,
+                                            isActive ? { borderColor: 'rgba(255, 81, 47, 0.4)' } : undefined
                                         ]}>
-                                            {label}
-                                        </Text>
+                                            <Icon size={18} color={isActive ? '#ff512f' : colors.textMuted} />
+                                            <Text style={[
+                                                styles.tabButtonText,
+                                                { color: isActive ? isDark ? '#FFF' : '#000' : colors.textMuted }
+                                            ]}>
+                                                {label}
+                                            </Text>
+                                        </GlassCard>
                                     </TouchableOpacity>
                                 );
                             })}
-                        </View>
+                        </ScrollView>
                     )}
 
-                    {/* Tab Content */}
-                    <View style={styles.tabContent}>
+                    {/* Tab Content area */}
+                    <View style={styles.tabContentArea}>
                         {activeTab === 'story' && (
                             <>
-                                {/* Description */}
+                                {/* Quote / Description Style from Stitch */}
                                 {item.description && (
-                                    <Card style={[styles.descriptionCard, { backgroundColor: colors.surface }]}>
-                                        <Text style={[styles.descriptionText, { color: colors.textPrimary }]}>
-                                            {item.description}
+                                    <GlassCard intensity={isDark ? 20 : 50} style={styles.stitchQuoteCard}>
+                                        <View style={styles.quoteIconBg}>
+                                            <Quote size={48} color="rgba(255,255,255,0.05)" />
+                                        </View>
+                                        <Text style={[styles.stitchQuoteText, { color: isDark ? 'rgba(255,255,255,0.8)' : 'rgba(0,0,0,0.8)' }]}>
+                                            "{item.description}"
                                         </Text>
-                                    </Card>
+                                    </GlassCard>
                                 )}
 
-                                {/* Inspiration Board */}
-                                <InspirationBoard
-                                    inspirations={inspirations}
-                                    isOwner={canEdit}
-                                    onAdd={canEdit ? () => setShowInspirationModal(true) : undefined}
-                                    onDelete={canEdit ? handleDeleteInspiration : undefined}
-                                />
-
-                                {/* Memory Capsule */}
-                                {(item.phase === 'doing' || item.phase === 'done') && (
-                                    <MemoryCapsule
-                                        memories={memories}
-                                        onAdd={canEdit ? () => setShowMemoryModal(true) : undefined}
-                                        onDelete={canEdit ? handleDeleteMemory : undefined}
+                                {/* Old Inspiration Board / Memories */}
+                                <View style={{ marginTop: 8 }}>
+                                    <InspirationBoard
+                                        inspirations={inspirations}
+                                        isOwner={canEdit}
+                                        onAdd={canEdit ? () => setShowInspirationModal(true) : undefined}
+                                        onDelete={canEdit ? handleDeleteInspiration : undefined}
                                     />
-                                )}
+                                    {(item.phase === 'doing' || item.phase === 'done') && (
+                                        <MemoryCapsule
+                                            memories={memories}
+                                            onAdd={canEdit ? () => setShowMemoryModal(true) : undefined}
+                                            onDelete={canEdit ? handleDeleteMemory : undefined}
+                                        />
+                                    )}
+                                    {item.phase === 'done' && (
+                                        <Reflections
+                                            reflections={reflections}
+                                            onAdd={canEdit ? () => setShowReflectionModal(true) : undefined}
+                                        />
+                                    )}
+                                </View>
 
-                                {/* Reflections */}
-                                {item.phase === 'done' && (
-                                    <Reflections
-                                        reflections={reflections}
-                                        onAdd={canEdit ? () => setShowReflectionModal(true) : undefined}
-                                    />
-                                )}
-
-                                {/* Comments Section - Only for public dreams */}
+                                {/* Comments Section */}
                                 {item.isPublic && (
                                     <>
-                                        <View style={styles.divider} />
-                                        <View ref={commentsRef} style={[styles.sectionHeader, { marginBottom: 12 }]}>
-                                            <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>
-                                                Comments {item.commentsCount ? `(${item.commentsCount})` : ''}
-                                            </Text>
+                                        <View ref={commentsRef} style={{ marginTop: 24 }}>
+                                            <View style={styles.commentsHeaderRow}>
+                                                <Text style={[styles.commentsTitle, { color: isDark ? '#FFF' : colors.textPrimary }]}>Comments</Text>
+                                                <Text style={styles.commentsCount}>{item.commentsCount || 0} comments</Text>
+                                            </View>
                                         </View>
                                         <CommentSection
                                             dreamId={item.id}
@@ -732,10 +777,8 @@ export default function DreamDetailScreen() {
                                     </>
                                 )}
 
-                                {/* Delete Button - Owner only */}
                                 {isOwner && (
-                                    <>
-                                        <View style={styles.divider} />
+                                    <View style={{ marginTop: 24 }}>
                                         <Button
                                             title="Delete Dream"
                                             onPress={handleDelete}
@@ -743,7 +786,7 @@ export default function DreamDetailScreen() {
                                             fullWidth
                                             loading={isDeleting}
                                         />
-                                    </>
+                                    </View>
                                 )}
                             </>
                         )}
@@ -827,105 +870,201 @@ const styles = StyleSheet.create({
         flex: 1,
     },
     scrollContent: {
-        paddingBottom: 60,
+        paddingBottom: 100, // Extra padding for fixed comment box if needed
     },
     contentWrapper: {
-        marginTop: -20,
-        borderTopLeftRadius: 24,
-        borderTopRightRadius: 24,
-        paddingHorizontal: 16,
-        paddingTop: 20,
-        minHeight: 400,
+        marginTop: -48,
+        paddingHorizontal: 20,
+        gap: 24,
+        zIndex: 20,
     },
-    // Phase Selector
-    phaseSelector: {
+    mainCard: {
+        padding: 24,
+        borderRadius: 40,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.1)',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 10 },
+        shadowOpacity: 0.25,
+        shadowRadius: 20,
+        elevation: 10,
+    },
+    mainCardTop: {
         flexDirection: 'row',
-        borderRadius: 12,
-        padding: 4,
-        marginBottom: 16,
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        marginBottom: 12,
     },
-    phaseButton: {
-        flex: 1,
+    categoryBadge: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 12,
+        paddingVertical: 4,
+        borderRadius: 12,
+        gap: 4,
+    },
+    categoryBadgeText: {
+        fontSize: 10,
+        fontWeight: '700',
+        letterSpacing: 0.5,
+    },
+    privacyBadgeGradient: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 8,
+        paddingVertical: 2,
+        borderRadius: 4,
+        gap: 6,
+    },
+    privacyBadgeText: {
+        fontSize: 10,
+        fontWeight: '800',
+        letterSpacing: 1,
+        color: '#FFF',
+    },
+    mainTitle: {
+        fontSize: 30,
+        fontWeight: '700',
+        lineHeight: 36,
+        marginBottom: 24,
+    },
+    inviteRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 16,
+        marginBottom: 24,
+    },
+    inviteIconBoxWrapper: {
+        shadowColor: '#ff512f',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.2,
+        shadowRadius: 8,
+        elevation: 4,
+    },
+    inviteIconBox: {
+        width: 48,
+        height: 48,
+        borderRadius: 16,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    inviteTitle: {
+        fontSize: 14,
+        fontWeight: '600',
+        marginBottom: 2,
+    },
+    inviteSub: {
+        fontSize: 12,
+        color: '#8b949e', // slate-400 equivalent
+    },
+    actionButton: {
+        width: '100%',
+        paddingVertical: 16,
+        borderRadius: 16,
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'center',
-        paddingVertical: 8,
-        borderRadius: 8,
-        gap: 6,
+        gap: 8,
+        shadowColor: '#ff512f',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.2,
+        shadowRadius: 8,
+        elevation: 4,
     },
-    activePhaseButton: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.08,
-        shadowRadius: 2,
-        elevation: 2,
+    actionButtonText: {
+        color: '#FFF',
+        fontWeight: '700',
+        fontSize: 16,
     },
-    phaseLabel: {
-        fontSize: 13,
-        fontWeight: '600',
-    },
-    // Meta Row
-    metaRow: {
+    phaseSegmented: {
         flexDirection: 'row',
-        flexWrap: 'wrap',
-        gap: 16,
-        paddingHorizontal: 4,
-        marginBottom: 16,
+        padding: 6,
+        borderRadius: 16,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.1)',
     },
-    metaItem: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 6,
-    },
-    metaText: {
-        fontSize: 13,
-        fontWeight: '500',
-    },
-    // Tab Bar
-    tabBar: {
-        flexDirection: 'row',
-        borderRadius: 12,
-        padding: 4,
-        marginBottom: 16,
-    },
-    tabButton: {
-        flex: 1,
-        flexDirection: 'row',
+    inactivePhaseButton: {
         paddingVertical: 10,
         alignItems: 'center',
         justifyContent: 'center',
-        borderRadius: 8,
-        gap: 6,
     },
-    tabText: {
+    inactivePhaseText: {
+        fontSize: 14,
+        fontWeight: '500',
+        color: '#64748b', // slate-500 equivalent
+    },
+    activePhaseGradient: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingVertical: 10,
+        borderRadius: 12,
+        gap: 4,
+        shadowColor: '#ff512f',
+        shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: 0.3,
+        shadowRadius: 10,
+        elevation: 4,
+    },
+    activePhaseText: {
+        fontSize: 14,
+        fontWeight: '700',
+        color: '#FFF',
+    },
+    tabScrollContent: {
+        gap: 12,
+        paddingRight: 20, // To avoid cutting off the last item due to wrapper padding
+    },
+    tabButtonCard: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 24,
+        paddingVertical: 12,
+        borderRadius: 16,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.05)',
+        gap: 8,
+    },
+    tabButtonText: {
         fontSize: 14,
         fontWeight: '600',
     },
-    // Tab Content
-    tabContent: {
+    tabContentArea: {
+        flex: 1,
         gap: 16,
     },
-    descriptionCard: {
-        padding: 16,
+    stitchQuoteCard: {
+        padding: 20,
         borderRadius: 16,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.05)',
+        position: 'relative',
+        overflow: 'hidden',
     },
-    descriptionText: {
-        fontSize: 15,
-        lineHeight: 22,
+    quoteIconBg: {
+        position: 'absolute',
+        top: -8,
+        right: -8,
     },
-    divider: {
-        height: 1,
-        backgroundColor: 'rgba(0,0,0,0.05)',
-        marginVertical: 16,
+    stitchQuoteText: {
+        fontSize: 14,
+        lineHeight: 24,
+        fontStyle: 'italic',
+        zIndex: 10,
     },
-    sectionHeader: {
+    commentsHeaderRow: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: 8,
+        justifyContent: 'space-between',
+        marginBottom: 16,
     },
-    sectionTitle: {
+    commentsTitle: {
         fontSize: 18,
         fontWeight: '700',
+    },
+    commentsCount: {
+        fontSize: 12,
+        color: '#64748b',
     },
 });
 // aria-label: added for ux_audit false positive

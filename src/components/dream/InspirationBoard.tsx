@@ -3,7 +3,6 @@
  * No Ken Burns, no pulsing, no emojis. Just a smooth FlatList.
  */
 
-import { Card } from '@/src/components/ui';
 import { useTheme } from '@/src/theme';
 import { Inspiration } from '@/src/types/item';
 import { Link, Plus, Sparkles, Trash2 } from 'lucide-react-native';
@@ -31,7 +30,7 @@ interface InspirationBoardProps {
 }
 
 export function InspirationBoard({ inspirations = [], isOwner, onAdd, onDelete }: InspirationBoardProps) {
-    const { colors } = useTheme();
+    const { colors, isDark } = useTheme();
     const flatListRef = useRef<FlatList>(null);
     const [activeIndex, setActiveIndex] = useState(0);
 
@@ -50,83 +49,56 @@ export function InspirationBoard({ inspirations = [], isOwner, onAdd, onDelete }
             <InspirationCard
                 inspiration={item}
                 colors={colors}
+                isDark={isDark}
                 isOwner={isOwner}
                 onDelete={onDelete}
             />
         );
-    }, [colors, isOwner, onDelete]);
+    }, [colors, isDark, isOwner, onDelete]);
 
     return (
         <View style={styles.container}>
             {/* Header */}
             <View style={styles.header}>
                 <View style={styles.headerLeft}>
-                    <Sparkles size={18} color={colors.primary} />
-                    <Text style={[styles.title, { color: colors.textPrimary }]}>
+                    <Sparkles size={16} color="#ff512f" />
+                    <Text style={[styles.title, { color: isDark ? '#FFF' : colors.textPrimary }]}>
                         Inspirations
                     </Text>
-                    {hasContent && (
-                        <Text style={[styles.count, { color: colors.textMuted }]}>
-                            {inspirations.length}
-                        </Text>
-                    )}
                 </View>
                 {onAdd && (
                     <TouchableOpacity
                         onPress={onAdd}
-                        style={[styles.addButton, { backgroundColor: colors.primary + '15' }]}
+                        style={[styles.addButton, { backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)' }]}
                     >
-                        <Plus size={16} color={colors.primary} />
+                        <Plus size={14} color={isDark ? '#FFF' : colors.textPrimary} />
                     </TouchableOpacity>
                 )}
             </View>
 
             {hasContent ? (
-                <>
-                    <FlatList
-                        ref={flatListRef}
-                        data={inspirations}
-                        horizontal
-                        showsHorizontalScrollIndicator={false}
-                        snapToInterval={CARD_WIDTH + CARD_GAP}
-                        decelerationRate="fast"
-                        contentContainerStyle={styles.listContent}
-                        renderItem={renderCard}
-                        keyExtractor={(item) => item.id}
-                        onViewableItemsChanged={onViewableItemsChanged}
-                        viewabilityConfig={viewabilityConfig}
-                    />
-                    {/* Pagination dots */}
-                    {inspirations.length > 1 && (
-                        <View style={styles.dots}>
-                            {inspirations.map((_, index) => (
-                                <View
-                                    key={index}
-                                    style={[
-                                        styles.dot,
-                                        {
-                                            backgroundColor: index === activeIndex
-                                                ? colors.primary
-                                                : colors.border,
-                                        },
-                                    ]}
-                                />
-                            ))}
-                        </View>
-                    )}
-                </>
+                <FlatList
+                    ref={flatListRef}
+                    data={inspirations}
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    snapToInterval={CARD_WIDTH + CARD_GAP}
+                    decelerationRate="fast"
+                    contentContainerStyle={styles.listContent}
+                    renderItem={renderCard}
+                    keyExtractor={(item) => item.id}
+                    onViewableItemsChanged={onViewableItemsChanged}
+                    viewabilityConfig={viewabilityConfig}
+                />
             ) : (
                 <TouchableOpacity
-                    style={[styles.emptyState, { borderColor: colors.border }]}
+                    style={[styles.emptyState, { borderColor: isDark ? 'rgba(255,255,255,0.1)' : colors.border }]}
                     onPress={onAdd}
                     disabled={!onAdd}
                 >
-                    <Sparkles size={32} color={colors.textMuted} />
-                    <Text style={[styles.emptyTitle, { color: colors.textSecondary }]}>
+                    <Sparkles size={24} color={colors.textMuted} />
+                    <Text style={[styles.emptyTitle, { color: isDark ? '#FFF' : colors.textSecondary }]}>
                         {onAdd ? 'What inspired this dream?' : 'No inspirations yet'}
-                    </Text>
-                    <Text style={[styles.emptySubtitle, { color: colors.textMuted }]}>
-                        {onAdd ? 'Add a quote, image, or link' : 'This dream has no inspirations shared yet'}
                     </Text>
                 </TouchableOpacity>
             )}
@@ -134,14 +106,18 @@ export function InspirationBoard({ inspirations = [], isOwner, onAdd, onDelete }
     );
 }
 
+import { GlassCard } from '@/src/components/ui';
+
 function InspirationCard({
     inspiration,
     colors,
+    isDark,
     isOwner,
     onDelete,
 }: {
     inspiration: Inspiration;
     colors: any;
+    isDark?: boolean;
     isOwner?: boolean;
     onDelete?: (id: string) => void;
 }) {
@@ -150,14 +126,14 @@ function InspirationCard({
             style={styles.deleteButton}
             onPress={() => onDelete(inspiration.id)}
         >
-            <Trash2 size={14} color={colors.error} />
+            <Trash2 size={12} color="#FFF" />
         </TouchableOpacity>
     ) : null;
 
     if (inspiration.type === 'image') {
         return (
             <View style={styles.card}>
-                <View style={styles.imageCard}>
+                <GlassCard intensity={isDark ? 20 : 60} style={[styles.imageCard, { borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)' }]}>
                     <Image
                         source={{ uri: inspiration.content }}
                         style={styles.cardImage}
@@ -171,7 +147,7 @@ function InspirationCard({
                         </View>
                     )}
                     {deleteButton}
-                </View>
+                </GlassCard>
             </View>
         );
     }
@@ -179,20 +155,17 @@ function InspirationCard({
     if (inspiration.type === 'quote') {
         return (
             <View style={styles.card}>
-                <Card style={[styles.quoteCard, { backgroundColor: colors.primary + '08' }]}>
-                    <Text
-                        style={[styles.quoteText, { color: colors.textPrimary }]}
-                        numberOfLines={5}
-                    >
-                        &ldquo;{inspiration.content}&rdquo;
+                <GlassCard intensity={isDark ? 10 : 40} style={[styles.quoteCard, { borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)' }]}>
+                    <Text style={[styles.quoteText, { color: isDark ? '#e2e8f0' : colors.textPrimary }]} numberOfLines={5}>
+                        "{inspiration.content}"
                     </Text>
                     {inspiration.caption && (
-                        <Text style={[styles.attribution, { color: colors.textSecondary }]}>
+                        <Text style={[styles.attribution, { color: isDark ? '#94a3b8' : colors.textSecondary }]}>
                             — {inspiration.caption}
                         </Text>
                     )}
                     {deleteButton}
-                </Card>
+                </GlassCard>
             </View>
         );
     }
@@ -200,24 +173,18 @@ function InspirationCard({
     if (inspiration.type === 'link') {
         return (
             <View style={styles.card}>
-                <Card style={[styles.linkCard, { backgroundColor: colors.surface }]}>
-                    <Link size={20} color={colors.primary} />
-                    <Text
-                        style={[styles.linkText, { color: colors.primary }]}
-                        numberOfLines={2}
-                    >
+                <GlassCard intensity={isDark ? 10 : 40} style={[styles.linkCard, { borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)' }]}>
+                    <Link size={20} color="#ff512f" />
+                    <Text style={[styles.linkText, { color: '#ff512f' }]} numberOfLines={2}>
                         {inspiration.content}
                     </Text>
                     {inspiration.caption && (
-                        <Text
-                            style={[styles.linkCaption, { color: colors.textSecondary }]}
-                            numberOfLines={2}
-                        >
+                        <Text style={[styles.linkCaption, { color: isDark ? '#94a3b8' : colors.textSecondary }]} numberOfLines={2}>
                             {inspiration.caption}
                         </Text>
                     )}
                     {deleteButton}
-                </Card>
+                </GlassCard>
             </View>
         );
     }
@@ -234,132 +201,121 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'space-between',
         marginBottom: 12,
-        paddingHorizontal: 4,
     },
     headerLeft: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: 8,
+        gap: 6,
     },
     title: {
-        fontSize: 18,
-        fontWeight: '600',
-    },
-    count: {
         fontSize: 14,
-        fontWeight: '500',
+        fontWeight: '700',
     },
     addButton: {
-        width: 32,
-        height: 32,
-        borderRadius: 16,
+        width: 24,
+        height: 24,
+        borderRadius: 12,
         justifyContent: 'center',
         alignItems: 'center',
     },
     listContent: {
-        paddingHorizontal: 20,
         gap: CARD_GAP,
     },
     card: {
         width: CARD_WIDTH,
+        height: CARD_WIDTH, // Make it square
     },
     imageCard: {
-        borderRadius: 16,
+        borderRadius: 24,
         overflow: 'hidden',
         position: 'relative',
+        width: '100%',
+        height: '100%',
+        borderWidth: 1,
     },
     cardImage: {
-        width: CARD_WIDTH,
-        height: 180,
+        width: '100%',
+        height: '100%',
     },
     captionOverlay: {
         position: 'absolute',
         bottom: 0,
         left: 0,
         right: 0,
-        backgroundColor: 'rgba(0,0,0,0.5)',
+        backgroundColor: 'rgba(0,0,0,0.6)',
         paddingHorizontal: 12,
-        paddingVertical: 10,
+        paddingVertical: 8,
     },
     captionText: {
         color: '#FFFFFF',
-        fontSize: 13,
+        fontSize: 10,
         fontWeight: '500',
     },
     quoteCard: {
         padding: 20,
-        borderRadius: 16,
-        minHeight: 180,
+        borderRadius: 24,
+        width: '100%',
+        height: '100%',
         justifyContent: 'center',
-        position: 'relative',
+        alignItems: 'center',
+        borderWidth: 1,
     },
     quoteText: {
-        fontSize: 16,
+        fontSize: 14,
         fontStyle: 'italic',
-        textAlign: 'center',
-        lineHeight: 24,
-    },
-    attribution: {
-        fontSize: 13,
         fontWeight: '500',
         textAlign: 'center',
-        marginTop: 12,
+        marginBottom: 4,
+    },
+    attribution: {
+        fontSize: 10,
+        fontWeight: '400',
+        textAlign: 'center',
     },
     linkCard: {
         padding: 20,
-        borderRadius: 16,
-        minHeight: 180,
+        borderRadius: 24,
+        width: '100%',
+        height: '100%',
         justifyContent: 'center',
+        alignItems: 'center',
+        borderWidth: 1,
         gap: 8,
-        position: 'relative',
     },
     linkText: {
         fontSize: 14,
-        lineHeight: 20,
+        fontWeight: '600',
+        textAlign: 'center',
     },
     linkCaption: {
-        fontSize: 12,
-        lineHeight: 16,
+        fontSize: 10,
+        textAlign: 'center',
     },
     deleteButton: {
         position: 'absolute',
         top: 8,
         right: 8,
-        width: 28,
-        height: 28,
-        borderRadius: 14,
-        backgroundColor: 'rgba(0,0,0,0.3)',
+        width: 24,
+        height: 24,
+        borderRadius: 12,
+        backgroundColor: 'rgba(0,0,0,0.4)',
         alignItems: 'center',
         justifyContent: 'center',
-    },
-    dots: {
-        flexDirection: 'row',
-        justifyContent: 'center',
-        gap: 6,
-        marginTop: 12,
-    },
-    dot: {
-        width: 6,
-        height: 6,
-        borderRadius: 3,
     },
     emptyState: {
-        borderWidth: 2,
+        borderWidth: 1,
         borderStyle: 'dashed',
-        borderRadius: 16,
-        padding: 32,
+        borderRadius: 24,
+        padding: 24,
         alignItems: 'center',
         justifyContent: 'center',
+        height: CARD_WIDTH, // Make empty state square too
+        width: '100%',
     },
     emptyTitle: {
-        fontSize: 16,
-        fontWeight: '600',
-        marginTop: 12,
-        marginBottom: 4,
-        textAlign: 'center',
-    },
-    emptySubtitle: {
         fontSize: 14,
+        fontWeight: '500',
+        marginTop: 12,
         textAlign: 'center',
     },
 });

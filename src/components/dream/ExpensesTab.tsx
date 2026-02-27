@@ -3,7 +3,7 @@
  */
 
 import { EmptyState } from '@/src/components/shared';
-import { Card } from '@/src/components/ui';
+import { GlassCard } from '@/src/components/ui';
 import { useTheme } from '@/src/theme';
 import { Expense, Phase } from '@/src/types/item';
 import { DollarSign, Plus } from 'lucide-react-native';
@@ -23,7 +23,7 @@ interface ExpensesTabProps {
 }
 
 export function ExpensesTab({ phase, budget, expenses, isOwner, onAddExpense }: ExpensesTabProps) {
-    const { colors } = useTheme();
+    const { colors, isDark } = useTheme();
     const totalExpenses = expenses.reduce((sum, e) => sum + e.amount, 0);
 
     if (phase === 'dream') {
@@ -39,53 +39,53 @@ export function ExpensesTab({ phase, budget, expenses, isOwner, onAddExpense }: 
     return (
         <View style={styles.container}>
             {/* Budget Summary */}
-            <Card style={[styles.summaryCard, { backgroundColor: colors.surface }]}>
+            <GlassCard intensity={isDark ? 30 : 50} style={[styles.summaryCard, { borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)' }]}>
                 <View style={styles.summaryRow}>
-                    <Text style={[styles.summaryLabel, { color: colors.textSecondary }]}>Total Spent</Text>
-                    <Text style={[styles.summaryAmount, { color: colors.textPrimary }]}>
+                    <Text style={[styles.summaryLabel, { color: isDark ? '#94a3b8' : colors.textSecondary }]}>Total Spent</Text>
+                    <Text style={[styles.summaryAmount, { color: isDark ? '#FFF' : colors.textPrimary }]}>
                         ${totalExpenses.toFixed(2)}
                     </Text>
                 </View>
                 {typeof budget === 'number' && (
                     <View style={styles.summaryRow}>
-                        <Text style={[styles.summaryLabel, { color: colors.textSecondary }]}>Budget</Text>
-                        <Text style={[styles.summaryAmount, { color: colors.primary }]}>
+                        <Text style={[styles.summaryLabel, { color: isDark ? '#94a3b8' : colors.textSecondary }]}>Budget</Text>
+                        <Text style={[styles.summaryAmount, { color: isDark ? '#FFF' : colors.primary }]}>
                             ${budget.toFixed(2)}
                         </Text>
                     </View>
                 )}
-            </Card>
+            </GlassCard>
 
             {isOwner && phase === 'doing' && (
                 <TouchableOpacity
-                    style={[styles.addButton, { borderColor: colors.primary }]}
+                    style={[styles.addButton, { borderColor: isDark ? 'rgba(255,255,255,0.2)' : colors.primary }]}
                     onPress={onAddExpense}
                 >
-                    <Plus size={18} color={colors.primary} />
-                    <Text style={[styles.addButtonText, { color: colors.primary }]}>Add Expense</Text>
+                    <Plus size={18} color={isDark ? '#FFF' : colors.primary} />
+                    <Text style={[styles.addButtonText, { color: isDark ? '#FFF' : colors.primary }]}>Add Expense</Text>
                 </TouchableOpacity>
             )}
 
             {expenses.length > 0 ? (
                 expenses.map((expense: Expense) => (
-                    <Card key={expense.id} style={[styles.expenseCard, { backgroundColor: colors.surface }]}>
+                    <GlassCard key={expense.id} intensity={isDark ? 20 : 60} style={[styles.expenseCard, { borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)' }]}>
                         <View style={styles.expenseLeft}>
                             <View style={[styles.expenseIcon, { backgroundColor: colors.primary + '15' }]}>
                                 <DollarSign size={16} color={colors.primary} />
                             </View>
                             <View>
-                                <Text style={[styles.expenseTitle, { color: colors.textPrimary }]}>
+                                <Text style={[styles.expenseTitle, { color: isDark ? '#FFF' : colors.textPrimary }]}>
                                     {expense.title}
                                 </Text>
-                                <Text style={[styles.expenseCategory, { color: colors.textMuted }]}>
+                                <Text style={[styles.expenseCategory, { color: isDark ? '#94a3b8' : colors.textMuted }]}>
                                     {expense.category}
                                 </Text>
                             </View>
                         </View>
-                        <Text style={[styles.expenseAmount, { color: colors.textPrimary }]}>
+                        <Text style={[styles.expenseAmount, { color: isDark ? '#FFF' : colors.textPrimary }]}>
                             ${expense.amount.toFixed(2)}
                         </Text>
-                    </Card>
+                    </GlassCard>
                 ))
             ) : (
                 <EmptyState
@@ -104,7 +104,8 @@ const styles = StyleSheet.create({
     },
     summaryCard: {
         padding: 16,
-        borderRadius: 16,
+        borderRadius: 24,
+        borderWidth: 1,
     },
     summaryRow: {
         flexDirection: 'row',
@@ -126,7 +127,7 @@ const styles = StyleSheet.create({
         padding: 14,
         borderWidth: 1.5,
         borderStyle: 'dashed',
-        borderRadius: 12,
+        borderRadius: 16,
         gap: 8,
     },
     addButtonText: {
@@ -138,7 +139,8 @@ const styles = StyleSheet.create({
         justifyContent: 'space-between',
         alignItems: 'center',
         padding: 14,
-        borderRadius: 14,
+        borderRadius: 20,
+        borderWidth: 1,
     },
     expenseLeft: {
         flexDirection: 'row',

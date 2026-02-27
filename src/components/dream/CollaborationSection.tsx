@@ -8,10 +8,10 @@ import { JourneysService } from '@/src/services/journeys';
 import { UsersService } from '@/src/services/users';
 import { useTheme } from '@/src/theme';
 import { Journey, UserProfile } from '@/src/types/social';
+import { ArrowRight, Check, Globe, Lock, Trash2, Users, X } from 'lucide-react-native';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Avatar, Badge } from '../ui';
-import { ArrowRight, Check, Globe, Lock, Trash2, Users, X } from 'lucide-react-native';
 
 interface CollaborationSectionProps {
     dreamId: string;
@@ -295,23 +295,25 @@ export function CollaborationSection({ dreamId, isOwner, collaborationType, onSt
             </View>
 
             {/* Participants List */}
-            <View style={styles.participants}>
-                {journey.participants.map((uid, index) => {
-                    const profile = userProfiles[uid];
-                    return (
-                        <View key={uid} style={[styles.avatarContainer, { zIndex: 10 - index }]}>
-                            <Avatar
-                                name={profile?.displayName || 'User'}
-                                uri={profile?.avatar}
-                                size="sm"
-                            />
-                        </View>
-                    );
-                })}
+            <View style={[styles.participants, { flexWrap: 'wrap', gap: 12 }]}>
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    {journey.participants.map((uid, index) => {
+                        const profile = userProfiles[uid];
+                        return (
+                            <View key={uid} style={[styles.avatarContainer, { borderColor: colors.surface, zIndex: 10 - index }]}>
+                                <Avatar
+                                    name={profile?.displayName || 'User'}
+                                    uri={profile?.avatar}
+                                    size="sm"
+                                />
+                            </View>
+                        );
+                    })}
+                </View>
 
                 {/* Owner Controls */}
                 {isOwner && (
-                    <View style={styles.ownerControls}>
+                    <View style={[styles.ownerControls, { marginLeft: 0, flexWrap: 'wrap' }]}>
                         {isPublicJourney && (
                             <View style={[styles.maxParticipantsControl, { borderColor: colors.border, backgroundColor: colors.surface }]}>
                                 <TouchableOpacity
@@ -342,7 +344,7 @@ export function CollaborationSection({ dreamId, isOwner, collaborationType, onSt
                             ]}
                         >
                             <Text style={[styles.policyButtonText, { color: joinPolicy === 'open' ? colors.accent : colors.textSecondary }]}>
-                                {joinPolicy === 'open' ? 'Open Join' : 'Request Join'}
+                                {joinPolicy === 'open' ? 'Open to All' : 'Request to Join'}
                             </Text>
                         </TouchableOpacity>
                         <TouchableOpacity
@@ -470,7 +472,6 @@ const styles = StyleSheet.create({
     avatarContainer: {
         marginRight: -8,
         borderWidth: 2,
-        borderColor: '#FFF',
         borderRadius: 20,
     },
     lockButton: {
@@ -480,7 +481,6 @@ const styles = StyleSheet.create({
         borderWidth: 1,
         justifyContent: 'center',
         alignItems: 'center',
-        marginLeft: 18,
         borderStyle: 'dashed',
     },
     policyButton: {

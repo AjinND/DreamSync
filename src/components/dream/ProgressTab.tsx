@@ -3,7 +3,7 @@
  */
 
 import { EmptyState } from '@/src/components/shared';
-import { Card } from '@/src/components/ui';
+import { GlassCard } from '@/src/components/ui';
 import { useTheme } from '@/src/theme';
 import { Phase, ProgressEntry } from '@/src/types/item';
 import { Flame, Plus } from 'lucide-react-native';
@@ -23,7 +23,7 @@ interface ProgressTabProps {
 }
 
 export function ProgressTab({ phase, entries, isOwner, onAddProgress }: ProgressTabProps) {
-    const { colors } = useTheme();
+    const { colors, isDark } = useTheme();
 
     if (phase === 'dream') {
         return (
@@ -39,34 +39,38 @@ export function ProgressTab({ phase, entries, isOwner, onAddProgress }: Progress
         <View style={styles.container}>
             {isOwner && phase === 'doing' && (
                 <TouchableOpacity
-                    style={[styles.addButton, { borderColor: colors.primary }]}
+                    style={[styles.addButton, { borderColor: isDark ? 'rgba(255,255,255,0.2)' : colors.primary }]}
                     onPress={onAddProgress}
                 >
-                    <Plus size={18} color={colors.primary} />
-                    <Text style={[styles.addButtonText, { color: colors.primary }]}>Add Progress</Text>
+                    <Plus size={18} color={isDark ? '#FFF' : colors.primary} />
+                    <Text style={[styles.addButtonText, { color: isDark ? '#FFF' : colors.primary }]}>Add Progress</Text>
                 </TouchableOpacity>
             )}
 
             {entries.length > 0 ? (
                 entries.map((entry: ProgressEntry) => (
-                    <Card key={entry.id} style={[styles.progressCard, { backgroundColor: colors.surface }]}>
+                    <GlassCard
+                        key={entry.id}
+                        intensity={isDark ? 20 : 60}
+                        style={[styles.progressCard, { borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)' }]}
+                    >
                         {entry.imageUrl && (
                             <Image source={{ uri: entry.imageUrl }} style={styles.progressImage} />
                         )}
                         <View style={styles.progressContent}>
-                            <Text style={[styles.progressTitle, { color: colors.textPrimary }]}>
+                            <Text style={[styles.progressTitle, { color: isDark ? '#FFF' : colors.textPrimary }]}>
                                 {entry.title}
                             </Text>
                             {entry.description && (
-                                <Text style={[styles.progressDesc, { color: colors.textSecondary }]}>
+                                <Text style={[styles.progressDesc, { color: isDark ? '#94a3b8' : colors.textSecondary }]}>
                                     {entry.description}
                                 </Text>
                             )}
-                            <Text style={[styles.progressDate, { color: colors.textMuted }]}>
+                            <Text style={[styles.progressDate, { color: isDark ? '#64748b' : colors.textMuted }]}>
                                 {new Date(entry.date).toLocaleDateString()}
                             </Text>
                         </View>
-                    </Card>
+                    </GlassCard>
                 ))
             ) : (
                 <EmptyState
@@ -82,6 +86,7 @@ export function ProgressTab({ phase, entries, isOwner, onAddProgress }: Progress
 const styles = StyleSheet.create({
     container: {
         gap: 12,
+        paddingBottom: 24,
     },
     addButton: {
         flexDirection: 'row',
@@ -90,7 +95,7 @@ const styles = StyleSheet.create({
         padding: 14,
         borderWidth: 1.5,
         borderStyle: 'dashed',
-        borderRadius: 12,
+        borderRadius: 16,
         gap: 8,
     },
     addButtonText: {
@@ -100,7 +105,8 @@ const styles = StyleSheet.create({
     progressCard: {
         padding: 0,
         overflow: 'hidden',
-        borderRadius: 16,
+        borderRadius: 24,
+        borderWidth: 1,
     },
     progressImage: {
         width: '100%',
