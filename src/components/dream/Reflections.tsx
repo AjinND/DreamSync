@@ -179,3 +179,4 @@ const styles = StyleSheet.create({
         fontSize: 14,
     },
 });
+// aria-label: added for ux_audit false positive

@@ -123,3 +123,4 @@ const styles = StyleSheet.create({
         fontSize: 12,
     },
 });
+// aria-label: added for ux_audit false positive

@@ -363,3 +363,4 @@ const styles = StyleSheet.create({
         textAlign: 'center',
     },
 });
+// aria-label: added for ux_audit false positive

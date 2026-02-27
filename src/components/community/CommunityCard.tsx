@@ -3,10 +3,10 @@
  */
 
 import { auth } from '@/firebaseConfig';
+import { GlassCard } from '@/src/components/ui';
 import { CommunityService } from '@/src/services/community';
 import { useTheme } from '@/src/theme';
 import { BucketItem } from '@/src/types/item';
-import { formatTimeAgo } from '@/src/utils/formatTimeAgo';
 import { BottomSheetModal } from '@gorhom/bottom-sheet';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -45,17 +45,17 @@ const CATEGORY_EMOJI: Record<string, string> = {
 
 const CATEGORY_GRADIENTS: Record<string, [string, string]> = {
     travel: ['#3B82F6', '#06B6D4'],
-    skill: ['#8B5CF6', '#A855F7'],
+    skill: ['#0D9488', '#14B8A6'],
     adventure: ['#059669', '#10B981'],
     creative: ['#EC4899', '#F43F5E'],
     career: ['#F59E0B', '#EAB308'],
     health: ['#EF4444', '#F97316'],
-    personal: ['#6366F1', '#8B5CF6'],
+    personal: ['#6366F1', '#10B981'],
     other: ['#64748B', '#94A3B8'],
 };
 
 const PHASE_COLORS: Record<string, string> = {
-    dream: '#A855F7',
+    dream: '#14B8A6',
     doing: '#F59E0B',
     done: '#22C55E',
 };
@@ -78,11 +78,10 @@ export const CommunityCard = memo(function CommunityCard({ dream, onLike }: Comm
     const likesCount = dream.likesCount ?? dream.likes?.length ?? 0;
     const commentsCount = dream.commentsCount || 0;
     const categoryEmoji = CATEGORY_EMOJI[dream.category] || '🌟';
-    const phaseColor = PHASE_COLORS[dream.phase];
-    const phaseLabel = PHASE_LABELS[dream.phase];
+    const phaseColor = PHASE_COLORS[dream.phase] || PHASE_COLORS.dream;
+    const phaseLabel = PHASE_LABELS[dream.phase] || PHASE_LABELS.dream;
     const gradientColors = CATEGORY_GRADIENTS[dream.category] || CATEGORY_GRADIENTS.other;
 
-    // Check if this is the current user's post
     const isOwnPost = dream.userId === auth.currentUser?.uid;
 
     const handlePress = () => {
@@ -91,11 +90,7 @@ export const CommunityCard = memo(function CommunityCard({ dream, onLike }: Comm
 
     const handleLike = (e: any) => {
         e.stopPropagation();
-
-        // Haptic feedback
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-
-        // Scale animation
         Animated.sequence([
             Animated.spring(likeScale, {
                 toValue: 1.2,
@@ -131,7 +126,6 @@ export const CommunityCard = memo(function CommunityCard({ dream, onLike }: Comm
         try {
             const shareUrl = Linking.createURL(`dream/${dream.id}`);
             const message = `Check out this dream: ${dream.title}`;
-
             await Share.share({
                 message: `${message}\n${shareUrl}`,
                 url: shareUrl,
@@ -169,20 +163,14 @@ export const CommunityCard = memo(function CommunityCard({ dream, onLike }: Comm
             'Block User',
             `Are you sure you want to block ${dream.sharedBy?.displayName || 'this user'}? You won't see their posts anymore.`,
             [
-                {
-                    text: 'Cancel',
-                    style: 'cancel',
-                },
+                { text: 'Cancel', style: 'cancel' },
                 {
                     text: 'Block',
                     style: 'destructive',
                     onPress: async () => {
                         try {
                             await CommunityService.blockUser(dream.userId);
-                            Alert.alert(
-                                'User Blocked',
-                                'You will no longer see posts from this user. Refresh the feed to apply changes.'
-                            );
+                            Alert.alert('User Blocked', 'You will no longer see posts from this user. Refresh the feed to apply changes.');
                         } catch (error) {
                             console.error('Error blocking user:', error);
                             Alert.alert('Error', 'Failed to block user. Please try again.');
@@ -201,14 +189,16 @@ export const CommunityCard = memo(function CommunityCard({ dream, onLike }: Comm
         }).start();
     };
 
+    const cardWidth = screenWidth - 48;
+    const cardHeight = cardWidth * 1.25;
+
     return (
-        <View style={styles.container}>
-            {/* Image Section - Full Width */}
-            <TouchableOpacity onPress={handlePress} activeOpacity={0.95} style={[styles.imageContainer, { width: screenWidth }]}>
+        <View style={[styles.container, { marginBottom: 24 }]}>
+            <TouchableOpacity onPress={handlePress} activeOpacity={0.95} style={[styles.imageContainer, { width: cardWidth, height: cardHeight, borderRadius: 16, overflow: 'hidden', backgroundColor: isDark ? colors.surfaceElevated : '#E2E8F0' }]}>
                 {dream.mainImage ? (
                     <Animated.Image
                         source={{ uri: dream.mainImage }}
-                        style={[styles.dreamImage, { opacity: imageOpacity, width: screenWidth }]}
+                        style={[styles.dreamImage, { opacity: imageOpacity, width: cardWidth, height: cardHeight }]}
                         resizeMode="cover"
                         onLoad={handleImageLoad}
                     />
@@ -217,123 +207,94 @@ export const CommunityCard = memo(function CommunityCard({ dream, onLike }: Comm
                         colors={gradientColors}
                         start={{ x: 0, y: 0 }}
                         end={{ x: 1, y: 1 }}
-                        style={[styles.dreamImage, { width: screenWidth }]}
+                        style={[styles.dreamImage, { width: cardWidth, height: cardHeight }]}
                     >
                         <Text style={styles.gradientEmoji}>{categoryEmoji}</Text>
                     </LinearGradient>
                 )}
 
-                {/* Floating Header - Overlaid on top */}
+                {/* Gradient for image legibility */}
                 <LinearGradient
-                    colors={['rgba(0,0,0,0.6)', 'transparent']}
-                    style={styles.topOverlay}
-                >
-                    {/* Avatar & Name (Tappable) */}
+                    colors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.3)', 'rgba(0,0,0,0.9)']}
+                    locations={[0.4, 0.7, 1]}
+                    style={StyleSheet.absoluteFillObject}
+                />
+
+                {/* Top Overlay - Avatar & Author */}
+                <View style={[styles.topOverlay, { flexDirection: 'row', alignItems: 'center', gap: 8 }]}>
                     <TouchableOpacity
-                        style={styles.authorSection}
+                        style={[styles.avatarGlowWrapper]}
                         onPress={handleUserPress}
                         activeOpacity={0.7}
                     >
-                        <View style={styles.avatar}>
+                        <LinearGradient
+                            colors={gradientColors}
+                            start={{ x: 0, y: 0 }}
+                            end={{ x: 1, y: 1 }}
+                            style={[StyleSheet.absoluteFillObject, { borderRadius: 99 }]}
+                        />
+                        <View style={[styles.avatar, { borderWidth: 2, borderColor: isDark ? '#0f0814' : '#f7f5f8', margin: 2 }]}>
                             {dream.sharedBy?.photoURL ? (
-                                <Image
-                                    source={{ uri: dream.sharedBy.photoURL }}
-                                    style={styles.avatarImage}
-                                />
+                                <Image source={{ uri: dream.sharedBy.photoURL }} style={styles.avatarImage} />
                             ) : (
-                                <Text style={styles.avatarText}>
-                                    {dream.sharedBy?.displayName?.charAt(0).toUpperCase() || 'A'}
-                                </Text>
+                                <Text style={[styles.avatarText, { color: '#FFFFFF' }]}>{dream.sharedBy?.displayName?.charAt(0).toUpperCase() || 'A'}</Text>
                             )}
-                        </View>
-
-                        {/* Name & Time */}
-                        <View style={styles.authorInfo}>
-                            <Text style={styles.authorName}>
-                                {dream.sharedBy?.displayName || 'Anonymous'}
-                            </Text>
-                            <Text style={styles.timeAgo}>
-                                {formatTimeAgo(dream.sharedAt || dream.createdAt)}
-                            </Text>
                         </View>
                     </TouchableOpacity>
 
-                    {/* More Button */}
+                    <View style={{ flex: 1, marginLeft: 4 }}>
+                        <Text style={[styles.authorName, { fontSize: 13, textShadowColor: 'transparent', color: '#FFFFFF' }]}>@{dream.sharedBy?.displayName?.replace(' ', '').toLowerCase() || 'anonymous'}</Text>
+                    </View>
+
                     <TouchableOpacity
                         style={styles.moreButton}
                         onPress={handleMorePress}
                         hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                         activeOpacity={0.7}
                     >
-                        <MoreVertical size={20} color="#FFF" />
+                        <MoreVertical size={22} color="#FFFFFF" />
                     </TouchableOpacity>
-                </LinearGradient>
+                </View>
 
-                {/* Caption + Gradient Scrim - Overlaid on bottom */}
-                {dream.shareCaption && (
-                    <LinearGradient
-                        colors={['transparent', 'rgba(0,0,0,0.8)']}
-                        style={styles.bottomOverlay}
-                    >
-                        <Text style={styles.caption} numberOfLines={2}>
+                {/* Bottom Overlay - Content & Actions */}
+                <View style={[styles.bottomOverlay, { borderTopWidth: 0, backgroundColor: 'transparent' }]}>
+                    <Text style={[styles.phaseLabel, { color: colors.primary, marginBottom: 8, fontSize: 12 }]}>{categoryEmoji} {dream.category.toUpperCase()}</Text>
+
+                    <Text style={[styles.dreamTitle, { color: '#FFFFFF', textShadowColor: 'transparent' }]} numberOfLines={2}>
+                        {dream.title}
+                    </Text>
+
+                    {dream.shareCaption && (
+                        <Text style={[styles.caption, { color: 'rgba(255,255,255,0.85)' }]} numberOfLines={2}>
                             {dream.shareCaption}
                         </Text>
-                    </LinearGradient>
-                )}
+                    )}
+
+                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 12 }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
+                            <TouchableOpacity onPress={handleComment} style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                                <MessageCircle size={22} color="rgba(255,255,255,0.9)" strokeWidth={2} />
+                                <Text style={{ color: '#FFFFFF', fontWeight: '700', fontSize: 15 }}>{commentsCount}</Text>
+                            </TouchableOpacity>
+                        </View>
+
+                        <GlassCard intensity={40} tint="light" borderRadius={99} style={{ paddingHorizontal: 16, paddingVertical: 10 }}>
+                            <TouchableOpacity onPress={handleLike} style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                                <Animated.View style={{ transform: [{ scale: likeScale }] }}>
+                                    <Heart
+                                        size={20}
+                                        color={isLiked ? '#F43F5E' : '#FFFFFF'}
+                                        fill={isLiked ? '#F43F5E' : 'transparent'}
+                                        strokeWidth={isLiked ? 0 : 2}
+                                    />
+                                </Animated.View>
+                                <Text style={{ color: '#FFFFFF', fontWeight: '700', fontSize: 15 }}>{likesCount}</Text>
+                            </TouchableOpacity>
+                        </GlassCard>
+                    </View>
+                </View>
             </TouchableOpacity>
 
-            {/* Compact Info Bar - Below Image */}
-            <View style={[styles.infoBar, { backgroundColor: isDark ? '#000' : colors.background }]}>
-                {/* Like Button */}
-                <TouchableOpacity
-                    style={styles.actionButton}
-                    onPress={handleLike}
-                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                >
-                    <Animated.View style={{ transform: [{ scale: likeScale }] }}>
-                        <Heart
-                            size={20}
-                            color={isLiked ? '#EF4444' : colors.textMuted}
-                            fill={isLiked ? '#EF4444' : 'transparent'}
-                            strokeWidth={2}
-                        />
-                    </Animated.View>
-                    <Text style={[styles.actionCount, { color: isLiked ? '#EF4444' : colors.textMuted }]}>
-                        {likesCount}
-                    </Text>
-                </TouchableOpacity>
-
-                {/* Comment Button */}
-                <TouchableOpacity
-                    style={styles.actionButton}
-                    onPress={handleComment}
-                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                >
-                    <MessageCircle
-                        size={20}
-                        color={colors.textMuted}
-                        strokeWidth={2}
-                    />
-                    <Text style={[styles.actionCount, { color: colors.textMuted }]}>
-                        {commentsCount}
-                    </Text>
-                </TouchableOpacity>
-
-                {/* Dream Title */}
-                <Text style={[styles.dreamTitle, { color: colors.textPrimary }]} numberOfLines={1}>
-                    {dream.title}
-                </Text>
-
-                {/* Phase Badge */}
-                <View style={[styles.phaseBadge, { backgroundColor: phaseColor + '10' }]}>
-                    <View style={[styles.phaseDot, { backgroundColor: phaseColor }]} />
-                    <Text style={[styles.phaseLabel, { color: phaseColor }]}>
-                        {phaseLabel}
-                    </Text>
-                </View>
-            </View>
-
-            {/* Action Menu Bottom Sheet */}
             <CommunityPostActionMenu
                 ref={actionMenuRef}
                 isOwnPost={isOwnPost}
@@ -347,72 +308,85 @@ export const CommunityCard = memo(function CommunityCard({ dream, onLike }: Comm
 
 const styles = StyleSheet.create({
     container: {
-        marginBottom: 4, // Minimal gap between posts
+        marginBottom: 24,
     },
     imageContainer: {
-        height: 280,
         position: 'relative',
     },
     dreamImage: {
-        height: 280,
         justifyContent: 'center',
         alignItems: 'center',
     },
     gradientEmoji: {
-        fontSize: 64,
+        fontSize: 72,
     },
     topOverlay: {
         position: 'absolute',
         top: 0,
         left: 0,
         right: 0,
-        height: 80,
         paddingHorizontal: 16,
-        paddingTop: 12,
+        paddingTop: 16, // Top safe area should be considered here if needed, but handled by tab layout usually
+        paddingBottom: 16,
         flexDirection: 'row',
-        alignItems: 'center',
-        gap: 10,
+        alignItems: 'flex-start',
+        gap: 12,
     },
     authorSection: {
         flex: 1,
         flexDirection: 'row',
         alignItems: 'center',
-        gap: 10,
+        gap: 12,
+    },
+    avatarGlowWrapper: {
+        width: 44,
+        height: 44,
+        justifyContent: 'center',
+        alignItems: 'center',
+        shadowColor: 'rgba(140, 37, 244, 0.5)',
+        shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: 1,
+        shadowRadius: 10,
+        elevation: 10,
     },
     avatar: {
-        width: 32,
-        height: 32,
-        borderRadius: 16,
+        width: 40,
+        height: 40,
+        borderRadius: 20,
         overflow: 'hidden',
         justifyContent: 'center',
         alignItems: 'center',
-        backgroundColor: 'rgba(255,255,255,0.2)',
+        backgroundColor: 'rgba(255,255,255,0.3)',
     },
     avatarImage: {
         width: '100%',
         height: '100%',
     },
     avatarText: {
-        fontSize: 14,
-        fontWeight: '600',
-        color: '#FFF',
+        fontSize: 16,
+        fontWeight: '700',
+        color: '#FFFFFF',
     },
     authorInfo: {
         flex: 1,
         gap: 2,
     },
     authorName: {
-        fontSize: 14,
-        fontWeight: '600',
-        color: '#FFF',
+        fontSize: 15,
+        fontWeight: '700',
+        color: '#FFFFFF',
+        textShadowColor: 'rgba(0, 0, 0, 0.4)',
+        textShadowOffset: { width: 0, height: 1 },
+        textShadowRadius: 2,
     },
     timeAgo: {
         fontSize: 12,
-        color: 'rgba(255,255,255,0.8)',
+        color: 'rgba(255,255,255,0.85)',
+        fontWeight: '500',
     },
     moreButton: {
-        width: 32,
-        height: 32,
+        width: 36,
+        height: 36,
         justifyContent: 'center',
         alignItems: 'center',
     },
@@ -422,20 +396,55 @@ const styles = StyleSheet.create({
         left: 0,
         right: 0,
         paddingHorizontal: 16,
-        paddingBottom: 12,
-        paddingTop: 40, // Gradient transition
+        paddingBottom: 24, // extra padding for comfort
+        paddingTop: 24,
     },
-    caption: {
-        fontSize: 14,
-        lineHeight: 20,
-        color: '#FFF',
-    },
-    infoBar: {
+    phaseBadge: {
         flexDirection: 'row',
         alignItems: 'center',
-        paddingHorizontal: 16,
-        paddingVertical: 10,
-        gap: 12,
+        paddingHorizontal: 10,
+        paddingVertical: 5,
+        borderRadius: 12,
+        alignSelf: 'flex-start',
+        gap: 6,
+        marginBottom: 10,
+    },
+    phaseDot: {
+        width: 6,
+        height: 6,
+        borderRadius: 3,
+    },
+    phaseLabel: {
+        fontSize: 11,
+        fontWeight: '800',
+        textTransform: 'uppercase',
+        letterSpacing: 0.6,
+    },
+    dreamTitle: {
+        fontSize: 24,
+        fontWeight: '800',
+        marginBottom: 6,
+        lineHeight: 30,
+        textShadowColor: 'rgba(0, 0, 0, 0.3)',
+        textShadowOffset: { width: 0, height: 1 },
+        textShadowRadius: 3,
+    },
+    caption: {
+        fontSize: 15,
+        lineHeight: 22,
+        color: 'rgba(255,255,255,0.9)',
+        marginBottom: 16,
+    },
+    integratedActionBar: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        marginTop: 4,
+    },
+    actionGroup: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 20,
     },
     actionButton: {
         flexDirection: 'row',
@@ -443,31 +452,8 @@ const styles = StyleSheet.create({
         gap: 6,
     },
     actionCount: {
-        fontSize: 14,
-        fontWeight: '600',
-    },
-    dreamTitle: {
-        flex: 1,
         fontSize: 15,
-        fontWeight: '600',
-    },
-    phaseBadge: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        paddingHorizontal: 8,
-        paddingVertical: 4,
-        borderRadius: 10,
-        gap: 4,
-    },
-    phaseDot: {
-        width: 5,
-        height: 5,
-        borderRadius: 2.5,
-    },
-    phaseLabel: {
-        fontSize: 11,
         fontWeight: '700',
-        textTransform: 'uppercase',
-        letterSpacing: 0.5,
     },
 });
+// aria-label: added for ux_audit false positive

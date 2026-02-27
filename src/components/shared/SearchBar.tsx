@@ -1,8 +1,10 @@
 /**
  * DreamSync Shared Components - SearchBar
+ * True Glassmorphism with BlurView
  */
 
 import { useTheme } from '@/src/theme';
+import { BlurView } from 'expo-blur';
 import { Search, X } from 'lucide-react-native';
 import { StyleSheet, TextInput, TouchableOpacity, View } from 'react-native';
 
@@ -21,41 +23,56 @@ export function SearchBar({
     onSubmit,
     autoFocus = false,
 }: SearchBarProps) {
-    const { colors } = useTheme();
+    const { colors, isDark } = useTheme();
 
     return (
-        <View style={[styles.container, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <Search size={20} color={colors.textMuted} style={styles.icon} />
+        <View style={styles.wrapper}>
+            <BlurView
+                intensity={isDark ? 30 : 60}
+                tint={isDark ? 'dark' : 'light'}
+                style={[
+                    styles.container,
+                    {
+                        borderColor: isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0,0,0,0.05)',
+                        borderWidth: 1,
+                        backgroundColor: isDark ? 'rgba(0,0,0,0.3)' : 'rgba(255,255,255,0.4)',
+                    }
+                ]}
+            >
+                <Search size={20} color={colors.textMuted} style={styles.icon} />
 
-            <TextInput
-                style={[styles.input, { color: colors.textPrimary }]}
-                value={value}
-                onChangeText={onChangeText}
-                placeholder={placeholder}
-                placeholderTextColor={colors.textMuted}
-                onSubmitEditing={onSubmit}
-                returnKeyType="search"
-                autoFocus={autoFocus}
-            />
+                <TextInput
+                    style={[styles.input, { color: colors.textPrimary }]}
+                    value={value}
+                    onChangeText={onChangeText}
+                    placeholder={placeholder}
+                    placeholderTextColor={colors.textMuted}
+                    onSubmitEditing={onSubmit}
+                    returnKeyType="search"
+                    autoFocus={autoFocus}
+                />
 
-            {value.length > 0 && (
-                <TouchableOpacity onPress={() => onChangeText('')} style={styles.clearButton}>
-                    <X size={18} color={colors.textMuted} />
-                </TouchableOpacity>
-            )}
+                {value.length > 0 && (
+                    <TouchableOpacity onPress={() => onChangeText('')} style={styles.clearButton} activeOpacity={0.7}>
+                        <X size={18} color={colors.textMuted} />
+                    </TouchableOpacity>
+                )}
+            </BlurView>
         </View>
     );
 }
 
 const styles = StyleSheet.create({
+    wrapper: {
+        marginHorizontal: 16,
+        borderRadius: 16,
+        overflow: 'hidden', // Essential for clipping BlurView on Android/iOS
+    },
     container: {
         flexDirection: 'row',
         alignItems: 'center',
-        borderRadius: 12,
-        borderWidth: 1,
-        paddingHorizontal: 12,
-        height: 44,
-        marginHorizontal: 16,
+        paddingHorizontal: 14,
+        height: 48, // Slightly taller for better touch area
     },
     icon: {
         marginRight: 10,
@@ -63,9 +80,9 @@ const styles = StyleSheet.create({
     input: {
         flex: 1,
         fontSize: 16,
-        paddingVertical: 8,
+        paddingVertical: 10,
     },
     clearButton: {
-        padding: 4,
+        padding: 6,
     },
 });

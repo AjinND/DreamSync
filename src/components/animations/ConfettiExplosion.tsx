@@ -26,7 +26,7 @@ const COLORS = [
     '#FFA07A', // Orange
     '#98D8C8', // Mint
     '#F7B731', // Yellow
-    '#5F27CD', // Purple
+    '#0D9488', // Teal
 ];
 
 interface Particle {

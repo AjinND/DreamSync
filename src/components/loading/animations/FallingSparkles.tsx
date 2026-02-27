@@ -53,7 +53,7 @@ export function FallingSparkles({
 
   // Theme-based sparkle colors
   const SPARKLE_COLORS = [
-    colors.primary, // Lavender
+    colors.primary, // #0D9488
     colors.secondary, // Teal
     '#6366F1', // Indigo
     '#FFD700', // Gold

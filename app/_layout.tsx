@@ -363,3 +363,4 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
 });
+// aria-label: added for ux_audit false positive

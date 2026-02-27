@@ -4,7 +4,6 @@
  */
 
 import { CategoryTabs, CommunityCard, CommunityCardSkeletonList } from '@/src/components/community';
-import { BucketLoaderFull } from '@/src/components/loading';
 import { EmptyState, NotificationBell, SearchBar } from '@/src/components/shared';
 import { useCommunityStore } from '@/src/store/useCommunityStore';
 import { useTheme } from '@/src/theme';
@@ -92,8 +91,10 @@ export default function CommunityScreen() {
                     <Text style={[styles.titleFlex, { color: colors.textPrimary }]}>Community</Text>
                     <NotificationBell />
                 </View>
-                <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
-                    Dream. Explore. Inspire.
+                <Text style={[styles.subtitle, { fontWeight: '700' }]}>
+                    <Text style={{ color: '#8c25f4' }}>Dream. </Text>
+                    <Text style={{ color: '#06B6D4' }}>Explore. </Text>
+                    <Text style={{ color: '#F43F5E' }}>Inspire.</Text>
                 </Text>
                 <SearchBar
                     value={query}
@@ -177,7 +178,7 @@ const styles = StyleSheet.create({
         flex: 1,
     },
     listContent: {
-        paddingHorizontal: 0, // Edge-to-edge content
+        paddingHorizontal: 24, // Stitch design px-6
         paddingBottom: 100,
     },
     headerContent: {
