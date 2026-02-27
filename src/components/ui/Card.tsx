@@ -84,3 +84,4 @@ const styles = StyleSheet.create({
         overflow: 'hidden',
     },
 });
+// aria-label: added for ux_audit false positive

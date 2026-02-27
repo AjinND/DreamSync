@@ -13,8 +13,8 @@ import {
     UserPlus,
     UserX,
     Users,
-} from 'lucide-react-native';
-import { LucideIcon } from 'lucide-react-native';
+ LucideIcon } from 'lucide-react-native';
+
 import { AppNotification, NotificationType } from '../types/notification';
 
 const ICON_MAP: Record<NotificationType, LucideIcon> = {

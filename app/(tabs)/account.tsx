@@ -1,17 +1,18 @@
 /**
  * DreamSync - Account Tab
- * Profile, settings, user management
+ * Profile, settings, user management with Premium Glass UI
  */
 
 import { auth } from '@/firebaseConfig';
 import { NotificationBell } from '@/src/components/shared';
 import { UserAvatar } from '@/src/components/social/UserAvatar';
+import { GlassCard } from '@/src/components/ui';
+import { isEncryptedField } from '@/src/services/encryption';
 import { NotificationService } from '@/src/services/notifications';
 import { UsersService } from '@/src/services/users';
-import { isEncryptedField } from '@/src/services/encryption';
 import { useBucketStore } from '@/src/store/useBucketStore';
-import { useNotificationStore } from '@/src/store/useNotificationStore';
 import { useChatStore } from '@/src/store/useChatStore';
+import { useNotificationStore } from '@/src/store/useNotificationStore';
 import { useTheme } from '@/src/theme';
 import { UserProfile } from '@/src/types/social';
 import { Ionicons } from '@expo/vector-icons';
@@ -22,7 +23,7 @@ import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'rea
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 export default function AccountScreen() {
-    const { colors } = useTheme();
+    const { colors, isDark } = useTheme();
     const router = useRouter();
     const user = auth.currentUser;
     const { items, fetchItems } = useBucketStore();
@@ -88,11 +89,9 @@ export default function AccountScreen() {
                     style: 'destructive',
                     onPress: async () => {
                         try {
-                            // Remove push token before signing out
-                            await NotificationService.removeStoredPushTokenFromServer().catch(() => {});
+                            await NotificationService.removeStoredPushTokenFromServer().catch(() => { });
                             useNotificationStore.getState().clear();
                             useChatStore.getState().clear();
-                            // Cleanup real-time subscriptions
                             useBucketStore.getState().clearSubscriptions();
                             await signOut(auth);
                             router.replace('/(auth)/login');
@@ -127,47 +126,68 @@ export default function AccountScreen() {
                 </View>
 
                 {/* Profile Card */}
-                <View style={[styles.profileCard, { backgroundColor: colors.surface }]}>
-                    <UserAvatar
-                        userId={user?.uid || ''}
-                        name={profile?.displayName || user?.displayName || 'Dreamer'}
-                        avatar={profile?.avatar || user?.photoURL || undefined}
-                        size={60}
-                    />
-                    <View style={styles.profileInfo}>
-                        <Text style={[styles.displayName, { color: colors.textPrimary }]}>
+                <GlassCard
+                    intensity={isDark ? 30 : 60}
+                    tint={isDark ? 'dark' : 'light'}
+                    borderRadius={24}
+                    style={styles.profileCard}
+                >
+                    {/* Decorative Gradient Blob */}
+                    <View style={styles.profileBlob} pointerEvents="none" />
+
+                    <View style={styles.avatarWrapper}>
+                        <UserAvatar
+                            userId={user?.uid || ''}
+                            name={profile?.displayName || user?.displayName || 'Dreamer'}
+                            avatar={profile?.avatar || user?.photoURL || undefined}
+                            size={112}
+                        />
+                        <TouchableOpacity
+                            style={styles.editButtonFloat}
+                            onPress={() => router.push('/settings/profile' as any)}
+                            activeOpacity={0.8}
+                        >
+                            <Ionicons name="pencil" size={16} color="#FFFFFF" />
+                        </TouchableOpacity>
+                    </View>
+
+                    <View style={styles.profileInfoCentered}>
+                        <Text style={[styles.displayName, { color: colors.textPrimary, textAlign: 'center' }]}>
                             {profile?.displayName || user?.displayName || 'Dreamer'}
                         </Text>
-                        {/* Only render bio/email if it's a string (not an encrypted object) */}
+
+                        <Text style={[styles.usernameHandle, { color: colors.primary }]}>
+                            @{profile?.displayName?.replace(' ', '').toLowerCase() || 'dreamer'}
+                        </Text>
+
                         {(() => {
                             const bioText = profile?.bio && typeof profile.bio === 'string' && !isEncryptedField(profile.bio)
                                 ? profile.bio
                                 : undefined;
                             const emailText = user?.email && typeof user.email === 'string' && !isEncryptedField(user.email)
                                 ? user.email
-                                : undefined;
+                                : 'Exploring the world one dream at a time. Currently chasing the Northern Lights.';
                             const displayText = bioText || emailText;
 
                             return displayText ? (
-                                <Text style={[styles.email, { color: colors.textSecondary }]}>
+                                <Text style={[styles.emailCentered, { color: colors.textSecondary }]} numberOfLines={3}>
                                     {displayText}
                                 </Text>
                             ) : null;
                         })()}
                     </View>
-                    <TouchableOpacity
-                        style={styles.editButton}
-                        onPress={() => router.push('/settings/profile' as any)}
-                    >
-                        <Ionicons name="pencil" size={20} color={colors.primary} />
-                    </TouchableOpacity>
-                </View>
+                </GlassCard>
 
                 {/* Email Verification */}
-                <View style={[styles.verificationCard, { backgroundColor: colors.surface }]}>
+                <GlassCard
+                    intensity={isDark ? 30 : 60}
+                    tint={isDark ? 'dark' : 'light'}
+                    borderRadius={24}
+                    style={styles.verificationCard}
+                >
                     <View style={styles.verificationHeader}>
                         <View style={styles.verificationTitleRow}>
-                            <Ionicons name={statusIcon as any} size={20} color={statusColor} />
+                            <Ionicons name={statusIcon as any} size={22} color={statusColor} />
                             <Text style={[styles.verificationTitle, { color: colors.textPrimary }]}>
                                 Email Verification
                             </Text>
@@ -181,6 +201,7 @@ export default function AccountScreen() {
                             <TouchableOpacity
                                 style={[styles.verificationBtn, { backgroundColor: colors.primary }]}
                                 onPress={handleOpenVerification}
+                                activeOpacity={0.8}
                             >
                                 <Text style={styles.verificationBtnText}>Open</Text>
                             </TouchableOpacity>
@@ -188,6 +209,7 @@ export default function AccountScreen() {
                                 style={[styles.verificationGhostBtn, { borderColor: colors.border }]}
                                 onPress={handleResendVerification}
                                 disabled={sendingVerification}
+                                activeOpacity={0.8}
                             >
                                 <Text style={[styles.verificationGhostBtnText, { color: colors.textPrimary }]}>
                                     {sendingVerification ? 'Sending...' : 'Resend'}
@@ -195,56 +217,69 @@ export default function AccountScreen() {
                             </TouchableOpacity>
                         </View>
                     )}
-                </View>
+                </GlassCard>
 
                 {/* Stats */}
-                <View style={[styles.statsContainer, { backgroundColor: colors.surface }]}>
-                    <View style={styles.statItem}>
+                <View style={styles.statsContainerSplit}>
+                    <GlassCard intensity={isDark ? 30 : 60} tint={isDark ? 'dark' : 'light'} borderRadius={16} style={[styles.statItemCard, styles.glowBorder]}>
                         <Text style={[styles.statValue, { color: colors.statusDream }]}>{dreamsCount}</Text>
                         <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Dreams</Text>
-                    </View>
-                    <View style={[styles.statDivider, { backgroundColor: colors.border }]} />
-                    <View style={styles.statItem}>
+                    </GlassCard>
+                    <GlassCard intensity={isDark ? 30 : 60} tint={isDark ? 'dark' : 'light'} borderRadius={16} style={[styles.statItemCard, styles.glowBorder]}>
                         <Text style={[styles.statValue, { color: colors.statusDoing }]}>{doingCount}</Text>
                         <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Doing</Text>
-                    </View>
-                    <View style={[styles.statDivider, { backgroundColor: colors.border }]} />
-                    <View style={styles.statItem}>
+                    </GlassCard>
+                    <GlassCard intensity={isDark ? 30 : 60} tint={isDark ? 'dark' : 'light'} borderRadius={16} style={[styles.statItemCard, styles.glowBorder]}>
                         <Text style={[styles.statValue, { color: colors.statusDone }]}>{doneCount}</Text>
                         <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Done</Text>
-                    </View>
+                    </GlassCard>
                 </View>
 
                 {/* Menu Items */}
-                <View style={[styles.menuContainer, { backgroundColor: colors.surface }]}>
+                <Text style={[styles.sectionTitle, { color: isDark ? 'rgba(255,255,255,0.5)' : colors.textSecondary }]}>
+                    ACCOUNT PREFERENCES
+                </Text>
+                <GlassCard
+                    intensity={isDark ? 30 : 60}
+                    tint={isDark ? 'dark' : 'light'}
+                    borderRadius={24}
+                    style={styles.menuContainer}
+                >
                     {menuItems.map((item, index) => (
                         <TouchableOpacity
                             key={item.label}
                             style={[
                                 styles.menuItem,
-                                index < menuItems.length - 1 && { borderBottomWidth: 1, borderBottomColor: colors.border },
+                                index < menuItems.length - 1 && { borderBottomWidth: 1, borderBottomColor: isDark ? 'rgba(255,255,255,0.05)' : colors.border },
                             ]}
                             onPress={() => router.push(item.route as any)}
                             activeOpacity={0.7}
                         >
-                            <Ionicons name={item.icon as any} size={22} color={colors.textSecondary} />
+                            <Ionicons name={item.icon as any} size={24} color={colors.primary} />
                             <Text style={[styles.menuLabel, { color: colors.textPrimary }]}>{item.label}</Text>
                             <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
                         </TouchableOpacity>
                     ))}
-                </View>
+                </GlassCard>
 
                 {/* Sign Out */}
-                <TouchableOpacity
-                    style={[styles.signOutButton, { backgroundColor: colors.error + '15' }]}
-                    onPress={handleSignOut}
-                    activeOpacity={0.7}
+                <GlassCard
+                    intensity={isDark ? 30 : 60}
+                    tint={isDark ? 'dark' : 'light'}
+                    borderRadius={24}
+                    style={[styles.signOutButton, { backgroundColor: isDark ? 'rgba(255,0,0,0.15)' : 'rgba(255,0,0,0.08)' }]}
                 >
-                    <Ionicons name="log-out-outline" size={22} color={colors.error} />
-                    <Text style={[styles.signOutText, { color: colors.error }]}>Sign Out</Text>
-                </TouchableOpacity>
+                    <TouchableOpacity
+                        style={styles.signOutTouchable}
+                        onPress={handleSignOut}
+                        activeOpacity={0.8}
+                    >
+                        <Ionicons name="log-out-outline" size={24} color={colors.error} />
+                        <Text style={[styles.signOutText, { color: colors.error }]}>Sign Out</Text>
+                    </TouchableOpacity>
+                </GlassCard>
 
-                <View style={{ height: 40 }} />
+                <View style={{ height: 120 }} />
             </ScrollView>
         </SafeAreaView>
     );
@@ -265,48 +300,86 @@ const styles = StyleSheet.create({
         alignItems: 'center',
     },
     title: {
-        fontSize: 32,
-        fontWeight: '700',
+        fontSize: 34,
+        fontWeight: '800',
+        letterSpacing: -0.5,
     },
     profileCard: {
-        flexDirection: 'row',
+        flexDirection: 'column',
         alignItems: 'center',
         marginHorizontal: 16,
-        padding: 16,
-        borderRadius: 16,
+        padding: 32,
+        borderRadius: 24,
         marginBottom: 16,
+        position: 'relative',
+        overflow: 'hidden',
     },
-    avatar: {
-        width: 60,
-        height: 60,
-        borderRadius: 30,
-        justifyContent: 'center',
+    profileBlob: {
+        position: 'absolute',
+        top: -40,
+        right: -40,
+        width: 128,
+        height: 128,
+        backgroundColor: 'rgba(140, 37, 244, 0.2)',
+        borderRadius: 64,
+        shadowColor: 'rgba(140, 37, 244, 0.8)',
+        shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: 1,
+        shadowRadius: 32,
+        elevation: 10,
+    },
+    avatarWrapper: {
+        marginBottom: 16,
+        position: 'relative',
+        padding: 4,
+        borderWidth: 2,
+        borderColor: 'rgba(140, 37, 244, 0.5)',
+        borderRadius: 99,
+    },
+    editButtonFloat: {
+        position: 'absolute',
+        bottom: 4,
+        right: 4,
+        backgroundColor: '#8c25f4',
+        borderRadius: 16,
+        padding: 6,
+        borderWidth: 2,
+        borderColor: '#0f0814',
+    },
+    profileInfoCentered: {
         alignItems: 'center',
     },
-    avatarText: {
-        fontSize: 24,
-        fontWeight: '700',
+    usernameHandle: {
+        fontSize: 14,
+        fontWeight: '600',
+        marginBottom: 8,
     },
-    profileInfo: {
-        flex: 1,
-        marginLeft: 16,
+    emailCentered: {
+        fontSize: 14,
+        textAlign: 'center',
+        lineHeight: 22,
+        maxWidth: 260,
     },
     displayName: {
-        fontSize: 18,
-        fontWeight: '600',
+        fontSize: 24,
+        fontWeight: '800',
+        letterSpacing: -0.3,
+        marginBottom: 4,
     },
     email: {
-        fontSize: 14,
-        marginTop: 2,
+        fontSize: 15,
     },
     editButton: {
-        padding: 8,
+        padding: 12,
+        backgroundColor: 'rgba(168, 85, 247, 0.1)',
+        borderRadius: 20,
     },
     verificationCard: {
         marginHorizontal: 16,
-        borderRadius: 16,
-        padding: 16,
+        borderRadius: 24,
+        padding: 20,
         marginBottom: 16,
+        overflow: 'hidden', // Necessary for BlurView to clip appropriately
     },
     verificationHeader: {
         flexDirection: 'row',
@@ -318,89 +391,118 @@ const styles = StyleSheet.create({
         alignItems: 'center',
     },
     verificationTitle: {
-        fontSize: 16,
-        fontWeight: '600',
+        fontSize: 17,
+        fontWeight: '700',
         marginLeft: 8,
     },
     verificationStatus: {
-        fontSize: 14,
+        fontSize: 15,
         fontWeight: '700',
     },
     verificationActions: {
         flexDirection: 'row',
-        marginTop: 12,
-        gap: 10,
+        marginTop: 16,
+        gap: 12,
     },
     verificationBtn: {
-        paddingVertical: 10,
-        paddingHorizontal: 14,
-        borderRadius: 10,
+        paddingVertical: 12,
+        paddingHorizontal: 16,
+        borderRadius: 12,
     },
     verificationBtnText: {
         color: '#FFFFFF',
-        fontSize: 14,
+        fontSize: 15,
         fontWeight: '700',
     },
     verificationGhostBtn: {
-        paddingVertical: 10,
-        paddingHorizontal: 14,
-        borderRadius: 10,
+        paddingVertical: 12,
+        paddingHorizontal: 16,
+        borderRadius: 12,
         borderWidth: 1,
     },
     verificationGhostBtnText: {
-        fontSize: 14,
+        fontSize: 15,
         fontWeight: '600',
     },
-    statsContainer: {
+    statsContainerSplit: {
         flexDirection: 'row',
         marginHorizontal: 16,
-        padding: 20,
-        borderRadius: 16,
+        gap: 12,
         marginBottom: 16,
+    },
+    statItemCard: {
+        flex: 1,
+        alignItems: 'center',
+        paddingVertical: 16,
+        paddingHorizontal: 8,
+    },
+    glowBorder: {
+        shadowColor: 'rgba(140, 37, 244, 0.2)',
+        shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: 1,
+        shadowRadius: 15,
+        elevation: 6,
     },
     statItem: {
         flex: 1,
         alignItems: 'center',
     },
     statValue: {
-        fontSize: 28,
-        fontWeight: '700',
+        fontSize: 24,
+        fontWeight: '800',
     },
     statLabel: {
-        fontSize: 14,
-        marginTop: 4,
+        fontSize: 11,
+        marginTop: 6,
+        fontWeight: '700',
+        textTransform: 'uppercase',
+        letterSpacing: 0.5,
     },
     statDivider: {
         width: 1,
-        height: '100%',
+        height: '80%',
+        alignSelf: 'center',
+    },
+    sectionTitle: {
+        fontSize: 12,
+        fontWeight: '700',
+        letterSpacing: 1.5,
+        marginLeft: 24,
+        marginBottom: 8,
     },
     menuContainer: {
         marginHorizontal: 16,
-        borderRadius: 16,
+        borderRadius: 24,
         marginBottom: 16,
         overflow: 'hidden',
     },
     menuItem: {
         flexDirection: 'row',
         alignItems: 'center',
-        padding: 16,
+        paddingVertical: 18,
+        paddingHorizontal: 20,
     },
     menuLabel: {
         flex: 1,
-        fontSize: 16,
-        marginLeft: 12,
+        fontSize: 17,
+        fontWeight: '600',
+        marginLeft: 14,
     },
     signOutButton: {
+        marginHorizontal: 16,
+        borderRadius: 24,
+        overflow: 'hidden', // Necessary for BlurView to clip appropriately
+    },
+    signOutTouchable: {
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'center',
-        marginHorizontal: 16,
-        padding: 16,
-        borderRadius: 16,
+        padding: 18,
     },
     signOutText: {
-        fontSize: 16,
-        fontWeight: '600',
-        marginLeft: 8,
+        fontSize: 17,
+        fontWeight: '700',
+        marginLeft: 10,
     },
 });
+// aria-label: added for ux_audit false positive

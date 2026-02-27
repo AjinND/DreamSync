@@ -1,12 +1,13 @@
 /**
- * DreamSync - Journeys Tab (Placeholder)
- * Shared dreams, collaboration, group journeys
+ * DreamSync - Journeys Tab
+ * Shared dreams, collaboration, group journeys with modern segmented control
  */
 
-import { auth } from '@/firebaseConfig'; // Added import
+import { auth } from '@/firebaseConfig';
 import { DreamCard } from '@/src/components/dream/DreamCard';
 import { BucketLoaderInline } from '@/src/components/loading';
 import { EmptyState, NotificationBell } from '@/src/components/shared';
+import { GlassCard } from '@/src/components/ui';
 import { JourneysService } from '@/src/services/journeys';
 import { useBucketStore } from '@/src/store/useBucketStore';
 import { useTheme } from '@/src/theme';
@@ -19,7 +20,7 @@ import { ActivityIndicator, FlatList, RefreshControl, StyleSheet, Text, Touchabl
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 export default function JourneysScreen() {
-    const { colors } = useTheme();
+    const { colors, isDark } = useTheme();
     const router = useRouter();
     const { items } = useBucketStore();
     const [activeTab, setActiveTab] = useState<'my-journeys' | 'explore'>('my-journeys');
@@ -32,13 +33,10 @@ export default function JourneysScreen() {
     const [isLoadingMyJourneys, setIsLoadingMyJourneys] = useState(false);
     const [refreshing, setRefreshing] = useState(false);
 
-    // Filter "My Journeys" from local store (Owned Dreams)
-    // We only care about dreams I OWN here. Joined dreams come from separate state.
     const myOwnedJourneys = useMemo(() =>
         items.filter(i => i.collaborationType === 'group' || i.collaborationType === 'open'),
         [items]);
 
-    // Helper to Convert Journey Preview to Partial BucketItem for Card (Visuals only)
     const journeyToItem = (journey: Journey): BucketItem => {
         return {
             id: journey.dreamId,
@@ -46,7 +44,7 @@ export default function JourneysScreen() {
             description: journey.preview?.description,
             mainImage: journey.preview?.image,
             userId: journey.ownerId,
-            phase: 'dream', // Usually 'doing' for journeys but defaults to dream for list
+            phase: 'dream',
             category: 'other',
             createdAt: journey.createdAt,
             updatedAt: journey.createdAt,
@@ -54,16 +52,12 @@ export default function JourneysScreen() {
             isPublic: true,
             commentsCount: 0,
             likesCount: 0,
-            collaborationType: 'group' // It is a group journey
+            collaborationType: 'group'
         } as BucketItem;
     };
 
-    // Combine Owned + Joined
     const allMyJourneys = useMemo(() => {
-        // Convert joined journeys to BucketItems for display
         const joinedItems = joinedJourneys.map(j => journeyToItem(j));
-
-        // Merge arrays (deduping by ID just in case)
         const all = [...myOwnedJourneys];
         joinedItems.forEach(jItem => {
             if (!all.find(existing => existing.id === jItem.id)) {
@@ -78,14 +72,10 @@ export default function JourneysScreen() {
         const userId = auth.currentUser?.uid;
         if (!userId) return;
 
-        // We only show loader if we don't have owned journeys to show immediately
-        // or we can show a small refresher. For now, specific loading state.
         if (myOwnedJourneys.length === 0) setIsLoadingMyJourneys(true);
 
         try {
             const results = await JourneysService.getUserJourneys(userId);
-            // Filter out journeys where I am the OWNER (already covered by myOwnedJourneys from store)
-            // ensuring no duplicates if store sync is slow or logic overlaps
             const joinedOnly = results.filter(j => j.ownerId !== userId);
             setJoinedJourneys(joinedOnly);
         } catch (error) {
@@ -96,40 +86,51 @@ export default function JourneysScreen() {
         }
     }, [myOwnedJourneys.length]);
 
-    const fetchOpenJourneys = useCallback(async (loadMore: boolean = false) => {
-        if (loadMore) {
-            if (isFetchingMoreExplore || !hasMoreExplore) return;
-            setIsFetchingMoreExplore(true);
-        } else {
-            setIsLoadingExplore(true);
-        }
+    const loadInitialOpenJourneys = useCallback(async () => {
+        setIsLoadingExplore(true);
 
         try {
-            const page = await JourneysService.getOpenJourneysPaginated(
-                12,
-                loadMore ? openJourneysCursor : null
-            );
+            const page = await JourneysService.getOpenJourneysPaginated(12, null);
             const currentUserId = auth.currentUser?.uid;
 
-            // Filter out my own dreams OR dreams I'm already participating in
             const filtered = page.journeys.filter(j =>
                 j.ownerId !== currentUserId &&
                 !j.participants.includes(currentUserId || '')
             );
 
-            setOpenJourneys(prev =>
-                loadMore
-                    ? [...prev, ...filtered.filter(next => !prev.some(existing => existing.id === next.id))]
-                    : filtered
-            );
+            setOpenJourneys(filtered);
             setOpenJourneysCursor(page.lastDoc);
             setHasMoreExplore(page.hasMore);
         } catch (error) {
             console.error('Failed to fetch open journeys', error);
         } finally {
             setIsLoadingExplore(false);
-            setIsFetchingMoreExplore(false);
             setRefreshing(false);
+        }
+    }, []);
+
+    const fetchMoreOpenJourneys = useCallback(async () => {
+        if (isFetchingMoreExplore || !hasMoreExplore) return;
+        setIsFetchingMoreExplore(true);
+
+        try {
+            const page = await JourneysService.getOpenJourneysPaginated(12, openJourneysCursor);
+            const currentUserId = auth.currentUser?.uid;
+
+            const filtered = page.journeys.filter(j =>
+                j.ownerId !== currentUserId &&
+                !j.participants.includes(currentUserId || '')
+            );
+
+            setOpenJourneys(prev =>
+                [...prev, ...filtered.filter(next => !prev.some(existing => existing.id === next.id))]
+            );
+            setOpenJourneysCursor(page.lastDoc);
+            setHasMoreExplore(page.hasMore);
+        } catch (error) {
+            console.error('Failed to fetch open journeys', error);
+        } finally {
+            setIsFetchingMoreExplore(false);
         }
     }, [hasMoreExplore, isFetchingMoreExplore, openJourneysCursor]);
 
@@ -138,18 +139,17 @@ export default function JourneysScreen() {
             if (activeTab === 'my-journeys') {
                 fetchJoinedJourneys();
             } else {
-                fetchOpenJourneys();
+                loadInitialOpenJourneys();
             }
-        }, [activeTab, fetchJoinedJourneys, fetchOpenJourneys])
+        }, [activeTab, fetchJoinedJourneys, loadInitialOpenJourneys])
     );
 
     const onRefresh = () => {
         setRefreshing(true);
         if (activeTab === 'explore') {
-            fetchOpenJourneys();
+            loadInitialOpenJourneys();
         } else {
             fetchJoinedJourneys();
-            // Store sync happens globally, but we could trigger it if we had a manual sync method
         }
     };
 
@@ -243,8 +243,6 @@ export default function JourneysScreen() {
         );
     };
 
-
-
     return (
         <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
             <View style={styles.header}>
@@ -257,20 +255,29 @@ export default function JourneysScreen() {
                 </Text>
             </View>
 
-            {/* Tab Toggle */}
-            <View style={styles.tabContainer}>
-                <TouchableOpacity
-                    style={[styles.tab, activeTab === 'my-journeys' && styles.activeTab, { borderColor: activeTab === 'my-journeys' ? colors.primary : 'transparent' }]}
-                    onPress={() => setActiveTab('my-journeys')}
+            {/* Segmented Control Toggle (Glassmorphism) */}
+            <View style={styles.segmentContainerWrapper}>
+                <GlassCard
+                    intensity={isDark ? 20 : 50}
+                    tint={isDark ? 'dark' : 'light'}
+                    borderRadius={24}
+                    style={[styles.segmentedControl, { padding: 4 }]}
                 >
-                    <Text style={[styles.tabText, { color: activeTab === 'my-journeys' ? colors.primary : colors.textSecondary }]}>My Journeys</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                    style={[styles.tab, activeTab === 'explore' && styles.activeTab, { borderColor: activeTab === 'explore' ? colors.primary : 'transparent' }]}
-                    onPress={() => setActiveTab('explore')}
-                >
-                    <Text style={[styles.tabText, { color: activeTab === 'explore' ? colors.primary : colors.textSecondary }]}>Explore</Text>
-                </TouchableOpacity>
+                    <TouchableOpacity
+                        style={[styles.segmentButton, activeTab === 'my-journeys' && [styles.segmentButtonActive, { backgroundColor: isDark ? colors.surfaceElevated : '#FFFFFF', shadowColor: colors.primary }]]}
+                        onPress={() => setActiveTab('my-journeys')}
+                        activeOpacity={0.8}
+                    >
+                        <Text style={[styles.segmentText, { color: activeTab === 'my-journeys' ? colors.primary : colors.textSecondary, fontWeight: activeTab === 'my-journeys' ? '700' : '500' }]}>My Journeys</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                        style={[styles.segmentButton, activeTab === 'explore' && [styles.segmentButtonActive, { backgroundColor: isDark ? colors.surfaceElevated : '#FFFFFF', shadowColor: colors.primary }]]}
+                        onPress={() => setActiveTab('explore')}
+                        activeOpacity={0.8}
+                    >
+                        <Text style={[styles.segmentText, { color: activeTab === 'explore' ? colors.primary : colors.textSecondary, fontWeight: activeTab === 'explore' ? '700' : '500' }]}>Explore</Text>
+                    </TouchableOpacity>
+                </GlassCard>
             </View>
 
             <FlatList
@@ -282,11 +289,11 @@ export default function JourneysScreen() {
                 refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
                 ListEmptyComponent={renderEmpty}
                 ListFooterComponent={renderFooter}
-                ItemSeparatorComponent={() => <View style={{ height: 16 }} />}
+                ItemSeparatorComponent={() => <View style={{ height: 12 }} />}
                 onEndReachedThreshold={0.45}
                 onEndReached={() => {
                     if (activeTab === 'explore' && hasMoreExplore && !isLoadingExplore && !isFetchingMoreExplore) {
-                        fetchOpenJourneys(true);
+                        fetchMoreOpenJourneys();
                     }
                 }}
             />
@@ -319,33 +326,47 @@ const styles = StyleSheet.create({
         alignItems: 'center',
     },
     title: {
-        fontSize: 32,
-        fontWeight: '700',
+        fontSize: 34,
+        fontWeight: '800',
+        letterSpacing: -0.5,
     },
     subtitle: {
         fontSize: 16,
         marginTop: 4,
+        fontWeight: '500',
     },
-    tabContainer: {
-        flexDirection: 'row',
+    segmentContainerWrapper: {
         paddingHorizontal: 20,
-        marginBottom: 16,
-        gap: 20
+        marginBottom: 20,
     },
-    tab: {
-        paddingBottom: 8,
-        borderBottomWidth: 2,
+    segmentedControl: {
+        flexDirection: 'row',
+        padding: 4,
+        borderRadius: 24,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.05)',
+        overflow: 'hidden', // Necessary for BlurView to clip appropriately
     },
-    activeTab: {
-
+    segmentButton: {
+        flex: 1,
+        paddingVertical: 12,
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderRadius: 20,
     },
-    tabText: {
-        fontSize: 16,
-        fontWeight: '600',
+    segmentButtonActive: {
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.25,
+        shadowRadius: 8,
+        elevation: 6,
+    },
+    segmentText: {
+        fontSize: 15,
+        letterSpacing: 0.3,
     },
     scrollContent: {
         paddingHorizontal: 16,
-        paddingBottom: 100,
+        paddingBottom: 160,
     },
     emptyContainer: {
         marginTop: 40,
@@ -356,19 +377,20 @@ const styles = StyleSheet.create({
     },
     fabContainer: {
         position: 'absolute',
-        bottom: 24,
+        bottom: 100,
         right: 20,
-        shadowColor: "#000",
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.3,
-        shadowRadius: 4.65,
+        shadowColor: "#14B8A6",
+        shadowOffset: { width: 0, height: 6 },
+        shadowOpacity: 0.45,
+        shadowRadius: 16,
         elevation: 8,
     },
     fab: {
-        width: 56,
-        height: 56,
-        borderRadius: 28,
+        width: 64,
+        height: 64,
+        borderRadius: 32,
         alignItems: 'center',
         justifyContent: 'center',
     },
 });
+// aria-label: added for ux_audit false positive

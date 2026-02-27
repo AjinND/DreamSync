@@ -15,7 +15,7 @@ interface BucketFillProps {
 const GRADIENT_COLORS = [
   '#5EEAD4', // Teal (bottom)
   '#6366F1', // Indigo (middle)
-  '#A78BFA', // Lavender (top)
+  '#06B6D4', // #0D9488 (top)
 ];
 
 const AnimatedRect = Animated.createAnimatedComponent(Rect);

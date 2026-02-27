@@ -5,6 +5,7 @@
 
 import { DreamCard, DreamCardSkeletonList } from '@/src/components/dream';
 import { EmptyState, FilterChips, NotificationBell, SearchBar } from '@/src/components/shared';
+import { GlassCard } from '@/src/components/ui';
 import { UsersService } from '@/src/services/users';
 import { useBucketStore } from '@/src/store/useBucketStore';
 import { useTheme } from '@/src/theme';
@@ -13,10 +14,10 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { Moon, Plus, Trash2 } from 'lucide-react-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, FlatList, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, FlatList, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import type { Swipeable as SwipeableType } from 'react-native-gesture-handler';
 import { Swipeable } from 'react-native-gesture-handler';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import type { Swipeable as SwipeableType } from 'react-native-gesture-handler';
 
 type Status = 'all' | 'dream' | 'doing' | 'done';
 
@@ -160,36 +161,40 @@ export default function HomeScreen() {
       <View style={styles.greetingSection}>
         <View style={styles.greetingRow}>
           <View style={styles.greetingTextCol}>
-            <Text style={[styles.greeting, { color: colors.textSecondary }]}>
-              Hello, {user?.displayName || 'Dreamer'}
+            <Text style={[styles.greeting, { color: colors.textMuted }]}>
+              GOOD MORNING
             </Text>
             <Text style={[styles.title, { color: colors.textPrimary }]}>
-              My Dreams
+              Hello, {user?.displayName || 'Dreamer'}
             </Text>
           </View>
           <NotificationBell />
         </View>
       </View>
 
-      {/* Stats */}
-      <View style={styles.statsRow}>
-        <View style={[styles.statItem, { backgroundColor: colors.surface }]}>
-          <Text style={[styles.statValue, { color: colors.primary }]}>{totalCount}</Text>
+      {/* Stat Cards Horizontal Scroll */}
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.statsScrollContainer}
+      >
+        <GlassCard intensity={isDark ? 30 : 60} tint={isDark ? 'dark' : 'light'} style={[styles.statCard, { borderLeftColor: colors.primary }]}>
           <Text style={[styles.statLabel, { color: colors.textMuted }]}>Total</Text>
-        </View>
-        <View style={[styles.statItem, { backgroundColor: colors.surface }]}>
-          <Text style={[styles.statValue, { color: colors.statusDream }]}>{dreamCount}</Text>
+          <Text style={[styles.statValue, { color: isDark ? '#FFF' : colors.textPrimary }]}>{totalCount}</Text>
+        </GlassCard>
+        <GlassCard intensity={isDark ? 30 : 60} tint={isDark ? 'dark' : 'light'} style={[styles.statCard, { borderLeftColor: '#60A5FA' }]}>
           <Text style={[styles.statLabel, { color: colors.textMuted }]}>Dreams</Text>
-        </View>
-        <View style={[styles.statItem, { backgroundColor: colors.surface }]}>
-          <Text style={[styles.statValue, { color: colors.statusDoing }]}>{doingCount}</Text>
+          <Text style={[styles.statValue, { color: isDark ? '#FFF' : colors.textPrimary }]}>{dreamCount}</Text>
+        </GlassCard>
+        <GlassCard intensity={isDark ? 30 : 60} tint={isDark ? 'dark' : 'light'} style={[styles.statCard, { borderLeftColor: '#FBBF24' }]}>
           <Text style={[styles.statLabel, { color: colors.textMuted }]}>Doing</Text>
-        </View>
-        <View style={[styles.statItem, { backgroundColor: colors.surface }]}>
-          <Text style={[styles.statValue, { color: colors.statusDone }]}>{doneCount}</Text>
+          <Text style={[styles.statValue, { color: isDark ? '#FFF' : colors.textPrimary }]}>{doingCount}</Text>
+        </GlassCard>
+        <GlassCard intensity={isDark ? 30 : 60} tint={isDark ? 'dark' : 'light'} style={[styles.statCard, { borderLeftColor: '#34D399' }]}>
           <Text style={[styles.statLabel, { color: colors.textMuted }]}>Done</Text>
-        </View>
-      </View>
+          <Text style={[styles.statValue, { color: isDark ? '#FFF' : colors.textPrimary }]}>{doneCount}</Text>
+        </GlassCard>
+      </ScrollView>
 
       {/* Filters */}
       <View style={styles.filterSection}>
@@ -264,7 +269,7 @@ export default function HomeScreen() {
         onPress={handleAddDream}
         activeOpacity={0.9}
       >
-        <Plus size={28} color="#FFFFFF" strokeWidth={2.5} />
+        <Plus size={32} color="#FFFFFF" strokeWidth={2.5} />
       </TouchableOpacity>
     </SafeAreaView>
   );
@@ -291,42 +296,44 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   greeting: {
-    fontSize: 14,
+    fontSize: 15,
     marginBottom: 4,
+    fontWeight: '500',
+    letterSpacing: 0.3,
   },
   title: {
-    fontSize: 28,
-    fontWeight: '700',
+    fontSize: 34,
+    fontWeight: '800',
+    letterSpacing: -0.5,
   },
-  statsRow: {
-    flexDirection: 'row',
-    paddingHorizontal: 16,
-    marginBottom: 20,
-    gap: 8,
+  statsScrollContainer: {
+    paddingHorizontal: 20,
+    marginBottom: 24,
+    gap: 12,
   },
-  statItem: {
-    flex: 1,
-    paddingVertical: 12,
-    paddingHorizontal: 8,
-    borderRadius: 12,
-    alignItems: 'center',
-  },
-  statValue: {
-    fontSize: 20,
-    fontWeight: '700',
+  statCard: {
+    minWidth: 120,
+    padding: 16,
+    borderRadius: 16,
+    borderLeftWidth: 4,
   },
   statLabel: {
     fontSize: 11,
-    marginTop: 2,
+    marginBottom: 6,
+    fontWeight: '700',
     textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    letterSpacing: 1,
+  },
+  statValue: {
+    fontSize: 26,
+    fontWeight: '800',
   },
   filterSection: {
     marginBottom: 8,
-    gap: 10,
+    gap: 16,
   },
   listContent: {
-    paddingBottom: 100,
+    paddingBottom: 160,
   },
   footerLoader: {
     paddingVertical: 14,
@@ -347,17 +354,17 @@ const styles = StyleSheet.create({
   },
   fab: {
     position: 'absolute',
-    bottom: Platform.OS === 'ios' ? 32 : 24,
+    bottom: 100,
     right: 20,
-    width: 60,
-    height: 60,
-    borderRadius: 30,
+    width: 64,
+    height: 64,
+    borderRadius: 32,
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 12,
-    elevation: 6,
+    shadowColor: '#F43F5E',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.4,
+    shadowRadius: 16,
+    elevation: 8,
   },
 });

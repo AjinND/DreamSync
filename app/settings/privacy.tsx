@@ -1,9 +1,12 @@
 import { auth } from '@/firebaseConfig';
+import { Header } from '@/src/components/shared';
+import { IconButton } from '@/src/components/ui';
 import { UsersService } from '@/src/services/users';
 import { useTheme } from '@/src/theme';
 import { DEFAULT_NOTIFICATION_PREFERENCES } from '@/src/types/notification';
 import { UserSettings } from '@/src/types/social';
 import { Stack, useRouter } from 'expo-router';
+import { ChevronLeft } from 'lucide-react-native';
 import { useEffect, useState } from 'react';
 import {
     ActivityIndicator,
@@ -15,9 +18,6 @@ import {
     View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Header } from '@/src/components/shared';
-import { IconButton } from '@/src/components/ui';
-import { ChevronLeft } from 'lucide-react-native';
 
 export default function PrivacyScreen() {
     const { colors } = useTheme();
@@ -110,30 +110,30 @@ export default function PrivacyScreen() {
 
             <ScrollView style={{ flex: 1 }}>
 
-            <View style={styles.section}>
-                <Text style={[styles.sectionTitle, { color: colors.primary }]}>Visibility</Text>
+                <View style={styles.section}>
+                    <Text style={[styles.sectionTitle, { color: colors.primary }]}>Visibility</Text>
 
-                <SettingRow
-                    label="Public Profile"
-                    description="Allow others to find you and view your shared dreams"
-                    value={settings.isPublicProfile}
-                    onValueChange={() => toggleSetting('isPublicProfile')}
-                />
+                    <SettingRow
+                        label="Public Profile"
+                        description="Allow others to find you and view your shared dreams"
+                        value={settings.isPublicProfile}
+                        onValueChange={() => toggleSetting('isPublicProfile')}
+                    />
 
-                <SettingRow
-                    label="Show Completed Dreams"
-                    description="Show your completion history on your public profile"
-                    value={settings.showCompletedDreams}
-                    onValueChange={() => toggleSetting('showCompletedDreams')}
-                />
-            </View>
+                    <SettingRow
+                        label="Show Completed Dreams"
+                        description="Show your completion history on your public profile"
+                        value={settings.showCompletedDreams}
+                        onValueChange={() => toggleSetting('showCompletedDreams')}
+                    />
+                </View>
 
-            <View style={styles.infoSection}>
-                <Text style={[styles.infoTitle, { color: colors.textPrimary }]}>Data Privacy</Text>
-                <Text style={[styles.infoText, { color: colors.textSecondary }]}>
-                    Your private dreams are never shared. Only dreams you explicitly mark as "Shared" or "Public" are visible to the community.
-                </Text>
-            </View>
+                <View style={styles.infoSection}>
+                    <Text style={[styles.infoTitle, { color: colors.textPrimary }]}>Data Privacy</Text>
+                    <Text style={[styles.infoText, { color: colors.textSecondary }]}>
+                        Your private dreams are never shared. Only dreams you explicitly mark as &quot;Shared&quot; or &quot;Public&quot; are visible to the community.
+                    </Text>
+                </View>
             </ScrollView>
         </SafeAreaView>
     );

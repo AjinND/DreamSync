@@ -7,9 +7,7 @@ export const colors = {
     // ===== Light Theme =====
     light: {
         // Primary Palette
-        primary: '#A78BFA',        // Soft Lavender
-        primaryLight: '#C4B5FD',   // Lighter lavender
-        primaryDark: '#8B5CF6',    // Deeper lavender
+        primary: '#8c25f4',        // Deep Purple
 
         secondary: '#5EEAD4',      // Mint Teal
         secondaryLight: '#99F6E4', // Lighter teal
@@ -20,7 +18,7 @@ export const colors = {
         accentDark: '#F43F5E',     // Deeper coral
 
         // Background & Surfaces
-        background: '#FEFBF6',     // Warm Cream
+        background: '#f7f5f8',     // Light Background
         surface: '#FFFFFF',        // Pure White (cards)
         surfaceElevated: '#FFFFFF', // Modals, sheets
 
@@ -49,45 +47,47 @@ export const colors = {
 
     // ===== Dark Theme =====
     dark: {
-        // Primary Palette (same hues, adjusted for dark)
-        primary: '#A78BFA',
-        primaryLight: '#C4B5FD',
-        primaryDark: '#8B5CF6',
+        // Primary Palette (Electric Purple)
+        primary: '#8c25f4',
+        primaryLight: '#D8B4FE',
+        primaryDark: '#7E22CE',
 
-        secondary: '#5EEAD4',
-        secondaryLight: '#99F6E4',
-        secondaryDark: '#2DD4BF',
+        // Secondary Palette (Deep Teal / Cyan)
+        secondary: '#2DD4BF',
+        secondaryLight: '#5EEAD4',
+        secondaryDark: '#0F766E',
 
-        accent: '#FB7185',
+        // Accent Palette (Vibrant Pink/Coral)
+        accent: '#F43F5E',
         accentLight: '#FDA4AF',
-        accentDark: '#F43F5E',
+        accentDark: '#BE123C',
 
-        // Background & Surfaces
-        background: '#0F172A',     // Deep Navy
-        surface: '#1E293B',        // Slate
-        surfaceElevated: '#334155', // Elevated slate
+        // Background & Surfaces (Midnight Ocean / Glass)
+        background: '#0f0814',     // Dark Background
+        surface: 'rgba(25, 16, 34, 0.6)',  // Glassmorphism base
+        surfaceElevated: 'rgba(25, 16, 34, 0.8)', // Slightly more opaque glass
 
         // Text
-        textPrimary: '#F1F5F9',    // Ghost White
+        textPrimary: '#F8FAFC',    // Pure bright text
         textSecondary: '#94A3B8',  // Cool Gray
-        textMuted: '#64748B',      // Slate
-        textInverse: '#1E293B',    // On light backgrounds
+        textMuted: '#475569',      // Dimmer Slate
+        textInverse: '#0B1120',    // On light backgrounds
 
         // Borders & Dividers
-        border: '#334155',         // Slate Dark
-        borderLight: '#475569',    // Lighter slate
-        borderFocus: '#A78BFA',    // Primary focus ring
+        border: 'rgba(140, 37, 244, 0.2)', // Glass border
+        borderLight: 'rgba(255, 255, 255, 0.15)',
+        borderFocus: '#A855F7',    // Primary focus ring
 
-        // Status Colors (same, high contrast)
-        statusDream: '#818CF8',
-        statusDoing: '#FBBF24',
-        statusDone: '#34D399',
+        // Status Colors (Vibrant Neon)
+        statusDream: '#C084FC',    // Neon Purple
+        statusDoing: '#FBBF24',    // Neon Amber
+        statusDone: '#2DD4BF',     // Neon Teal
 
         // Semantic
-        error: '#F87171',
+        error: '#F43F5E',
         warning: '#FBBF24',
-        success: '#34D399',
-        info: '#60A5FA',
+        success: '#10B981',
+        info: '#3B82F6',
     },
 };
 
